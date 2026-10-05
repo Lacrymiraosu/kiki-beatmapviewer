@@ -1,0 +1,29 @@
+// Example: copy to wrangler.jsonc and put your own Worker name, R2 bucket and D1 database ID. Never commit secrets.
+// Cloudflare Workers: the site (static files) and its API (worker.js → api/**). Deploy: npx wrangler deploy
+// Secrets (npx wrangler secret put NAME): OSU_CLIENT_ID, OSU_CLIENT_SECRET, OSU_REDIRECT_URI, SUPABASE_URL,
+// SUPABASE_SECRET_KEY, OWNER_OSU_ID, CRON_SECRET, TURN_KEY_ID + TURN_KEY_API_TOKEN (Cloudflare Realtime TURN, optional),
+// CF_ANALYTICS_TOKEN + CF_ACCOUNT_ID (TURN usage and the monthly limit, optional).
+{
+  "name": "kiki-beatmap-viewer",
+  "main": "worker.js",
+  "compatibility_date": "2025-09-15",
+  "compatibility_flags": ["nodejs_compat"],
+  // run near the database (Supabase, Tokyo) instead of near each visitor: every API call talks to it
+  "placement": { "mode": "smart" },
+  "assets": {
+    "directory": ".",
+    "binding": "ASSETS",
+    // the Worker only runs for the API and for "/" (shared links get a preview card); other files are served directly
+    "run_worker_first": ["/", "/api/*"]
+  },
+  "triggers": { "crons": ["0 3 * * *"] },
+  // project files (online saves) on R2, free tier: create the bucket first (Cloudflare → R2 → Create bucket), the
+  // deploy fails while it doesn't exist. Without this binding the files stay on Supabase Storage. The site counts R2
+  // operations and refuses them above the free tier (Admin → Settings), see api/_lib/db.js.
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "kiki-beatmap-viewer-files" }],
+  // the database on D1 (d1/migrations); used only once the variable DB_BACKEND=d1 is set (worker.js), until then Supabase
+  "d1_databases": [{ "binding": "DB", "database_name": "kiki-beatmap-viewer-db", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "d1/migrations" }],
+  "observability": { "enabled": true },
+  // keep variables added in the dashboard: without this every deploy removes the plain-text ones (secrets stay)
+  "keep_vars": true
+}

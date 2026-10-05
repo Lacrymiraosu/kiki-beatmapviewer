@@ -1,0 +1,22 @@
+{
+  "id": "/",
+  "name": "KIKI BEATMAP VIEWER",
+  "short_name": "KIKI",
+  "description": "Preview, mod and map osu! beatmaps in your browser.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#1c1726",
+  "theme_color": "#1c1726",
+  "categories": ["games", "music", "utilities"],
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Editor", "url": "/?view=editor", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Browse beatmaps", "url": "/?view=songs", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

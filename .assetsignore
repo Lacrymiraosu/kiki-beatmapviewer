@@ -1,0 +1,25 @@
+# not served on Cloudflare (Workers static assets): the code that runs on the server, tests, tools, the database,
+# config and docs. The rest of the folder is the site.
+.git
+.github
+.vercel
+.wrangler
+.env*
+.dev.vars
+api
+tests
+scripts
+supabase
+d1
+docs
+node_modules
+worker.js
+wrangler.jsonc
+vercel.json
+.vercelignore
+.assetsignore
+.gitignore
+.gitattributes
+*.md
+wrangler.example.jsonc
+.gitleaks.toml

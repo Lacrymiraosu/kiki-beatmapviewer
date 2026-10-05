@@ -1,0 +1,12 @@
+.vercel/
+node_modules/
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db
+!.env.example
+.wrangler/
+.dev.vars
+__pycache__/
+wrangler.jsonc

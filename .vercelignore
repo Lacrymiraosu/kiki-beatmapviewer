@@ -1,0 +1,11 @@
+*.md
+/.*
+/tests
+/scripts
+/supabase
+/d1
+/docs
+/worker.js
+/wrangler.jsonc
+/_headers
+/wrangler.example.jsonc

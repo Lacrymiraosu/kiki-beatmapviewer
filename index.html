@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1c1726">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Preview and mod osu! and osu!mania beatmaps with storyboard and hitsounds in your browser.">
+<meta property="og:title" content="KIKI BEATMAP VIEWER">
+<meta property="og:description" content="Preview and mod osu! and osu!mania beatmaps with storyboard and hitsounds in your browser.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="KIKI BEATMAP VIEWER">
+<meta property="og:image" content="https://osu-beatmap-viewer.lacrymira.workers.dev/assets/og/default.png?v=1">
+<meta name="twitter:card" content="summary_large_image">
+<title>KIKI BEATMAP VIEWER</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://api.nerinyan.moe" crossorigin>
+<link rel="preconnect" href="https://assets.ppy.sh">
+<link rel="preconnect" href="https://b.ppy.sh">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;600&family=Varela+Round&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/app.css?v=198">
+<script src="js/core.js?v=198" defer></script>
+<script src="js/i18n.js?v=198" defer></script>
+<script src="js/api.js?v=198" defer></script>
+<script src="js/osudata.js?v=198" defer></script>
+<script src="js/parse.js?v=198" defer></script>
+<script src="js/skins.js?v=198" defer></script>
+<script src="js/audio.js?v=198" defer></script>
+<script src="js/auto.js?v=198" defer></script>
+<script src="js/player.js?v=198" defer></script>
+<script src="js/mania.js?v=198" defer></script>
+<script src="js/verify.js?v=198" defer></script>
+<script src="js/verifyui.js?v=198" defer></script>
+<script src="js/spectrum.js?v=198" defer></script>
+<script src="js/tools.js?v=198" defer></script>
+<script src="js/compare.js?v=198" defer></script>
+<script src="js/editor.js?v=198" defer></script>
+<script src="js/maniaed.js?v=198" defer></script>
+<script src="js/hsstudio.js?v=198" defer></script>
+<script src="js/play.js?v=198" defer></script>
+<script src="js/app.js?v=198" defer></script>
+<script src="js/listing.js?v=198" defer></script>
+<script src="js/create.js?v=198" defer></script>
+<script src="js/live.js?v=198" defer></script>
+<script src="js/liveink.js?v=198" defer></script>
+<script src="js/drafts.js?v=198" defer></script>
+<script src="js/annot.js?v=198" defer></script>
+<script src="js/sidelists.js?v=198" defer></script>
+<script src="js/collab.js?v=198" defer></script>
+<script src="js/cloud.js?v=198" defer></script>
+<script src="js/admin.js?v=198" defer></script>
+<script src="js/home.js?v=198" defer></script>
+<script src="js/invites.js?v=198" defer></script>
+<script src="js/account.js?v=198" defer></script>
+<script src="js/gdrive.js?v=198" defer></script>
+<script src="js/demo.js?v=198" defer></script>
+<script src="js/invscene.js?v=198" defer></script>
+<script src="js/gate.js?v=198" defer></script>
+<script src="js/pages.js?v=198" defer></script>
+</head>
+<body>
+
+<main id="gate" class="gate" hidden></main>
+<div id="shell">
+  <header class="top apptop">
+    <a id="home" class="brand" href="./">
+      <div class="logo" aria-hidden="true"></div>
+      <div><strong class="bname">KIKI BEATMAP VIEWER</strong><p data-i18n="Preview and mod osu! and osu!mania beatmaps in your browser">Preview and mod osu! and osu!mania beatmaps in your browser</p></div>
+    </a>
+    <nav id="topnav" class="topnav">
+      <a href="?view=songs" data-go="songs" data-perm="listing" data-i18n="Beatmap">Beatmap</a>
+      <a href="?view=editor" data-go="editor" data-perm="editor" data-i18n="Editor">Editor</a>
+    </nav>
+    <div class="topacts">
+      <button id="guestReq" class="btn main sm" type="button" hidden data-i18n="Request access">Request access</button>
+      <button id="acctBtn" class="acct" aria-label="Log in with osu!"></button>
+      <select id="langSel" class="langsel" aria-label="Language"></select>
+      <button id="volBtn" class="icon" data-i18n-aria="Volume" aria-label="Volume" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button>
+    </div>
+  </header>
+  <div id="volPop" class="volpop" hidden></div>
+  <div id="acctPop" class="volpop acctpop" hidden></div>
+
+  <main id="homeView" class="view homev" hidden>
+    <section class="hero">
+      <div id="heroDemo" class="herodemo" aria-hidden="true"></div>
+      <h1 data-i18n="Preview, mod and map osu! beatmaps right in your browser">Preview, mod and map osu! beatmaps right in your browser</h1>
+      <p data-i18n="Free, nothing to install. What do you want to do?">Free, nothing to install. What do you want to do?</p>
+    </section>
+    <div class="menu">
+      <a class="mcard songs" href="?view=songs" data-go="songs" data-perm="listing">
+        <span class="mic"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></span>
+        <b data-i18n="Beatmap">Beatmap</b>
+        <span data-i18n="Search osu! beatmaps, listen to previews, watch them with storyboard and hitsounds, and download them.">Search osu! beatmaps, listen to previews, watch them with storyboard and hitsounds, and download them.</span>
+        <em data-i18n="Browse maps →">Browse maps →</em>
+      </a>
+      <a class="mcard editor" href="?view=editor" data-go="editor" data-perm="editor">
+        <span class="mic"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg></span>
+        <b data-i18n="Editor">Editor</b>
+        <span data-i18n="Create a new beatmap or open one from osu! to mod it: osu!-style editor, checks, mod notes and live sessions.">Create a new beatmap or open one from osu! to mod it: osu!-style editor, checks, mod notes and live sessions.</span>
+        <em data-i18n="Open the editor →">Open the editor →</em>
+      </a>
+    </div>
+    <div class="quick">
+      <form id="homeSearch" class="searchrow" role="search" data-perm="listing"><input id="homeQ" type="search" enterkeyhint="search" autocomplete="off" data-i18n-aria="Song, artist, mapper:name or an osu.ppy.sh link" aria-label="Song, artist, mapper:name or an osu.ppy.sh link" data-i18n-ph="Song, artist, mapper:name or an osu.ppy.sh link" placeholder="Song, artist, mapper:name or an osu.ppy.sh link"><button class="btn main" data-i18n="Search">Search</button></form>
+      <div class="btnrow"><button id="homeOpen" class="btn ghost sm" data-perm="player" data-i18n="Open .osz file">Open .osz file</button><button class="btn ghost sm gdopen" hidden data-perm="player" data-i18n="Google Drive">Google Drive</button><button id="homeJoin" class="btn ghost sm" data-perm="live" data-i18n="Join live mapping">Join live mapping</button></div>
+    </div>
+    <section id="homeDrafts" class="drafts" data-perm="editor" hidden></section>
+    <section id="homeFeats" class="homefeats" aria-labelledby="homeFeatsH">
+      <h2 id="homeFeatsH" data-i18n="What you can do here">What you can do here</h2>
+      <div class="gfeat">
+        <article class="gcard"><span class="mic" data-feat="1"></span><b data-i18n="Preview player">Preview player</b><span data-i18n="Watch any difficulty with its storyboard, video and hitsounds, in the osu! default or retro skin, or your own .osk. Speed, offset and Bluetooth calibration included.">Watch any difficulty with its storyboard, video and hitsounds, in the osu! default or retro skin, or your own .osk. Speed, offset and Bluetooth calibration included.</span></article>
+        <article class="gcard"><span class="mic" data-feat="2"></span><b data-i18n="An editor like osu!'s">An editor like osu!'s</b><span data-i18n="Compose, Timing, Hitsounds, Verify and Setup, with beat snap, grid and distance snap, mapping guides for spacing and angles, slider previews on the timeline, colours and hotkeys you already know.">Compose, Timing, Hitsounds, Verify and Setup, with beat snap, grid and distance snap, mapping guides for spacing and angles, slider previews on the timeline, colours and hotkeys you already know.</span></article>
+        <article class="gcard"><span class="mic" data-feat="3"></span><b data-i18n="Modding tools">Modding tools</b><span data-i18n="Mod notes with osu! timestamps, annotations (comments, arrows, highlights) on the objects, side lists to follow them through the map, and checks for common issues.">Mod notes with osu! timestamps, annotations (comments, arrows, highlights) on the objects, side lists to follow them through the map, and checks for common issues.</span></article>
+        <article class="gcard"><span class="mic" data-feat="4"></span><b data-i18n="Hitsound Studio">Hitsound Studio</b><span data-i18n="All hitsounds in lanes under the timeline: stretch them, go full screen with a tool dock, right-click for sample sets and green lines, slider ticks, and keysound numbering for piano-style hitsounding.">All hitsounds in lanes under the timeline: stretch them, go full screen with a tool dock, right-click for sample sets and green lines, slider ticks, and keysound numbering for piano-style hitsounding.</span></article>
+        <article class="gcard"><span class="mic" data-feat="5"></span><b data-i18n="Live mapping">Live mapping</b><span data-i18n="Map and mod with friends in real time: a live session led by the host, or a collab where everyone edits one difficulty and the changes merge. With chat, where everyone is in the song and a log of recent changes.">Map and mod with friends in real time: a live session led by the host, or a collab where everyone edits one difficulty and the changes merge. With chat, where everyone is in the song and a log of recent changes.</span></article>
+        <article class="gcard"><span class="mic" data-feat="6"></span><b data-i18n="Online projects">Online projects</b><span data-i18n="Save a whole beatmap package privately, share it with people by osu! name or with a read-only link, and never lose work: drafts are kept on your device too.">Save a whole beatmap package privately, share it with people by osu! name or with a read-only link, and never lose work: drafts are kept on your device too.</span></article>
+      </div>
+    </section>
+  </main>
+
+  <main id="select" class="view" hidden>
+    <div id="pickBanner" class="pickban" hidden><span data-i18n="Pick a map to open in the editor">Pick a map to open in the editor</span><button id="pickBannerX" class="mlink" data-i18n="Just browsing">Just browsing</button></div>
+    <div class="searchbar">
+      <form id="searchForm" class="searchrow" role="search">
+        <input id="q" type="search" enterkeyhint="search" autocomplete="off" data-i18n-aria="Song, artist, mapper:name or an osu.ppy.sh link" aria-label="Song, artist, mapper:name or an osu.ppy.sh link" data-i18n-ph="Song, artist, mapper:name or an osu.ppy.sh link" placeholder="Song, artist, mapper:name or an osu.ppy.sh link">
+        <button id="go" class="btn main" data-i18n="Search">Search</button>
+      </form>
+      <div id="modeRow" class="moderow"></div>
+      <div id="filters" class="chips" role="tablist"></div>
+      <div id="advPills" class="fpills" hidden></div>
+    </div>
+    <section id="advPanel" class="advpanel" hidden></section>
+    <div class="subrow">
+      <label class="mirror">Mirror <select id="mirrorSel"></select></label>
+      <div class="btnrow subacts">
+        <button id="refreshList" class="btn ghost sm" data-i18n-title="Load the list again from the mirror (new and newly ranked maps)" title="Load the list again from the mirror (new and newly ranked maps)">↻ <span data-i18n="Refresh">Refresh</span></button>
+        <button id="pick" class="btn ghost sm" data-i18n="Open .osz file">Open .osz file</button>
+        <button class="btn ghost sm gdopen" hidden data-i18n="Google Drive">Google Drive</button>
+      </div>
+    </div>
+    <section id="mapper" class="mapper" hidden></section>
+    <div id="status" class="status" aria-live="polite"></div>
+    <div id="results" class="grid"></div>
+    <button id="more" class="btn ghost wide more" hidden data-i18n="Load more">Load more</button>
+  </main>
+
+  <main id="edhub" class="view" hidden>
+    <div class="vhead"><h2 data-i18n="Editor">Editor</h2><p data-i18n="Set up the beatmap you want to work on">Set up the beatmap you want to work on</p></div>
+    <div class="menu hub">
+      <div class="mcard find">
+        <span class="mic"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></span>
+        <b data-i18n="Find an osu! beatmap">Find an osu! beatmap</b>
+        <span data-i18n="Search the osu! listing (through the mirrors) and open the map in Modding mode.">Search the osu! listing (through the mirrors) and open the map in Modding mode.</span>
+        <form id="hubSearch" class="searchrow"><input id="hubQ" type="search" enterkeyhint="search" autocomplete="off" data-i18n-aria="Song, artist, mapper:name or an osu.ppy.sh link" aria-label="Song, artist, mapper:name or an osu.ppy.sh link" data-i18n-ph="Song, artist, mapper:name or an osu.ppy.sh link" placeholder="Song, artist, mapper:name or an osu.ppy.sh link"><button class="btn main" data-i18n="Search">Search</button></form>
+        <a class="mlink" href="?view=songs&amp;for=edit" data-go="songs" data-for="edit" data-i18n="Browse the latest maps →">Browse the latest maps →</a>
+      </div>
+      <a class="mcard create" href="?view=create" data-go="create">
+        <span class="mic"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
+        <b data-i18n="Create a new beatmap">Create a new beatmap</b>
+        <span data-i18n="Start from a song file: metadata, difficulty (HP, CS, AR, OD) and timing, like osu!'s new beatmap setup.">Start from a song file: metadata, difficulty (HP, CS, AR, OD) and timing, like osu!'s new beatmap setup.</span>
+        <em data-i18n="Create →">Create →</em>
+      </a>
+      <div class="mcard open">
+        <span class="mic"><svg viewBox="0 0 24 24"><path d="M4 6h6l2 2h8v11H4z"/></svg></span>
+        <b data-i18n="Open a file">Open a file</b>
+        <span data-i18n="A .osz from your computer, opened in Modding mode.">A .osz from your computer, opened in Modding mode.</span>
+        <button id="hubOpen" class="btn ghost sm" data-i18n="Open .osz file">Open .osz file</button>
+        <button class="btn ghost sm gdopen" hidden data-i18n="Google Drive">Google Drive</button>
+      </div>
+      <div class="mcard live">
+        <span class="mic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.5"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2"/></svg></span>
+        <b data-i18n="Live mapping">Live mapping</b>
+        <span data-i18n="Map and mod with friends in real time (osu! login). Live session: the host decides who may edit. Collab: everyone edits one difficulty and changes merge automatically. Start one from the editor, or join with a code.">Map and mod with friends in real time (osu! login). Live session: the host decides who may edit. Collab: everyone edits one difficulty and changes merge automatically. Start one from the editor, or join with a code.</span>
+        <form id="hubJoin" class="searchrow"><input id="hubCode" autocomplete="off" autocapitalize="off" data-i18n-aria="Live session code" aria-label="Live session code" data-i18n-ph="Live session code" placeholder="Live session code"><button class="btn main" data-i18n="Join">Join</button></form>
+        <form id="hubCollab" class="searchrow"><input id="hubCollabCode" autocomplete="off" autocapitalize="off" data-i18n-aria="Collab code" aria-label="Collab code" data-i18n-ph="Collab code" placeholder="Collab code"><button class="btn main" data-i18n="Join">Join</button></form>
+      </div>
+    </div>
+    <section id="hubDrafts" class="drafts" hidden></section>
+  </main>
+
+  <main id="create" class="view" hidden></main>
+  <main id="projects" class="view" hidden></main>
+  <main id="admin" class="view adminv" hidden></main>
+  <main id="invite" class="view invitev" hidden></main>
+  <main id="account" class="view invitev" hidden></main>
+  <main id="page" class="view page" hidden></main>
+
+  <footer class="foot">
+    <span data-i18n="Free to use • no fees, no ads">Free to use • no fees, no ads</span>
+    <nav><a href="?view=guide" data-go="guide" data-i18n="Guide">Guide</a><a href="?view=credits" data-go="credits" data-i18n="Credits">Credits</a><a href="?view=privacy" data-go="privacy" data-i18n="Privacy">Privacy</a><a href="?view=changelog" data-go="changelog" data-i18n="Changelog">Changelog</a><a href="#" id="footReport" data-i18n="Report a problem">Report a problem</a><a href="https://github.com/Lacrymiraosu/kiki-beatmap-viewer" target="_blank" rel="noopener">GitHub</a><span id="footVer"></span></nav>
+    <small data-i18n="Not affiliated with ppy Pty Ltd. osu! is a trademark of ppy Pty Ltd.">Not affiliated with ppy Pty Ltd. osu! is a trademark of ppy Pty Ltd.</small>
+  </footer>
+</div>
+
+<section id="player" hidden>
+  <canvas id="cv"></canvas>
+  <div id="tapStart" class="tapstart" hidden>
+    <div class="bigcircle" aria-hidden="true"></div>
+    <p data-i18n="Tap to start">Tap to start</p>
+    <small id="tapInfo"></small>
+    <button id="tapPlay" class="btn tapplay" type="button"><span aria-hidden="true">🎮</span> <span data-i18n="Test play">Test play</span></button>
+  </div>
+  <button id="playStop" class="playstop" type="button" hidden data-i18n-aria="Stop test play" aria-label="Stop test play" data-i18n-title="Stop (Esc)" title="Stop (Esc)">✕</button>
+  <button id="skip" class="skip" hidden data-i18n="Skip ››">Skip ››</button>
+  <div id="ui" class="ui">
+    <div class="bar top">
+      <div class="toprow">
+        <button id="back" class="icon" data-i18n-aria="Back to Beatmap" aria-label="Back to Beatmap"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <div class="meta"><b id="mTitle"></b><span id="mSub"></span></div>
+        <select id="diffQuick" class="diffq" data-i18n-aria="Difficulty" aria-label="Difficulty"></select>
+        <div id="modeSw" class="modesw" role="group">
+          <button id="modePrev" class="on" aria-pressed="true">Preview</button><button id="modeEdit" aria-pressed="false" data-perm="editor">Modding</button>
+        </div>
+        <button id="playBtn" class="btn sm playbtn" data-i18n-title="Test play: play the map yourself (keys in Settings → Test play)" title="Test play: play the map yourself (keys in Settings → Test play)">🎮 <span data-i18n="Test play">Test play</span></button>
+        <div id="edTabs" class="edtabs" role="tablist" hidden>
+          <button data-etab="compose" class="on" data-i18n="Compose">Compose</button><button data-etab="timing" data-i18n="Timing">Timing</button><button data-etab="hitsounds" data-i18n="Hitsounds">Hitsounds</button><button data-etab="verify" data-i18n="Verify">Verify</button><button data-etab="setup" data-i18n="Setup">Setup</button><button data-etab="notes" data-i18n="Mod notes">Mod notes</button><button data-etab="compare" data-i18n="Compare">Compare</button>
+        </div>
+        <button id="edTest" class="btn sm edtest" hidden data-i18n-title="Test play from here (F5)" title="Test play from here (F5)">▶ <span data-i18n="Test">Test</span></button>
+        <button id="edAuto" class="btn sm edauto" hidden data-i18n-title="Watch it on Auto (the preview)" title="Watch it on Auto (the preview)" data-i18n="Auto">Auto</button>
+        <button id="cloudBtn" class="btn sm cloudbtn" hidden data-i18n-title="Save online (Ctrl+S)" title="Save online (Ctrl+S)"><svg viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.2 9.2 4.4 4.4 0 0 0 7 18z"/><path d="M12 15V10M9.5 12.5L12 10l2.5 2.5"/></svg><span data-i18n="Save online">Save online</span></button>
+        <button id="cloudChip" class="cchip" hidden></button>
+        <button id="gdBtn" class="icon gdbtn" hidden data-i18n-aria="Google Drive" aria-label="Google Drive" data-i18n-title="Google Drive: save, open and export" title="Google Drive: save, open and export"><svg viewBox="0 0 24 24"><path d="M8.5 3.5h7l6 10.5-3.5 6h-12L2.5 14z"/><path d="M8.5 3.5L15 14.5H2.5M15.5 3.5L9 14.5M18 20l-3-5.5"/></svg></button>
+        <button id="gdChip" class="cchip gdchip" hidden></button>
+        <button id="draftChip" class="dchip" hidden></button>
+        <button id="collabPill" class="livepill collabpill" hidden></button>
+        <button id="livePill" class="livepill" hidden></button>
+        <button id="liveBtn" class="icon" data-i18n-aria="Live mapping" aria-label="Live mapping" data-i18n-title="Live mapping: live session or collab" title="Live mapping: live session or collab"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.5"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2"/></svg></button>
+        <button id="shareBtn" class="icon" data-i18n-aria="Share a link to this map" aria-label="Share a link to this map"><svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.8l7.6-3.6M8.2 13.2l7.6 3.6"/></svg></button>
+        <button id="toolsBtn" class="icon" data-i18n-aria="Mapping tools" aria-label="Mapping tools"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></button>
+        <button id="fs" class="icon" data-i18n-aria="Fullscreen" aria-label="Fullscreen"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+        <button id="pVolBtn" class="icon" data-i18n-aria="Volume" aria-label="Volume" data-i18n-title="Volume" title="Volume" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button>
+        <button id="edRowBtn" class="icon edrowbtn" hidden aria-pressed="true" data-i18n-aria="Show or hide the tool row" aria-label="Show or hide the tool row" data-i18n-title="Show or hide the tool row" title="Show or hide the tool row"><svg viewBox="0 0 24 24"><path d="M14.5 4.5l5 5-2 2-5-5zM12.5 6.5L4 15v5h5l8.5-8.5"/></svg></button>
+        <button id="gear" class="icon" data-i18n-aria="Settings" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M18.81 9.66L21.42 10.17L21.42 13.83L18.81 14.34L18.47 15.16L19.96 17.37L17.37 19.96L15.16 18.47L14.34 18.81L13.83 21.42L10.17 21.42L9.66 18.81L8.84 18.47L6.63 19.96L4.04 17.37L5.53 15.16L5.19 14.34L2.58 13.83L2.58 10.17L5.19 9.66L5.53 8.84L4.04 6.63L6.63 4.04L8.84 5.53L9.66 5.19L10.17 2.58L13.83 2.58L14.34 5.19L15.16 5.53L17.37 4.04L19.96 6.63L18.47 8.84Z" stroke-width="1.8"/><circle cx="12" cy="12" r="3.2"/></svg></button>
+      </div>
+      <div id="edTop" class="edtop" hidden>
+        <button id="edTime" class="edtime" data-i18n-title="Copy timestamp" title="Copy timestamp">00:00:000</button>
+        <canvas id="edTl" class="edtl" aria-label="Timeline"></canvas>
+        <div class="tlzoom"><button id="tlIn" data-i18n-title="Zoom in (Ctrl+scroll)" title="Zoom in (Ctrl+scroll)">+</button><button id="tlOut" data-i18n-title="Zoom out (Ctrl+scroll)" title="Zoom out (Ctrl+scroll)">−</button></div>
+        <button id="tlLock" class="tllock" aria-pressed="false" data-i18n-title="Lock the timeline (Shift+L)" title="Lock the timeline (Shift+L)" data-i18n-aria="Lock the timeline (Shift+L)" aria-label="Lock the timeline (Shift+L)"></button>
+        <label class="edsnap"><small data-i18n="Beat snap">Beat snap</small><select id="snapSel"></select></label>
+      </div>
+    </div>
+    <div id="edLeft" class="edcol left" role="toolbar" hidden>
+      <button data-tool="select" class="on" data-i18n-title="Select (1)" title="Select (1)"><svg viewBox="0 0 24 24"><path d="M6 3l12 9-5.5 1 3 6-2.5 1-3-6L6 18z"/></svg><small data-i18n="Select">Select</small></button>
+      <button data-tool="circle" data-i18n-title="Circle (2)" title="Circle (2)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/></svg><small>Circle</small></button>
+      <button data-tool="slider" data-i18n-title="Slider (3)" title="Slider (3)"><svg viewBox="0 0 24 24"><path d="M5 17c3-9 11-9 14-2"/><circle cx="5" cy="17" r="2.5"/></svg><small>Slider</small></button>
+      <button data-tool="spinner" data-i18n-title="Spinner (4)" title="Spinner (4)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg><small>Spinner</small></button>
+      <button id="edSliderDone" class="accent" hidden data-i18n="Finish">Finish</button>
+      <span class="sep"></span>
+      <button id="edStream" data-i18n-title="Slider → stream (Ctrl+Shift+F)" title="Slider → stream (Ctrl+Shift+F)"><svg viewBox="0 0 24 24"><circle cx="5" cy="17" r="2"/><circle cx="9.5" cy="12.5" r="2"/><circle cx="14" cy="9.5" r="2"/><circle cx="19" cy="8" r="2"/></svg><small>Stream</small></button>
+      <button id="edPoly" data-i18n-title="Polygon circles (Ctrl+Shift+D)" title="Polygon circles (Ctrl+Shift+D)"><svg viewBox="0 0 24 24"><path d="M12 3l8.5 6.2-3.2 10H6.7L3.5 9.2z"/></svg><small>Poly</small></button>
+      <button id="edXform" data-i18n-title="Rotate / scale / flip / reverse (Ctrl+Shift+R)" title="Rotate / scale / flip / reverse (Ctrl+Shift+R)"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg><small>Transform</small></button>
+      <span class="sep"></span>
+      <button id="edUndo" data-i18n-title="Undo (Ctrl+Z)" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24"><path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 12"/></svg></button>
+      <button id="edRedo" data-i18n-title="Redo (Ctrl+Y)" title="Redo (Ctrl+Y)"><svg viewBox="0 0 24 24"><path d="M15 7l5 5-5 5"/><path d="M20 12H10a6 6 0 0 0 0 12"/></svg></button>
+      <button id="edDel" data-i18n-title="Delete (Del)" title="Delete (Del)"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg></button>
+    </div>
+    <div id="edRight" class="edcol right" role="toolbar" hidden>
+      <button id="edNC" data-i18n-title="New combo (Q)" title="New combo (Q)">NC</button>
+      <button id="edW" data-i18n-title="Whistle (W)" title="Whistle (W)">W</button>
+      <button id="edF" data-i18n-title="Finish (E)" title="Finish (E)">F</button>
+      <button id="edC" data-i18n-title="Clap (R)" title="Clap (R)">C</button>
+      <span class="sep"></span>
+      <button id="edBankN" data-bank="1" data-i18n-title="Sample set: Normal" title="Sample set: Normal">N</button>
+      <button id="edBankS" data-bank="2" data-i18n-title="Sample set: Soft" title="Sample set: Soft">S</button>
+      <button id="edBankD" data-bank="3" data-i18n-title="Sample set: Drum" title="Sample set: Drum">D</button>
+      <button id="edHS" data-i18n-title="Hitsounds: parts of sliders, addition bank, volume, by beat, copy from a difficulty (H)" title="Hitsounds: parts of sliders, addition bank, volume, by beat, copy from a difficulty (H)"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg><small>HS</small></button>
+      <span class="sep"></span>
+      <button id="edGrid" data-i18n-title="Grid snap (G)" title="Grid snap (G)">#<small>Grid</small></button>
+      <button id="edDS" data-i18n-title="Distance snap (T) • Alt+scroll = multiplier" title="Distance snap (T) • Alt+scroll = multiplier">DS<small>1.0x</small></button>
+      <button id="edGuide" data-i18n-title="Mapping guides: distance and angle to the previous objects (Shift+G)" title="Mapping guides: distance and angle to the previous objects (Shift+G)"><svg viewBox="0 0 24 24"><path d="M4 19h16M4 19l11-13"/><path d="M11 19a7 7 0 0 0-2.4-5.3"/></svg><small>Guides</small></button>
+      <button id="edMetro" data-i18n-title="Metronome (M)" title="Metronome (M)">♩<small>Metro</small></button>
+      <button id="edTimingQ" data-i18n-title="Timing point here (Ctrl+P red, Ctrl+Shift+P green)" title="Timing point here (Ctrl+P red, Ctrl+Shift+P green)"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M10 2h4"/></svg><small>Timing</small></button>
+      <button id="edEnd" data-i18n-title="Slider end circles on/off" title="Slider end circles on/off"><svg viewBox="0 0 24 24"><path d="M4 16c3-8 9-9 12-7"/><circle cx="18" cy="10" r="3.5"/></svg><small>End</small></button>
+      <button id="edBook" data-i18n-title="Bookmark (Ctrl+B)" title="Bookmark (Ctrl+B)"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-5-6 5z"/></svg></button>
+    </div>
+    <div id="edPanel" class="edpanel" hidden></div>
+    <div id="edDlg" class="eddlg" hidden role="dialog"></div>
+    <div class="bar bottom">
+      <div id="edInfo" class="edinfo" hidden><span id="edSel"></span><button id="edCopy" class="btn ghost sm" disabled data-i18n="Copy timing">Copy timing</button><button id="edNote" class="btn ghost sm" data-i18n="+ Note">+ Note</button><span class="annbtns" role="group" data-i18n-aria="Annotations" aria-label="Annotations"><button class="btn ghost sm annb" data-ann="comment" aria-pressed="false" data-i18n-title="Comment on the selected object (or tap one)" title="Comment on the selected object (or tap one)">💬</button><button class="btn ghost sm annb" data-ann="arrow" aria-pressed="false" data-i18n-title="Arrow: drag it toward an object" title="Arrow: drag it toward an object">➚</button><button class="btn ghost sm annb" data-ann="highlight" aria-pressed="false" data-i18n-title="Highlight the selected objects (or tap one)" title="Highlight the selected objects (or tap one)">◎</button></span><button id="edMenu" class="btn ghost sm edmenu" data-i18n-aria="Menu (same as right-click)" aria-label="Menu (same as right-click)" data-i18n-title="Menu (same as right-click)" title="Menu (same as right-click)">⋯</button><button id="edHl" class="btn ghost sm" hidden data-i18n-title="Highlight for everyone (H)" title="Highlight for everyone (H)">✦ <span data-i18n="Highlight">Highlight</span></button></div>
+      <div class="botrow">
+        <button id="play" class="icon play" data-i18n-aria="Play" aria-label="Play"><svg viewBox="0 0 24 24"><path id="playPath" d="M7 4l13 8-13 8z"/></svg></button>
+        <button id="spd" class="spd" hidden></button>
+        <button id="metroChip" class="spd metro" hidden data-i18n-title="Metronome off" title="Metronome off" data-i18n-aria="Metronome off" aria-label="Metronome off">♩<span class="mtxt" data-i18n="Metronome">Metronome</span> ✕</button>
+        <span id="tCur" class="time">0:00</span>
+        <div class="seekwrap"><canvas id="tl" aria-hidden="true"></canvas><input id="seek" type="range" min="0" max="1000" value="0" data-i18n-aria="Song position" aria-label="Song position"></div>
+        <span id="tDur" class="time">0:00</span>
+        <select id="rateSel" class="ratesel" data-i18n-aria="Playback speed" aria-label="Playback speed" hidden><option value="0.25">25%</option><option value="0.5">50%</option><option value="0.75">75%</option><option value="1" selected>100%</option></select>
+      </div>
+    </div>
+  </div>
+  <aside id="sheet" class="sheet" hidden>
+    <div class="sheet-top">
+      <div class="sheet-h"><b data-i18n="Settings">Settings</b><button id="sheetClose" class="icon" data-i18n-aria="Close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+      <div id="setTabs" class="tabs settabs" role="tablist"></div>
+    </div>
+    <section class="spane" data-pane="editor" hidden><div id="edSetBox"></div></section>
+    <section class="spane" data-pane="audio">
+      <div class="subh" data-i18n="Volume">Volume</div>
+      <div id="sheetVol" class="card2"></div>
+      <div class="subh" data-i18n="Hitsounds">Hitsounds</div>
+      <div class="card2">
+        <label class="row"><span data-i18n="Hitsound source">Hitsound source</span><select id="hsSrc"><option value="beatmap" data-i18n="From the map (else default)">From the map (else default)</option><option value="default">Default</option><option value="off" data-i18n="Off">Off</option></select></label>
+      </div>
+      <div class="subh" data-i18n="Playback">Playback</div>
+      <div class="card2"><div class="row"><span data-i18n="Playback speed">Playback speed</span></div><div id="speed" class="seg"></div><p class="hint" data-i18n="Slower speeds lower the pitch of the song.">Slower speeds lower the pitch of the song.</p>
+      <label class="sw"><span class="swt"><b data-i18n="Metronome">Metronome</b><small data-i18n="Click on every beat (accent on the first beat of a bar) • M">Click on every beat (accent on the first beat of a bar) • M</small></span><input type="checkbox" class="switch" data-k="metro"></label>
+      </div>
+      <div class="subh" data-i18n="Sync">Sync</div>
+      <div class="card2">
+        <div id="btSetBox"></div>
+        <div class="btnrow"><button id="calibBtn" class="btn main sm" type="button" data-i18n="Calibrate (Bluetooth headphones)">Calibrate (Bluetooth headphones)</button></div>
+        <p class="hint" data-i18n="Calibration measures your headphones' delay, then lets you line up the notes on screen and the hitsounds with the song.">Calibration measures your headphones' delay, then lets you line up the notes on screen and the hitsounds with the song.</p>
+        <label class="row"><span data-i18n="Visual offset">Visual offset</span><span class="rng"><input type="range" id="offset" min="-200" max="500" step="1"><output id="offsetOut">0 ms</output></span></label>
+        <p class="hint"><b id="offsetFor"></b> · <span id="offsetLat"></span></p>
+        <p class="hint" data-i18n="Visual offset moves only what you see: positive = notes appear later (if they look ahead of the music). It doesn't change any sound.">Visual offset moves only what you see: positive = notes appear later (if they look ahead of the music). It doesn't change any sound.</p>
+        <div class="btnrow"><button id="offsetReset" class="btn ghost sm" type="button" data-i18n="Reset to 0">Reset to 0</button></div>
+      </div>
+    </section>
+    <section class="spane" data-pane="display" hidden>
+      <div class="subh" data-i18n="Playfield">Playfield</div>
+      <div class="card2">
+      <label class="sw"><span class="swt"><b data-i18n="Notes">Notes</b><small data-i18n="Show the hit objects">Show the hit objects</small></span><input type="checkbox" class="switch" data-k="notes"></label>
+      <label class="sw"><span class="swt"><b data-i18n="Slider end circles">Slider end circles</b><small data-i18n="A circle at the end of every slider, so it's easy to see where sliders end (modding)">A circle at the end of every slider, so it's easy to see where sliders end (modding)</small></span><input type="checkbox" class="switch" data-k="sliderEnd"></label>
+      <label class="sw"><span class="swt"><b data-i18n="Snaking sliders">Snaking sliders</b><small data-i18n="Slider bodies grow in, like osu!">Slider bodies grow in, like osu!</small></span><input type="checkbox" class="switch" data-k="snaking"></label>
+      <label class="sw"><span class="swt"><b data-i18n="Snaking out sliders">Snaking out sliders</b><small data-i18n="On their last pass, slider bodies shrink behind the ball, like osu!lazer">On their last pass, slider bodies shrink behind the ball, like osu!lazer</small></span><input type="checkbox" class="switch" data-k="snakingOut"></label>
+      <label class="sw"><span class="swt"><b data-i18n="Slider shadow">Slider shadow</b><small data-i18n="A soft dark edge outside slider borders, like osu!stable">A soft dark edge outside slider borders, like osu!stable</small></span><input type="checkbox" class="switch" data-k="sliderShadow"></label>
+      <label class="sw"><span class="swt"><b data-i18n="Follow points">Follow points</b><small data-i18n="The dotted trail between objects of the same combo">The dotted trail between objects of the same combo</small></span><input type="checkbox" class="switch" data-k="followPts"></label>
+      <label class="sw"><span class="swt"><b data-i18n="Effects (kiai / hit lighting)">Effects (kiai / hit lighting)</b><small data-i18n="Kiai flashes and hit lighting">Kiai flashes and hit lighting</small></span><input type="checkbox" class="switch" data-k="fx"></label>
+      </div>
+      <div class="subh">osu!mania</div>
+      <div class="card2">
+        <label class="row"><span data-i18n="Scroll speed">Scroll speed</span><span class="rng"><input type="range" id="maniaSpeed" min="1" max="40" step="1"><output id="maniaSpeedOut">8</output></span></label>
+        <label class="sw"><span class="swt"><b data-i18n="Show speed changes in the editor">Show speed changes in the editor</b><small data-i18n="Green lines (SV) change how fast notes scroll while editing too. Off: a constant speed, like osu!'s editor.">Green lines (SV) change how fast notes scroll while editing too. Off: a constant speed, like osu!'s editor.</small></span><input type="checkbox" class="switch" data-k="maniaEdSV"></label>
+      </div>
+      <div class="subh" data-i18n="On screen">On screen</div>
+      <div class="card2">
+      <label class="sw"><span class="swt"><b data-i18n="Timing overlay">Timing overlay</b><small data-i18n="Show time, BPM, SV and beat on screen">Show time, BPM, SV and beat on screen</small></span><input type="checkbox" class="switch" data-k="overlay"></label>
+      <label class="sw"><span class="swt"><b data-i18n="Auto cursor">Auto cursor</b><small data-i18n="Show the Auto cursor following the notes">Show the Auto cursor following the notes</small></span><input type="checkbox" class="switch" data-k="cursor"></label>
+      <label class="sw"><span class="swt"><b data-i18n="Score / combo">Score / combo</b><small data-i18n="Show score, accuracy and combo">Show score, accuracy and combo</small></span><input type="checkbox" class="switch" data-k="hud"></label>
+      <label class="sw"><span class="swt"><b data-i18n="Judgements (300)">Judgements (300)</b><small data-i18n="Show 300 when a note is hit">Show 300 when a note is hit</small></span><input type="checkbox" class="switch" data-k="judge"></label>
+        <p class="hint" data-i18n="Auto cursor, score and judgements show only while previewing (playing the map), not in Modding.">Auto cursor, score and judgements show only while previewing (playing the map), not in Modding.</p>
+      </div>
+      <div class="subh" data-i18n="Background">Background</div>
+      <div class="card2">
+      <label class="sw"><span class="swt"><b data-i18n="Storyboard">Storyboard</b><small data-i18n="Show the map's storyboard">Show the map's storyboard</small></span><input type="checkbox" class="switch" data-k="sb"></label>
+      <label class="sw"><span class="swt"><b data-i18n="Video">Video</b><small data-i18n="Play the map's background video (mp4 / webm)">Play the map's background video (mp4 / webm)</small></span><input type="checkbox" class="switch" data-k="video"></label>
+      <label class="sw"><span class="swt"><b data-i18n="Background parallax">Background parallax</b><small data-i18n="The background moves slightly with the cursor">The background moves slightly with the cursor</small></span><input type="checkbox" class="switch" data-k="parallax"></label>
+        <label class="row"><span data-i18n="Background dim">Background dim</span><input type="range" id="dim" min="0" max="90"></label>
+      </div>
+      <div class="subh" data-i18n="Screen and performance">Screen and performance</div>
+      <div class="card2">
+        <label class="row"><span data-i18n="Screen layout">Screen layout</span><select id="view"><option value="lock16" data-i18n="Lock 16:9">Lock 16:9</option><option value="rotate" data-i18n="16:9 rotated to fill a portrait screen">16:9 rotated to fill a portrait screen</option><option value="auto" data-i18n="Auto (portrait crops to 4:3)">Auto (portrait crops to 4:3)</option></select></label>
+        <label class="row"><span data-i18n="Frame rate">Frame rate</span><select id="fpsSel"></select></label>
+        <label class="row"><span data-i18n="Quality">Quality</span><select id="quality"><option value="auto" data-i18n="Auto (adapts to the device)">Auto (adapts to the device)</option><option value="high" data-i18n="Highest">Highest</option><option value="low" data-i18n="Battery saver">Battery saver</option></select></label>
+        <p class="hint" data-i18n="Lower frame rates save battery and heat on slower phones. Your screen's refresh rate is the upper limit.">Lower frame rates save battery and heat on slower phones. Your screen's refresh rate is the upper limit.</p>
+      </div>
+    </section>
+    <section class="spane" data-pane="skin" hidden>
+      <div id="skinBox"></div>
+    </section>
+    <section class="spane" data-pane="test" hidden><div id="tpSetBox"></div></section>
+    <section class="spane" data-pane="keys" hidden>
+      <input id="keysFind" class="keysfind" type="search" autocomplete="off" data-i18n-aria="Find a shortcut (e.g. slider, copy, Ctrl+G)" aria-label="Find a shortcut (e.g. slider, copy, Ctrl+G)" data-i18n-ph="Find a shortcut (e.g. slider, copy, Ctrl+G)" placeholder="Find a shortcut (e.g. slider, copy, Ctrl+G)">
+      <div id="keysList" class="keysgroups"></div>
+    </section>
+    <section class="spane" data-pane="general" hidden>
+      <div class="card2">
+        <label class="row" hidden><span>Difficulty</span><select id="diff"></select></label>
+        <label class="row"><span data-i18n="Language">Language</span><select id="langSel2"></select></label>
+      </div>
+      <div id="oszCache" class="card2 oszcache"></div>
+      <p class="hint">osu! default / retro skin &amp; hitsounds: ppy/osu-resources (CC BY-NC 4.0)</p>
+      <div class="btnrow"><a class="btn ghost sm" href="?view=credits" target="_blank" data-i18n="Credits">Credits</a><a class="btn ghost sm" href="?view=privacy" target="_blank" data-i18n="Privacy">Privacy</a><a class="btn ghost sm" href="?view=changelog" target="_blank" data-i18n="Changelog">Changelog</a></div>
+    </section>
+  </aside>
+  <aside id="tools" class="sheet tools" hidden>
+    <div class="sheet-h"><b data-i18n="Mapping tools">Mapping tools</b><button id="toolsClose" class="icon" data-i18n-aria="Close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div id="live" class="live"></div>
+    <div class="btnrow"><button id="copyTs" class="btn ghost sm" data-i18n="Copy timestamp">Copy timestamp</button><button id="copyAt" class="btn ghost sm" data-i18n="Copy link at this time">Copy link at this time</button></div>
+    <div id="tTabs" class="tabs" role="tablist"></div>
+    <div id="tBody" class="tbody"></div>
+  </aside>
+  <div id="liveChat" class="livechat" hidden>
+    <div id="lcBubbles" class="lcbubbles" aria-live="polite"></div>
+    <div id="lcPanel" class="lcpanel" hidden role="dialog" data-i18n-aria="Chat" aria-label="Chat">
+      <div class="lchead"><b data-i18n="Chat">Chat</b><button id="lcClose" class="icon qclose" data-i18n-aria="Close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+      <div id="lcList" class="lclist"></div>
+      <form id="lcForm" class="lcform"><input id="lcInput" maxlength="500" autocomplete="off" enterkeyhint="send" data-i18n-aria="Message… (00:12:345 becomes a link)" aria-label="Message… (00:12:345 becomes a link)" data-i18n-ph="Message… (00:12:345 becomes a link)" placeholder="Message… (00:12:345 becomes a link)"><button class="btn main sm" data-i18n="Send">Send</button></form>
+    </div>
+    <button id="lcBtn" class="lcbtn" data-i18n-title="Chat (Enter)" title="Chat (Enter)" data-i18n-aria="Chat" aria-label="Chat"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg><span id="lcBadge" class="lcbadge" hidden></span></button>
+  </div>
+  <aside id="collabSheet" class="sheet livesheet collabsheet" hidden>
+    <div class="sheet-h"><b data-i18n="Collab together">Collab together</b><button id="csClose" class="icon" data-i18n-aria="Close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div id="csBody" class="lsbody"></div>
+  </aside>
+  <aside id="liveSheet" class="sheet livesheet" hidden>
+    <div class="sheet-h"><b data-i18n="Live session">Live session</b><button id="lsClose" class="icon" data-i18n-aria="Close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div id="lsHead"></div>
+    <div id="lsBody" class="lsbody"></div>
+  </aside>
+</section>
+
+<div id="detail" class="detail" hidden>
+  <div id="dPanel" class="dpanel" role="dialog" aria-modal="true" aria-labelledby="dTitle">
+    <div id="dGrab" class="dgrab" aria-hidden="true"></div>
+    <div id="dBody" class="dbody">
+      <div id="dCover" class="dcover">
+        <button id="dClose" class="icon dclose" data-i18n-aria="Close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        <div class="dhead"><b id="dTitle"></b><span id="dArtist"></span><small id="dMapper"></small></div>
+      </div>
+      <div id="dChips" class="dchips"></div>
+      <div id="dMeta" class="dmeta"></div>
+      <div id="dActs" class="dacts">
+        <button id="dPrev" class="btn ghost sm"></button>
+        <button id="dShare" class="btn ghost sm" data-i18n="Share">Share</button>
+        <details id="dDl" class="ddl"><summary class="btn ghost sm dlsum" data-i18n="Download">Download</summary><div id="dDlMenu" class="ddlmenu"></div></details>
+      </div>
+      <div id="dVol" class="dvol"></div>
+      <div class="dlabel" data-i18n="Choose a difficulty">Choose a difficulty</div>
+      <div id="dList" class="dlist"></div>
+    </div>
+    <div id="dfoot" class="dfoot">
+      <button id="dEdit" class="btn ghost" data-perm="editor">✎ <span data-i18n="Editor">Editor</span></button>
+      <button id="dGo" class="btn main" data-perm="player">Preview</button>
+    </div>
+  </div>
+</div>
+<div id="loading" class="loading" hidden>
+  <svg id="ring" class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" class="trk"/><circle cx="50" cy="50" r="42" id="ringP" class="prg"/></svg>
+  <p id="loadText"></p>
+  <div class="btnrow"><button id="nextMirror" class="btn ghost" hidden data-i18n="Try the next mirror">Try the next mirror</button><button id="cancelLoad" class="btn ghost" data-i18n="Cancel">Cancel</button></div>
+</div>
+<div id="liveJoin" class="detail ljoin" hidden>
+  <div class="dpanel ljpanel" role="dialog" aria-modal="true">
+    <div class="ljhead"><span class="lsdot"></span><b data-i18n="Join a live session">Join a live session</b><code id="ljCode"></code></div>
+    <div id="ljWho" class="ljwho"></div>
+    <label id="ljGuest" class="cf"><span data-i18n="Guest name">Guest name</span><input id="ljName" maxlength="32" autocomplete="nickname"></label>
+    <div class="btnrow"><button id="ljLogin" class="btn ghost" data-i18n="Log in with osu!">Log in with osu!</button><button id="ljGo" class="btn main" data-i18n="Join">Join</button><button id="ljCancel" class="btn ghost" data-i18n="Cancel">Cancel</button></div>
+    <p class="hint" data-i18n="You connect directly to the host's browser (peer-to-peer), so the host can see your IP address. See Privacy.">You connect directly to the host's browser (peer-to-peer), so the host can see your IP address. See Privacy.</p>
+  </div>
+</div>
+<div id="drop" class="drop" hidden data-i18n="Drop a .osz or .osk file here">Drop a .osz or .osk file here</div>
+<div id="toast" class="toast" role="status"></div>
+<div id="safe" style="position:fixed;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)"></div>
+<input type="file" id="file" accept=".osz,.zip" hidden>
+<input type="file" id="skinFile" accept=".osk,.zip" hidden>
+<audio id="audio" preload="auto" playsinline></audio>
+</body>
+</html>

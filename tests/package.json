@@ -1,0 +1,15 @@
+{
+  "name": "obv-tests",
+  "private": true,
+  "type": "module",
+  "description": "Local tests for the beatmap viewer (not deployed). Run: npm --prefix tests install && npm --prefix tests test",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 \"*.test.mjs\"",
+    "test:worker": "OBV_VIA_WORKER=1 node --test --test-concurrency=1 api.test.mjs",
+    "test:r2": "OBV_VIA_WORKER=1 OBV_R2=1 node --test --test-concurrency=1 api.test.mjs",
+    "test:d1": "OBV_D1=1 node --experimental-sqlite --no-warnings --test --test-concurrency=1 api.test.mjs account.test.mjs altlogin.test.mjs errors.test.mjs db.test.mjs d1copy.test.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.0"
+  }
+}

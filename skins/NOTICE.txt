@@ -1,0 +1,10 @@
+Skin assets in this folder (skins/default, skins/retro) come from ppy/osu-resources:
+https://github.com/ppy/osu-resources (osu.Game.Resources/Skins/Legacy and /Retro)
+
+Copyright (c) ppy Pty Ltd.
+Licensed under Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0):
+https://creativecommons.org/licenses/by-nc/4.0/
+Provided as-is, without warranties (section 5 of the licence).
+
+Changes made here: large images were converted to WebP, and spinner-glow was downscaled, to load faster.
+These files are not under this project's GPL-3.0.

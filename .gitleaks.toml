@@ -1,0 +1,11 @@
+title = "kiki-beatmap-viewer"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fake stand-in values used only by local tests and the example env file"
+paths = [
+  '''tests/emu/dev\.env''',
+  '''\.env\.example''',
+]

@@ -1,0 +1,111 @@
+Third-party notices for KIKI BEATMAP VIEWER
+===========================================
+
+This project's code is released under the GNU General Public License, version 3
+(see LICENSE). Parts of it are translated from the projects below, and some
+files it serves come from other people. Those files are not under GPL-3.0 and
+keep their own terms: the osu! skins and sounds (3, CC BY-NC 4.0), the demo map
+(6) and what users upload (7).
+Their notices:
+
+
+1. ppy/osu (osu!lazer) - https://github.com/ppy/osu
+   Translated into JavaScript (behaviour kept the same, code rewritten):
+   - js/parse.js: object stacking (OsuBeatmapProcessor), slider paths
+     (SliderPath, Legacy/ConvertHitObjectParser), osu!mania note conversion
+     (ManiaBeatmapConverter, Legacy pattern generators)
+   - js/auto.js: Auto's replay (OsuAutoGenerator)
+   - js/app.js: osu!mania star rating (ManiaDifficultyCalculator)
+   Also follow osu!lazer's behaviour and values, under the same notice:
+   - js/mania.js: osu!mania scrolling and bar lines (DrawableScrollingRuleset,
+     SequentialScrollAlgorithm, BarLineGenerator)
+   - js/maniaed.js, js/editor.js: placing and snapping objects (placement
+     blueprints, TrySnapToNearbyObjects)
+   - js/player.js, js/play.js: slider drawing and hit timing
+   - js/skins.js: the legacy slider body (LegacySliderBody)
+
+Copyright (c) 2025 ppy Pty Ltd <contact@ppy.sh>.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+
+2. ppy/osu-framework - https://github.com/ppy/osu-framework
+   Translated into JavaScript: js/parse.js, slider curve approximation
+   (PathApproximator: bezier, perfect circle, catmull).
+
+Copyright (c) 2024 ppy Pty Ltd <contact@ppy.sh>.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+
+3. ppy/osu-resources - https://github.com/ppy/osu-resources
+   skins/default, skins/retro and the default hit sounds: by ppy Pty Ltd,
+   licensed under Creative Commons Attribution-NonCommercial 4.0
+   International (CC BY-NC 4.0): https://creativecommons.org/licenses/by-nc/4.0/
+   Changes: large images converted to WebP, spinner-glow downscaled
+   (see skins/NOTICE.txt). This site is free and non-commercial.
+
+
+4. Loaded from their own CDN, each with its licence in the file:
+   JSZip (MIT or GPL-3.0, used under MIT), PeerJS (MIT).
+   Fonts from Google Fonts: Varela Round and IBM Plex Sans Thai (SIL Open Font
+   Licence 1.1).
+
+
+5. Twemoji - https://github.com/jdecked/twemoji
+   Flag pictures, a fallback loaded from jsDelivr (not stored here):
+   Copyright Twitter, Inc. and other contributors, graphics licensed under
+   CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
+
+
+6. assets/home/demo.osu - the map used by the home page demo and the tour is
+   by this site's owner: https://osu.ppy.sh/beatmapsets/2578807#osu/5746002
+   (metadata replaced with "demo", no audio or images included).
+
+
+7. Online projects and share links hold what their users uploaded; it belongs
+   to its mappers, artists and owners. To have something taken down, use
+   "Report a problem" at the bottom of any page.
+
+
+8. MapsetVerifier by Naxess - https://github.com/Naxesss/MapsetVerifier (GPL-3.0)
+   js/verify.js follows its check rules, thresholds and ways of measuring, and
+   tests/verify.test.mjs rebuilds the cases from its own check tests. Earlier
+   versions of js/verify.js also used much of its wording. To respect its
+   licence, this project is released under GPL-3.0 (see LICENSE).
+
+
+Referenced for ideas only (no code taken): osucad (MIT), the osu! wiki
+(CC BY-NC 4.0).
