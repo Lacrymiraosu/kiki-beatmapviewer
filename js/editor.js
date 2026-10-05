@@ -22,7 +22,8 @@ function setMode(on, force) {
   if (map && map.mode !== 3 && S.edStack === false) rebuildHits(map); // (stacking is only turned off in the editor)
   for (const [id, v] of [["modePrev", !on], ["modeEdit", on]]) { $(id).classList.toggle("on", v); $(id).setAttribute("aria-pressed", v); }
   UI.player.classList.toggle("editing", on);
-  ED_ONLY.forEach(id => $(id).hidden = !on); PREVIEW_ONLY.forEach(id => $(id).hidden = on);
+  // (an element can be missing when an older copy of the page runs newer scripts, e.g. a saved home-screen app)
+  ED_ONLY.forEach(id => { const e = $(id); if (e) e.hidden = !on; }); PREVIEW_ONLY.forEach(id => { const e = $(id); if (e) e.hidden = on; });
   if (typeof tpApply === "function") tpApply(); // (the test play buttons only show with Settings → Test play on)
   UI.spd.hidden = on || A.rate === 1;
   if (on) {
@@ -1423,11 +1424,11 @@ function edToolRow() {
     R.append(...moved); edRowSep.remove(); R.classList.remove("merged");
   }
   UI.player.classList.toggle("edrowhid", S.edRowHidden === true);
-  const b = $("edRowBtn"); b.setAttribute("aria-pressed", String(S.edRowHidden !== true));
+  const b = $("edRowBtn"); if (b) b.setAttribute("aria-pressed", String(S.edRowHidden !== true));
   if (typeof measureIns === "function") requestAnimationFrame(() => { measureIns(); dirty = true; });
 }
 ONE_ROW.addEventListener("change", edToolRow);
-$("edRowBtn").onclick = () => { S.edRowHidden = S.edRowHidden !== true; save(); edToolRow(); };
+if ($("edRowBtn")) $("edRowBtn").onclick = () => { S.edRowHidden = S.edRowHidden !== true; save(); edToolRow(); };
 edToolRow();
 function applyEdCompact() { UI.player.classList.toggle("edcompact", S.edCompact === true); if (typeof measureIns === "function") requestAnimationFrame(() => { measureIns(); dirty = true; }); }
 applyEdCompact();
