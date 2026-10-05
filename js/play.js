@@ -55,7 +55,6 @@ function playTimeOf(e) {
 // ---------- start / stop ----------
 function playStart(from) {
   if (!map || !tpOn()) return;
-  if (map.mode === 3) return toast(tr("Test play is for osu!standard maps"));
   if (!map.hit.length) return toast(tr("Place some objects first"));
   ensureAudioCtx();
   PLAY.ed = EDIT.on; PLAY.back = A.cur(); // (back to where it started from: the editor or the preview)

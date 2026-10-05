@@ -283,7 +283,6 @@ function snapTime(t, div = S.snap) {
 // ---------- timestamps (osu! modding format: 01:23:456 (1,2) - ) ----------
 function tsFor(objs) {
   if (!objs.length) return "";
-  if (map && map.mode === 3) { const L = objs.slice().sort((a, b) => a.t - b.t || a.col - b.col); return `${fmtMs(L[0].t)} (${L.map(o => Math.round(o.t) + "|" + o.col).join(",")}) - `; } // osu!mania: time|column (lazer)
   return `${fmtMs(objs[0].t)} (${objs.map(o => o.kind === "spinner" ? "spinner" : o.num).join(",")}) - `;
 }
 function tsAt(t) {

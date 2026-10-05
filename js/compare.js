@@ -201,7 +201,7 @@ function cmpGeomKey(s) { // where an object is and its shape, without hitsounds 
   return "c|" + Math.round(+p[0]) + "|" + Math.round(+p[1]) + "|" + Math.round(+p[2]);
 }
 function cmpGhostObjs() {
-  if (!CMP.ghost || !map || map.mode === 3) return null;
+  if (!CMP.ghost || !map) return null;
   const other = cmpOther(); if (other == null) return null;
   if (CMPG.text !== other) { CMPG.text = other; try { CMPG.m = parseOsu(other); } catch { CMPG.m = null; } CMPG.lines = null; }
   if (!CMPG.m) return null;

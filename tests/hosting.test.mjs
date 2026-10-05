@@ -44,7 +44,7 @@ test("THIRD_PARTY_NOTICES.txt is served and carries ppy's MIT notices (code tran
   assert.match(n, /creativecommons\.org\/licenses\/by-nc\/4\.0/);
   const ignored = read(".assetsignore") + "\n" + read(".vercelignore");
   assert.ok(!/THIRD_PARTY|\*\.txt/.test(ignored), "not excluded from the static files");
-  for (const f of ["js/parse.js", "js/auto.js", "js/app.js"]) assert.match(read(f).split("\n")[1], /translated from ppy\/osu.*THIRD_PARTY_NOTICES\.txt/, f);
+  for (const f of ["js/parse.js", "js/auto.js"]) assert.match(read(f).split("\n")[1], /translated from ppy\/osu.*THIRD_PARTY_NOTICES\.txt/, f);
 });
 
 test("LICENSE is the GPL-3.0 text, and the notices say what isn't under it", () => {

@@ -43,7 +43,7 @@ const fileIs = (f, exts) => new RegExp("\\.(" + exts.join("|") + ")$", "i").test
 // ============ settings ============
 const DEF = { lang: "", mirror: "osudirect", skin: "default", sb: true, notes: true, cursor: true, hsSrc: "beatmap", hud: true, fx: false, parallax: false, video: true, followPts: true,
   judge: false, snaking: true, snakingOut: true, sliderEnd: true, offset: 0, dim: 25, masterVol: 10, hsVol: 60, musVol: 80, quality: "auto", view: "lock16", overlay: false, metro: false, btMode: false, hsDelay: 0, offsetBt: null,
-  snap: 4, grid: 0, ds: false, dsMul: 1, guides: true, sideNotes: false, sideAnns: false, gLine: true, gAngle: true, gPlace: true, gRings: true, notePrefix: "", noteSuffix: "", replyQuote: false, maniaSpeed: 8, maniaEdSV: false, sliderShadow: true, edStack: true, edDim: 60, edSampleName: false, gameMode: 0, edHitMarkers: true, gdAuto: true, fps: 50, tlZoom: .25, tlLock: false,
+  snap: 4, grid: 0, ds: false, dsMul: 1, guides: true, sideNotes: false, sideAnns: false, gLine: true, gAngle: true, gPlace: true, gRings: true, notePrefix: "", noteSuffix: "", replyQuote: false, sliderShadow: true, edStack: true, edDim: 60, edSampleName: false, gameMode: 0, edHitMarkers: true, gdAuto: true, fps: 50, tlZoom: .25, tlLock: false,
   vfyAuto: true, vfyWait: true, cmpGhostA: 70, stDiv: 4, stStart: 1, stEnd: 1, stEase: "linear", stNC: true, stLen: 1, pivot: "sel", trRot: 0, trScale: 1, polyN: 5, polyR: 100, polyRot: 0, polyRep: 1 };
 const FPS_OPTS = [30, 50, 60, 120, 240];
 const S = { ...DEF };
@@ -52,6 +52,7 @@ try { savedS = JSON.parse(localStorage.getItem("obv-settings") || "{}") || {}; }
 Object.assign(S, savedS);
 if (S.hitsound === false) S.hsSrc = "off";
 delete S.hitsound;
+delete S.gameMode; delete S.maniaSpeed; delete S.maniaEdSV; // (osu!mania is gone: the site is osu!standard only)
 if (!("parallax" in savedS) && savedS.fx === false) S.parallax = false; // the old single "effects" toggle covered both
 if (!/^(default|retro|osk:.+)$/.test(S.skin)) S.skin = "default";  // the old hand-drawn skins are gone
 if ((savedS.mirrorDefV || 0) < 1) { if (S.mirror === "nerinyan") S.mirror = "osudirect"; S.mirrorDefV = 1; } // osu.direct is the default mirror now

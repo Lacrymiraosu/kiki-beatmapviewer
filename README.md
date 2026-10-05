@@ -72,7 +72,7 @@ upload are separate works under their own terms (below), not under GPL-3.0. Full
 
 | Project | Licence | Used for | In this repo |
 |---|---|---|---|
-| [ppy/osu](https://github.com/ppy/osu) (osu!lazer), ppy Pty Ltd | [MIT](https://github.com/ppy/osu/blob/master/LICENCE) | Translated to JavaScript: object stacking, slider paths, Auto, osu!mania conversion and star rating | Translated: [js/parse.js](js/parse.js), [js/auto.js](js/auto.js), [js/app.js](js/app.js). Follow its behaviour and values: [js/mania.js](js/mania.js), [js/maniaed.js](js/maniaed.js), [js/editor.js](js/editor.js), [js/player.js](js/player.js), [js/play.js](js/play.js), [js/skins.js](js/skins.js) |
+| [ppy/osu](https://github.com/ppy/osu) (osu!lazer), ppy Pty Ltd | [MIT](https://github.com/ppy/osu/blob/master/LICENCE) | Translated to JavaScript: object stacking, slider paths, Auto | Translated: [js/parse.js](js/parse.js), [js/auto.js](js/auto.js). Follow its behaviour and values: [js/editor.js](js/editor.js), [js/player.js](js/player.js), [js/play.js](js/play.js), [js/skins.js](js/skins.js) |
 | [ppy/osu-framework](https://github.com/ppy/osu-framework), ppy Pty Ltd | [MIT](https://github.com/ppy/osu-framework/blob/master/LICENCE) | Translated to JavaScript: slider curves (bezier, perfect circle, catmull) | [js/parse.js](js/parse.js) |
 | [MapsetVerifier](https://github.com/Naxesss/MapsetVerifier), Naxess | [GPL-3.0](https://github.com/Naxesss/MapsetVerifier/blob/main/LICENSE) | Verify follows its check rules, thresholds and ways of measuring; the tests rebuild its check tests. | [js/verify.js](js/verify.js), [tests/verify.test.mjs](tests/verify.test.mjs) |
 

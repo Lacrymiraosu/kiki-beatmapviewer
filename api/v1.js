@@ -412,7 +412,7 @@ const routes = {
   },
   "GET osu/search": async (req, res, q) => {
     const g = int(q.get("g") || 0, 0, 20, -1), l = int(q.get("l") || 0, 0, 20, -1), e = String(q.get("e") || ""), cursor = String(q.get("cursor") || "");
-    const o = { q: String(q.get("q") || "").slice(0, 300), s: String(q.get("s") || ""), g, l, e, nsfw: q.get("nsfw") === "1", sort: String(q.get("sort") || ""), cursor, m: q.get("m") === "3" ? "3" : "0" };
+    const o = { q: String(q.get("q") || "").slice(0, 300), s: String(q.get("s") || ""), g, l, e, nsfw: q.get("nsfw") === "1", sort: String(q.get("sort") || ""), cursor };
     if (g < 0 || l < 0 || !/^((video|storyboard)(\.(video|storyboard))?)?$/.test(e) || cursor.length > 400 || /[\r\n]/.test(o.q)) throw new ApiError("bad_request", 400);
     send(res, 200, await osu.search(o), "public, max-age=60, s-maxage=60, stale-while-revalidate=120");
   },

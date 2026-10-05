@@ -975,8 +975,7 @@ function frame() {
   if (kiai) drawKiai(t);
   ctx.restore();
 
-  if (map.mode === 3) { if (S.notes || ed) drawMania(t, ed); } // osu!mania (mania.js): the stage in the 640×480 screen
-  else if (testing) { ctx.save(); ctx.translate(64, 56); playDraw(t, beatK); playCursor(); ctx.restore(); } // test play (play.js)
+  if (testing) { ctx.save(); ctx.translate(64, 56); playDraw(t, beatK); playCursor(); ctx.restore(); } // test play (play.js)
   else if (S.notes || S.cursor || ed) {
     ctx.save(); ctx.translate(64, 56);
     if (ed) edDrawUnder(t);

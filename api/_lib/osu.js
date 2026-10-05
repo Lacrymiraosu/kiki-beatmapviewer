@@ -123,7 +123,7 @@ async function getUserActivity(id) {
 const SEARCH_ST = ["any", "leaderboard", "ranked", "qualified", "loved", "pending", "wip", "graveyard"];
 const SEARCH_SORT = /^(title|artist|difficulty|ranked|rating|plays|favourites|relevance|updated|nominations)_(asc|desc)$/;
 async function search(o) {
-  const p = new URLSearchParams({ m: o.m === "3" ? "3" : "0" }); // osu! or osu!mania
+  const p = new URLSearchParams({ m: "0" }); // osu!standard only
   if (o.q) p.set("q", o.q);
   if (o.s && SEARCH_ST.includes(o.s)) p.set("s", o.s);
   if (o.g) p.set("g", String(o.g)); if (o.l) p.set("l", String(o.l));

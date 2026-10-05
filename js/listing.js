@@ -34,7 +34,6 @@ function advRender() {
   const pill = (label, rm, title) => { const b = h("button", "fpill"); b.type = "button"; b.append(h("span", null, label), h("b", null, "×")); b.title = title || tr("Remove this filter"); b.onclick = () => setF(rm, true); pills.append(b); };
   if (f.g) pill(tr(genreName(f.g)), x => { x.g = 0; });
   if (f.l) pill(tr(langName(f.l)), x => { x.l = 0; });
-  if (f.k) pill(`${f.k}K`, x => { x.k = 0; }, tr("osu!mania keys: remove this filter"));
   for (const t of f.tags) pill(`${catLabel(tagCat(t))}: ${tagShort(t)}`, x => { x.tags = x.tags.filter(y => y !== t); });
   for (const [k, , label] of RANGES) { const v = f.r[k]; if (v) pill(`${tr(label)} ${v[0] ?? "0"}–${v[1] ?? "∞"}`, x => { delete x.r[k]; }); }
   if (f.video) pill(tr("Has video"), x => { x.video = false; });
@@ -54,7 +53,6 @@ function advRender() {
     return chip(tr(l) + (on ? (dir === "asc" ? " ↑" : " ↓") : ""), on, () => setF(x => { x.sort = pick(on ? (dir === "asc" ? `${k}_desc` : `${k}_asc`) : `${k}_${dir}`); }), on ? tr("Tap again to reverse") : "");
   });
   sec("Sort by", ...sorts);
-  if (gameMode() === 3) sec("Keys", chip(tr("Any"), !f.k, () => setF(x => { x.k = 0; })), ...KEY_COUNTS.map(k => chip(`${k}K`, f.k === k, () => setF(x => { x.k = x.k === k ? 0 : k; }))));
   sec("Genre", chip(tr("Any"), !f.g, () => setF(x => { x.g = 0; })), ...GENRES.map(([id, l]) => chip(tr(l), f.g === id, () => setF(x => { x.g = x.g === id ? 0 : id; }))));
   sec("Language", chip(tr("Any"), !f.l, () => setF(x => { x.l = 0; })), ...LANGUAGES.map(([id, l]) => chip(tr(l), f.l === id, () => setF(x => { x.l = x.l === id ? 0 : id; }))));
   sec("Extra", chip(tr("Has video"), f.video, () => setF(x => { x.video = !x.video; })), chip(tr("Has storyboard"), f.sb, () => setF(x => { x.sb = !x.sb; })),

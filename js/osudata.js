@@ -25,16 +25,13 @@ const RANGES = [["sr", "stars", "Stars", .1], ["bpm", "bpm", "BPM", 1], ["len", 
 // latest updated first
 const RANKED_STS = ["leaderboard", "ranked", "qualified", "loved"];
 const defSort = (q, st) => String(q || "").trim() ? "relevance_desc" : RANKED_STS.includes(st) ? "ranked_desc" : "updated_desc";
-const fEmpty = () => ({ g: 0, l: 0, k: 0, video: false, sb: false, nsfw: false, sort: "", tags: [], r: {} });
-// osu!mania key counts offered as quick filters (osu!'s search: keys=7)
-const KEY_COUNTS = [4, 5, 6, 7, 8, 9, 10];
+const fEmpty = () => ({ g: 0, l: 0, video: false, sb: false, nsfw: false, sort: "", tags: [], r: {} });
 function fFromParams(p) {
   const f = fEmpty();
   f.g = GENRES.some(x => x[0] === +p.get("g")) ? +p.get("g") : 0;
   f.l = LANGUAGES.some(x => x[0] === +p.get("l")) ? +p.get("l") : 0;
   const e = (p.get("e") || "").split("."); f.video = e.includes("video"); f.sb = e.includes("storyboard");
   f.nsfw = p.get("nsfw") === "1";
-  const k = +p.get("keys"); f.k = p.get("m") === "3" && k >= 1 && k <= 18 ? Math.round(k) : 0; // (osu!mania lists only)
   const so = p.get("sort") || ""; if (/^[a-z]+_(asc|desc)$/.test(so) && SORTS.some(s => so.startsWith(s[0] + "_"))) f.sort = so;
   f.tags = [...new Set(p.getAll("tag").map(t => t.trim()).filter(t => t && t.length <= 80 && !/"/.test(t)))].slice(0, 8);
   for (const [k] of RANGES) { const m = (p.get(k) || "").match(/^(\d+(?:\.\d+)?)?-(\d+(?:\.\d+)?)?$/); if (m && (m[1] || m[2])) f.r[k] = [m[1] != null ? +m[1] : null, m[2] != null ? +m[2] : null]; }
@@ -45,13 +42,12 @@ function fToParams(f, p) {
   if (f.g) p.set("g", f.g); if (f.l) p.set("l", f.l);
   const e = [f.video && "video", f.sb && "storyboard"].filter(Boolean).join("."); if (e) p.set("e", e);
   if (f.nsfw) p.set("nsfw", "1"); if (f.sort) p.set("sort", f.sort);
-  if (f.k) p.set("keys", f.k);
   for (const t of f.tags) p.append("tag", t);
   for (const [k] of RANGES) { const v = f.r[k]; if (v) p.set(k, `${v[0] ?? ""}-${v[1] ?? ""}`); }
   return p;
 }
 const fKey = f => f ? fToParams(f, new URLSearchParams()).toString() : "";
-const fCount = f => !f ? 0 : (f.g ? 1 : 0) + (f.l ? 1 : 0) + (f.k ? 1 : 0) + (f.video ? 1 : 0) + (f.sb ? 1 : 0) + (f.nsfw ? 1 : 0) + (f.sort ? 1 : 0) + f.tags.length + Object.keys(f.r).length;
+const fCount = f => !f ? 0 : (f.g ? 1 : 0) + (f.l ? 1 : 0) + (f.video ? 1 : 0) + (f.sb ? 1 : 0) + (f.nsfw ? 1 : 0) + (f.sort ? 1 : 0) + f.tags.length + Object.keys(f.r).length;
 // filters only the osu! search can do (the mirrors' results are filtered in the page for the rest)
 const fNeedsOsu = f => !!f && (f.tags.length > 0 || !!f.sort);
 // the osu! search text: keywords + stars>=5 bpm<=200 length<=120 tag="tech/slider tech" ...
@@ -60,7 +56,6 @@ function fQuery(q, f) {
   if (f) {
     for (const [k, key] of RANGES) { const v = f.r[k]; if (!v) continue; if (v[0] != null) parts.push(`${key}>=${v[0]}`); if (v[1] != null) parts.push(`${key}<=${v[1]}`); }
     for (const t of f.tags) parts.push(`tag="${t}"`);
-    if (f.k && gameMode() === 3) parts.push(`keys=${f.k}`);
   }
   return parts.filter(Boolean).join(" ");
 }
@@ -72,7 +67,6 @@ function fMatch(s, f) {
   if (f.video && !s.video) return false;
   if (f.sb && !s.storyboard) return false;
   if (!f.nsfw && s.nsfw) return false;
-  if (f.k && gameMode() === 3 && s.diffs.length && !s.diffs.some(d => Math.round(+d.cs) === f.k)) return false;
   const inR = (v, r) => v != null && !isNaN(v) && (r[0] == null || v >= r[0] - 1e-6) && (r[1] == null || v <= r[1] + 1e-6);
   const diffKey = { sr: "stars", ar: "ar", cs: "cs", od: "od", hp: "hp", len: "len", bpm: "bpm" };
   for (const [k] of RANGES) {
@@ -85,9 +79,9 @@ function fMatch(s, f) {
 
 // ---------- osu! data through our server ----------
 const osuTagsP = { p: null };
-function osuTags() { // [{ name, description, ruleset_id }] for the chosen game mode, or [] without the server
+function osuTags() { // [{ name, description, ruleset_id }] for osu!standard, or [] without the server
   if (!osuTagsP.p) osuTagsP.p = fetchJSON("/api/v1/osu/tags", null, 12000).then(j => j.tags || []).catch(() => { osuTagsP.p = null; return []; });
-  const m = gameMode(); return osuTagsP.p.then(a => a.filter(t => t.ruleset_id == null || t.ruleset_id === m));
+  return osuTagsP.p.then(a => a.filter(t => t.ruleset_id == null || t.ruleset_id === 0));
 }
 async function osuSearch(o, signal) { // o: { q, st, f, cursor }
   const p = new URLSearchParams({ s: o.st ? o.st : "any" });
@@ -97,7 +91,6 @@ async function osuSearch(o, signal) { // o: { q, st, f, cursor }
   const e = [f.video && "video", f.sb && "storyboard"].filter(Boolean).join("."); if (e) p.set("e", e);
   if (f.nsfw) p.set("nsfw", "1"); p.set("sort", f.sort || defSort(o.q, o.st));
   if (o.cursor) p.set("cursor", o.cursor);
-  if (gameMode() === 3) p.set("m", "3");
   const r = await fetch("/api/v1/osu/search?" + p, { signal, cache: fetchFresh ? "reload" : "default" });
   if (!(r.headers.get("content-type") || "").includes("json")) { osuApi.ok = false; throw new Error("no server"); }
   const j = await r.json();

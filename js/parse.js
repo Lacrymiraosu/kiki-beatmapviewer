@@ -1,5 +1,5 @@
 "use strict";
-// Parts translated from ppy/osu and ppy/osu-framework: stacking, slider paths and curves, osu!mania conversion (MIT, Copyright (c) ppy Pty Ltd): see THIRD_PARTY_NOTICES.txt
+// Parts translated from ppy/osu and ppy/osu-framework: stacking, slider paths and curves (MIT, Copyright (c) ppy Pty Ltd): see THIRD_PARTY_NOTICES.txt
 // ============ .osu parser ============
 const DEFAULT_COLS = [[255, 192, 0], [0, 202, 0], [18, 124, 255], [242, 24, 57]];
 let lineSeq = 0;
@@ -81,8 +81,8 @@ function diffDerived(m) {
 // everything derived from the [HitObjects] lines; the editor calls this after each change
 function rebuildHits(m) {
   m.mode = +(m.general.Mode || 0) || 0;
-  m.hit = m.mode === 3 ? buildMania(m) : buildObjects(m);
-  if (m.mode !== 3) applyStacks(m);
+  m.hit = buildObjects(m);
+  applyStacks(m);
   buildScore(m);
   buildSounds(m);
   m.first = m.hit.length ? m.hit[0].t : 0;
@@ -173,28 +173,6 @@ function buildObjects(m) {
   return out;
 }
 
-// ---------- osu!mania: notes and hold notes in columns (osu!lazer ManiaBeatmapConverter / LegacyPatternGenerator) ----------
-// keys = CircleSize; column = floor(x / (512 / keys)) clamped; a hold note is type 128 with "end:hitSample" in field 6
-const maniaKeys = m => Math.max(1, Math.min(18, Math.round(+(m.diff.CircleSize ?? 4)) || 4));
-const maniaCol = (x, keys) => Math.max(0, Math.min(keys - 1, Math.floor(x / (512 / keys))));
-const maniaX = (col, keys) => Math.floor((col + .5) * (512 / keys)); // LegacyBeatmapEncoder: (column + 0.5) * 512 / columns
-function buildMania(m) {
-  const out = [], keys = m.keys = maniaKeys(m);
-  for (const L of m.lines) {
-    const p = L.s.split(","), type = +p[3];
-    if (isNaN(type) || p.length < 4) continue;
-    const o = { x: +p[0], y: +p[1], t: +p[2], hs: +p[4] || 0, lid: L.id, type, stack: 0, nc: false, ci: 0, combo: 0 };
-    if (!isFinite(o.t) || Math.abs(o.t) > T_MAX) continue;
-    o.col = maniaCol(o.x, keys);
-    if (type & 128) { const q = (p[5] || "").split(":"); o.kind = "hold"; o.end = Math.max(o.t + 1, Math.min(T_MAX, +q[0] || o.t + 1)); o.samp = parseSamp(q.slice(1).join(":")); }
-    else { o.kind = "note"; o.end = o.t; o.samp = parseSamp(p[5]); }
-    out.push(o);
-  }
-  out.sort((a, b) => a.t - b.t || a.col - b.col);
-  out.forEach((o, i) => { o.idx = i; o.num = i + 1; });
-  return out;
-}
-
 // osu! stacking (beatmap version >= 6): objects within 3px and close in time are shifted up-left,
 // including circles stacked on slider ends
 const geomCache = new Map();
@@ -258,9 +236,7 @@ function applyStacks(m) {
 function buildScore(m) {
   const ev = [];
   for (const o of m.hit) {
-    if (o.kind === "note") ev.push([o.t, 300]);
-    else if (o.kind === "hold") { ev.push([o.t, 300]); ev.push([o.end, 300]); }
-    else if (o.kind === "circle") ev.push([o.t, 300]);
+    if (o.kind === "circle") ev.push([o.t, 300]);
     else if (o.kind === "slider") { ev.push([o.t, 30]); for (let k = 1; k < o.slides; k++) ev.push([o.t + o.span * k, 30]); ev.push([o.end, 300]); }
     else ev.push([o.end, 300]);
   }
@@ -279,7 +255,7 @@ function buildSounds(m) {
   const tickRate = +(m.diff.SliderTickRate || 1), mult = +(m.diff.SliderMultiplier || 1.4);
   for (const o of m.hit) {
     const sp = o.samp || none;
-    if (o.kind === "circle" || o.kind === "note" || o.kind === "hold") ev.push({ t: o.t, hs: o.hs, n: sp.n, a: sp.a, i: sp.i, v: sp.v, f: sp.f }); // (mania: a hold note sounds when pressed)
+    if (o.kind === "circle") ev.push({ t: o.t, hs: o.hs, n: sp.n, a: sp.a, i: sp.i, v: sp.v, f: sp.f });
     else if (o.kind === "spinner") ev.push({ t: o.end, hs: o.hs, n: sp.n, a: sp.a, i: sp.i, v: sp.v, f: sp.f });
     else {
       const seen = o.span < 1 && o.slides > 1 ? new Set() : null; // an instant slider (Aspire): each distinct edge sound once, not thousands at the same moment

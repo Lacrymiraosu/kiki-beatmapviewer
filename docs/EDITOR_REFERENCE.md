@@ -59,4 +59,4 @@ stacking old/new, tick spacing, raw lines untouched).
 * ppy/osu-framework (MIT): `osu.Framework/Utils/PathApproximator.cs`, `osu.Framework/Utils/CircularArcProperties.cs`
 * skinning docs (first combo = Combo2): skinship.xyz `skin.ini` reference
 * Parts of this code are translated into JavaScript from ppy/osu and ppy/osu-framework (stacking, slider paths and
-  curves, Auto, osu!mania conversion and star rating); their MIT notice is in [THIRD_PARTY_NOTICES.txt](../THIRD_PARTY_NOTICES.txt).
+  curves, Auto); their MIT notice is in [THIRD_PARTY_NOTICES.txt](../THIRD_PARTY_NOTICES.txt).

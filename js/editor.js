@@ -167,7 +167,6 @@ function undoRedo(fromUndo) {
 const lineById = id => map.lines.find(L => L.id === id);
 function editLines(fn) { for (const id of EDIT.sel) { const L = lineById(id); if (L) { const p = L.s.split(","); fn(p, +p[3]); L.s = p.join(","); } } }
 
-const holdShift = (f, dt) => { const q = String(f || "").split(":"); q[0] = Math.round(+q[0] + dt); return q.join(":"); }; // mania hold note end
 function moveSel(dx, dy) {
   if (!dx && !dy) return;
   edCommit("Move objects", () => editLines((p, type) => {
@@ -181,7 +180,7 @@ function moveSel(dx, dy) {
 }
 function shiftSel(dt) {
   if (!dt) return;
-  edCommit("Move objects in time", () => editLines((p, type) => { p[2] = Math.round(+p[2] + dt); if (type & 8) p[5] = Math.round(+p[5] + dt); if (type & 128) p[5] = holdShift(p[5], dt); }));
+  edCommit("Move objects in time", () => editLines((p, type) => { p[2] = Math.round(+p[2] + dt); if (type & 8) p[5] = Math.round(+p[5] + dt); }));
 }
 function toggleNC() {
   const objs = selObjs().filter(o => o.kind !== "spinner"); if (!objs.length) return;
@@ -219,10 +218,6 @@ function sampField(p, type) {
   const i = type & 2 ? 10 : type & 8 ? 6 : 5;
   if (type & 2) ensureSliderFields(p);
   while (p.length <= i) p.push("");
-  if (type & 128) { // osu!mania hold note: "end:normal:addition:index:volume:file", the end time stays in front
-    const all = (p[i] || "0").split(":"), end = all.shift(), q = all.length ? all : ["0", "0", "0", "0", ""]; while (q.length < 5) q.push(q.length === 4 ? "" : "0");
-    const j = q.join.bind(q); q.join = sep => end + sep + j(sep); return { i, q };
-  }
   const q = (p[i] || "0:0:0:0:").split(":"); while (q.length < 5) q.push(q.length === 4 ? "" : "0");
   return { i, q };
 }
@@ -568,7 +563,6 @@ cv.addEventListener("pointerdown", e => {
   if (!EDIT.on || !map || e.button === 2) return; // right button = context menu
   if (anySheet()) { closeSheet(); closeTools(); return; }
   e.preventDefault();
-  if (isMania()) return maniaDown(e); // (maniaed.js)
   const [x, y] = toOsu(e), t = A.cur();
   if (EDIT.tool === "circle") return placeCircle(x, y);
   if (EDIT.tool === "spinner") return placeSpinner();
@@ -620,7 +614,6 @@ cv.addEventListener("pointerdown", e => {
 });
 cv.addEventListener("pointermove", e => {
   if (!EDIT.on || !map) return;
-  if (isMania()) return maniaMove(e);
   const [x, y] = toOsu(e);
   const D = EDIT.drawing;
   if (D && e.buttons && EDIT.sliderPts && EDIT.sliderPts.length === 1) { // freehand: only while no other point was placed
@@ -654,7 +647,6 @@ cv.addEventListener("pointermove", e => {
 });
 cv.addEventListener("pointerleave", () => { if (EDIT.hoverPt && !EDIT.sliderPts) { EDIT.hoverPt = null; dirty = true; } });
 function endPointer() {
-  if (isMania() && maniaUp()) return;
   const D = EDIT.drawing;
   if (D) { EDIT.drawing = null; if (D.raw) { const c = drawnCurve(D.raw, EDIT.sliderPts && EDIT.sliderPts.t); if (c) finishSlider(c); else { EDIT.sliderPts = null; $("edSliderDone").hidden = true; } dirty = true; return; } }
   if (EDIT.anchor) { const A2 = EDIT.anchor; EDIT.anchor = null; if (A2.moved) sliderSetShape(A2.o, A2.pts, "Edit slider shape"); dirty = true; return; }
@@ -937,7 +929,6 @@ function drawGuides(t, px) {
 }
 function updateEdUI() {
   if (!map) return;
-  maniaEdUI();
   const objs = selObjs(), el = $("edSel"), ssel = selSlider();
   $("edSliderCtl").hidden = !ssel; if (ssel) $("edCurve").textContent = ssel.curve || "B";
   $("edCopy").disabled = !objs.length;
@@ -959,11 +950,6 @@ function updateEdUI() {
   $("edGuide").classList.toggle("lit", S.guides);
   if (!objs.length) {
     el.textContent = tr({ select: "Tap an object to select • drag empty space to select several • double-tap to copy its timing", circle: "Tap to place a circle at the current time (snap 1/{d})", slider: "Tap to place slider points (or drag from the head to draw it) • tap the last point again for a red anchor • right-click or \"Finish\" to end", spinner: "Tap to place a 4-beat spinner" }[EDIT.tool], { d: S.snap });
-    return;
-  }
-  if (objs.length === 1 && isMania()) {
-    const o = objs[0], sn = snapOf(o.t);
-    el.textContent = `${tsFor(objs)}${tr(o.kind === "hold" ? "hold note" : "note")} • ${tr("column {c}", { c: o.col + 1 })} • ${sn.div ? "1/" + sn.div : tr("unsnapped ({ms} ms)", { ms: Math.round(sn.err) })}${o.kind === "hold" ? " • " + Math.round(o.end - o.t) + " ms" : ""}`;
     return;
   }
   if (objs.length === 1) {
@@ -1065,8 +1051,8 @@ function copySel() {
 function pasteClip() {
   const c = EDIT.clip; if (!c) return toast(tr("Nothing copied yet"));
   const at = snapTime(A.cur()), dt = at - c.t0;
-  const lines = c.lines.map(s => { const p = s.split(","); p[2] = Math.round(+p[2] + dt); if (+p[3] & 8) p[5] = Math.round(+p[5] + dt); if (+p[3] & 128) p[5] = holdShift(p[5], dt); return { s: p.join(","), id: newLineId() }; });
-  const ends = lines.map(L => { const p = L.s.split(","); return +p[3] & 8 ? +p[5] : +p[3] & 128 ? +p[5].split(":")[0] : +p[2]; });
+  const lines = c.lines.map(s => { const p = s.split(","); p[2] = Math.round(+p[2] + dt); if (+p[3] & 8) p[5] = Math.round(+p[5] + dt); return { s: p.join(","), id: newLineId() }; });
+  const ends = lines.map(L => { const p = L.s.split(","); return +p[3] & 8 ? +p[5] : +p[2]; });
   if (!freeAt(+lines[0].s.split(",")[2], Math.max(...ends))) toast(tr("Pasted objects overlap others in time"));
   if (edCommit("Paste", () => map.lines.push(...lines))) edSelectIds(lines.map(x => x.id));
 }
@@ -1277,7 +1263,7 @@ function moveAll(dt, what) {
     if (what.timing) map.timing = map.timing.map(tp => { const q = { ...tp, time: tp.time + dt }; delete q.raw; return q; });
     if (what.objects) for (const L of map.lines) {
       const p = L.s.split(","), type = +p[3]; if (p.length < 4) continue;
-      p[2] = Math.round(+p[2] + dt); if (type & 8) p[5] = Math.round(+p[5] + dt); if (type & 128) p[5] = holdShift(p[5], dt);
+      p[2] = Math.round(+p[2] + dt); if (type & 8) p[5] = Math.round(+p[5] + dt);
       L.s = p.join(",");
     }
     if (what.extras) {
@@ -1335,8 +1321,6 @@ function edKey(e) {
   if (mod && k === "KeyV") { e.preventDefault(); pasteClip(); return true; }
   if (mod && k === "KeyX") { if (EDIT.sel.size) { e.preventDefault(); cutSel(); return true; } return false; }
   if (mod && k === "KeyD") { e.preventDefault(); cloneSel(); return true; }
-  if (isMania() && mod && /^Key[HJG]$|^Comma$|^Period$/.test(k) && !e.shiftKey) { e.preventDefault(); if (k === "KeyH" || k === "KeyJ") maniaFlip(); return true; } // mania: Ctrl+H / J mirror the columns
-  if (isMania() && mod && e.shiftKey && /^Key[FDR]$/.test(k)) { e.preventDefault(); return true; } // (osu!standard tools)
   if (mod && k === "KeyH") { e.preventDefault(); flipSel(true); return true; }
   if (mod && k === "KeyJ") { e.preventDefault(); flipSel(false); return true; }
   if (mod && k === "KeyG") { e.preventDefault(); reverseSel(); return true; }
@@ -1352,8 +1336,7 @@ function edKey(e) {
   if (e.shiftKey || e.altKey) { const v = { KeyQ: 0, KeyW: 1, KeyE: 2, KeyR: 3 }[k]; if (v != null) { e.preventDefault(); setBankOf(e.altKey ? 1 : 0, v); return true; } }
   if (k === "KeyH" && !LIVE.on && !e.shiftKey) { $("edHS").click(); return true; }
   const tools = { Digit1: "select", Digit2: "circle", Digit3: "slider", Digit4: "spinner" };
-  if (tools[k] && !(isMania() && k === "Digit4")) { setTool(tools[k]); return true; }
-  if (isMania() && (k === "KeyQ" || k === "KeyT" || k === "KeyG" || k === "ArrowUp" || k === "ArrowDown")) return true; // (no combos, distance snap, grid or y moves)
+  if (tools[k]) { setTool(tools[k]); return true; }
   if (k === "KeyQ") { toggleNC(); return true; }
   if (k === "KeyW") { toggleHS(2); return true; }
   if (k === "KeyE") { toggleHS(4); return true; }
@@ -1370,7 +1353,6 @@ function edKey(e) {
     if (EDIT.dlg) { closeDlg(); return true; }
     if (EDIT.tab !== "compose") { edTab("compose"); return true; }
     if (EDIT.sliderPts) { EDIT.sliderPts = null; $("edSliderDone").hidden = true; dirty = true; return true; }
-    if (typeof MED !== "undefined" && MED.hold) { MED.hold = null; dirty = true; return true; }
     if (EDIT.sel.size) { edSelectIds([]); return true; }
     return false;
   }
@@ -1600,8 +1582,8 @@ function edDrawTimeline(t) {
   for (let i = hi; i >= Math.max(0, lo); i--) {
     const o = H[i]; if (o.end < t0) continue;
     const ns = o.kind === "slider" && EDIT.tlRep && EDIT.tlRep.lid === o.lid ? EDIT.tlRep.n : o.slides; // (its tail being dragged: the new repeat count)
-    const sel = EDIT.sel.has(o.lid), off = sel && EDIT.tlDrag ? EDIT.tlDt : 0, x0 = X(o.t + off), x1 = X((ns !== o.slides ? o.t + o.span * ns : o.end) + off), mania = map.mode === 3;
-    const col = rgb(mania ? MANIA_COLS[maniaColType(o.col, map.keys || 4)] : palette(o.ci)); // (mania: the column's note colour, no combo numbers)
+    const sel = EDIT.sel.has(o.lid), off = sel && EDIT.tlDrag ? EDIT.tlDt : 0, x0 = X(o.t + off), x1 = X((ns !== o.slides ? o.t + o.span * ns : o.end) + off);
+    const col = rgb(palette(o.ci));
     if (o.kind !== "circle") {
       g.fillStyle = o.kind === "spinner" ? "rgba(200,200,200,.45)" : col; g.globalAlpha = o.kind === "spinner" ? 1 : .6;
       g.beginPath(); if (g.roundRect) g.roundRect(x0, cy - r, Math.max(0, x1 - x0), r * 2, r); else g.rect(x0, cy - r, x1 - x0, r * 2); g.fill();
@@ -1610,7 +1592,7 @@ function edDrawTimeline(t) {
     }
     g.fillStyle = col; g.beginPath(); g.arc(x0, cy, r, 0, 7); g.fill();
     g.lineWidth = (sel ? 3 : 1.5) * tk; g.strokeStyle = sel ? "#66ccff" : "#fff"; g.stroke();
-    if (o.num && !mania) { g.fillStyle = "#fff"; g.fillText(o.num, x0, cy + .5); }
+    if (o.num) { g.fillStyle = "#fff"; g.fillText(o.num, x0, cy + .5); }
     const marks = (x, hs, n) => { let yy = cy + r + 4 * tk; for (const [bit, c] of [[2, "#66ccff"], [4, "#ffd84a"], [8, "#6be38a"]]) if (hs & bit) { g.fillStyle = c; g.fillRect(x - 3 * tk, yy, 6 * tk, 3 * tk); yy += 4 * tk; }
       if (n) { g.fillStyle = "#cfc6de"; g.font = `600 ${Math.round(8 * tk)}px sans-serif`; g.fillText("NSD"[n - 1], x, cy - r - 5 * tk); g.font = `600 ${Math.round(r * 1.05)}px "Varela Round",sans-serif`; } };
     if (o.kind === "slider") { let lx = -1e9; for (let k = 0; k <= o.slides; k++) { const xe = X(o.t + o.span * k + off); if (Math.abs(xe - lx) < 2 && k < o.slides) continue; lx = xe; marks(xe, edgeHs(o, k), (o.edgeSets[k] || [])[0] || (o.samp || {}).n);
@@ -1943,7 +1925,7 @@ function cutSel() { if (!copySel()) return; edCommit("Cut", () => { map.lines = 
 function cloneSel() { // lazer's Clone: a copy of the selection right after it (one beat snap later)
   const objs = selObjs(); if (!objs.length) return toast(tr("Select objects first"));
   const t0 = objs[0].t, t1 = Math.max(...objs.map(o => o.end)), dt = Math.round(snapTime(t1 + beatInfo(t1).len / S.snap) - t0);
-  const lines = objs.filter(o => lineById(o.lid)).map(o => { const p = lineById(o.lid).s.split(","); p[2] = Math.round(+p[2] + dt); if (+p[3] & 8) p[5] = Math.round(+p[5] + dt); if (+p[3] & 128) p[5] = holdShift(p[5], dt); return { s: p.join(","), id: newLineId() }; });
+  const lines = objs.filter(o => lineById(o.lid)).map(o => { const p = lineById(o.lid).s.split(","); p[2] = Math.round(+p[2] + dt); if (+p[3] & 8) p[5] = Math.round(+p[5] + dt); return { s: p.join(","), id: newLineId() }; });
   if (!freeAt(t0 + dt, t1 + dt)) toast(tr("Pasted objects overlap others in time"));
   if (edCommit("Clone", () => map.lines.push(...lines))) { edSelectIds(lines.map(x => x.id)); seekTo(t0 + dt); }
 }

@@ -16,8 +16,8 @@ const CREDITS = [
       ok: "Only its public download links are used." },
   ]],
   ["Code, rules & references", [
-    { name: "ppy/osu and osu-framework (osu!lazer)", url: "https://github.com/ppy/osu", by: "ppy Pty Ltd and contributors", lic: "MIT", what: "How osu! stacks objects, draws sliders, plays Auto, converts osu!mania notes and rates their difficulty",
-      ok: "Yes, with its notice: parts of the code (stacking, slider curves, Auto, osu!mania conversion and star rating) are translated from ppy/osu and ppy/osu-framework. Their MIT notice is in THIRD_PARTY_NOTICES.txt." },
+    { name: "ppy/osu and osu-framework (osu!lazer)", url: "https://github.com/ppy/osu", by: "ppy Pty Ltd and contributors", lic: "MIT", what: "How osu! stacks objects, draws sliders and plays Auto",
+      ok: "Yes, with its notice: parts of the code (stacking, slider curves, Auto) are translated from ppy/osu and ppy/osu-framework. Their MIT notice is in THIRD_PARTY_NOTICES.txt." },
     { name: "osucad", url: "https://github.com/minetoblend/osucad", by: "Marvin Schürz (minetoblend)", lic: "MIT", what: "Editor ideas: slider length snapping, distance snap",
       ok: "Yes: MIT allows reuse with credit. Used as a reference." },
     { name: "MapsetVerifier", url: "https://github.com/Naxesss/MapsetVerifier", by: "Naxess", lic: "GPL-3.0", what: "Which checks to run, their thresholds and how they measure the map (Verify tab)",

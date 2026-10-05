@@ -1,5 +1,4 @@
 "use strict";
-// Parts translated from ppy/osu: the osu!mania star rating (ManiaDifficultyCalculator) (MIT, Copyright (c) ppy Pty Ltd): see THIRD_PARTY_NOTICES.txt
 // ============ loading overlay ============
 function showLoading(text, p) {
   $("loading").hidden = false; $("loadText").textContent = text;
@@ -35,14 +34,13 @@ let curSet = null;      // normalized set info of the open beatmap (from the mir
 let onlineSet = null;   // set id when the open package came from a mirror
 const defSt = u => u ? "" : "leaderboard"; // Select beatmap opens on the maps with a leaderboard (ranked, approved, qualified, loved) like osu!'s listing; a mapper page shows everything
 const ctxFromParams = p => { const u = p.get("u") || "", raw = p.get("st"); return { q: p.get("q") || "", u, st: raw === "all" ? "" : raw && (STATUSES.includes(raw) || u && USER_TYPES.some(t => t[0] === raw)) ? raw : defSt(u), f: u ? fEmpty() : fFromParams(p) }; };
-const ctxKey = c => [c.u, c.q, c.st, c.u ? "" : fKey(c.f), gameMode()].join("\u0001");
+const ctxKey = c => [c.u, c.q, c.st, c.u ? "" : fKey(c.f)].join("\u0001");
 function listURL(ctx) {
   const p = new URLSearchParams();
   if (ctx.u) p.set("u", ctx.u); else if (ctx.q) p.set("q", ctx.q);
   if (ctx.st !== defSt(ctx.u)) p.set("st", ctx.st || "all");
   if (!p.has("q") && !p.has("u") && !p.has("st")) p.set("view", "songs");
-  if (gameMode() === 3) p.set("m", "3"); // (osu!'s own listing uses m=3 for osu!mania too)
-  if (!ctx.u) fToParams(ctx.f, p); // genre, language, tags, ranges, keys, sort (see osudata.js)
+  if (!ctx.u) fToParams(ctx.f, p); // genre, language, tags, ranges, sort (see osudata.js)
   if (R.intent === "edit") p.set("for", "edit");
   return location.pathname + "?" + p;
 }
@@ -128,39 +126,10 @@ function buildFilters() {
     $("filters").append(b);
   }
   if (typeof advChip === "function" && !(R.ctx && R.ctx.u)) $("filters").append(advChip());
-  if (R.ctx) syncSearchUI(R.ctx); else renderModeRow(null);
-}
-// game mode tabs (osu! / osu!mania, like the rulesets on osu!'s beatmap listing) and, for osu!mania, the key counts
-const MODE_ICON = {
-  0: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle class="f" cx="12" cy="12" r="3.4"/></svg>`,
-  3: `<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/><path d="M9.2 4v16M14.8 4v16"/><path class="n" d="M5.6 14.5h2M11 9h2M16.4 16.5h2"/></svg>`,
-};
-function renderModeRow(ctx) {
-  const box = $("modeRow"); box.innerHTML = "";
-  const tabs = h("div", "modetabs"); tabs.setAttribute("role", "radiogroup"); tabs.setAttribute("aria-label", tr("Game mode"));
-  for (const [m, label] of GAME_MODES) {
-    const on = gameMode() === m, b = h("button", "modetab" + (on ? " on" : ""));
-    b.type = "button"; b.setAttribute("role", "radio"); b.setAttribute("aria-checked", on); b.innerHTML = MODE_ICON[m];
-    b.append(h("span", null, label)); b.onclick = () => pickGameMode(m);
-    tabs.append(b);
-  }
-  box.append(tabs);
-  if (gameMode() !== 3 || (ctx && ctx.u)) return; // (a mapper's page has no filters)
-  const f = (ctx && ctx.f) || fEmpty(), keys = h("div", "keychips");
-  keys.append(h("span", "keyl", tr("Keys")));
-  const chip = (label, k) => { const b = h("button", "chip sm" + (f.k === k ? " on" : ""), label); b.type = "button"; b.setAttribute("aria-pressed", f.k === k); b.onclick = () => setF(x => { x.k = k; }, true); keys.append(b); };
-  chip(tr("Any"), 0); KEY_COUNTS.forEach(k => chip(`${k}K`, k));
-  box.append(keys);
-}
-function pickGameMode(m) {
-  if (gameMode() === m) return;
-  S.gameMode = m; save(); ADV.tags = null; // (player tags differ per mode)
-  const c = R.ctx || { q: "", u: "", st: defSt() };
-  goList({ ...c, f: c.f ? { ...c.f, k: 0, tags: [] } : c.f }, false);
+  if (R.ctx) syncSearchUI(R.ctx);
 }
 buildFilters();
 function syncSearchUI(ctx) {
-  renderModeRow(ctx);
   document.querySelectorAll("#filters .chip").forEach(b => { const on = b.dataset.st === ctx.st; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
   const q = $("q"); if (document.activeElement !== q) q.value = ctx.u ? `mapper:${ctx.u}` : ctx.q;
 }
@@ -281,7 +250,7 @@ async function loadList(ctx, append) {
     fresh.forEach((s, i) => box.append(card(s, i)));
     R.busy = false;
     if (!R.list.length && R.more && R.page < (fn ? 10 : 6)) return loadList(ctx, true); // creator filter (or the filters) can empty a whole page
-    if (!R.list.length) box.innerHTML = `<div class="empty">${esc(ctx.u ? tr("No {mode} maps by {u} (check the spelling)", { mode: modeName(), u: ctx.u }) : fn ? tr("No maps match these filters") : tr("No results, try other words"))}</div>`;
+    if (!R.list.length) box.innerHTML = `<div class="empty">${esc(ctx.u ? tr("No {mode} maps by {u} (check the spelling)", { mode: "osu!", u: ctx.u }) : fn ? tr("No maps match these filters") : tr("No results, try other words"))}</div>`;
     R.status = R.list.length ? { count: R.list.length + (R.more ? "+" : ""), u: ctx.u, q: ctx.q, filtered: !!fn, src: r.src.name } : null; showStatus();
     $("more").hidden = !R.more;
     renderMapperHead();
@@ -331,8 +300,6 @@ function mapperLink(name, cls = "mlink") {
   a.onclick = e => { e.preventDefault(); e.stopPropagation(); goMapper(name); };
   return a;
 }
-// "4K 7K" for a set's osu!mania difficulties (or "")
-const maniaKeyList = diffs => [...new Set(diffs.filter(d => d.mode === 3 && +d.cs > 0).map(d => Math.round(+d.cs)))].sort((a, b) => a - b).map(k => k + "K").join(" ");
 function card(s, i) {
   const c = h("article", "card"); c.style.setProperty("--i", Math.min(i, 12));
   const bg = `https://assets.ppy.sh/beatmaps/${s.id}/covers/${(devicePixelRatio || 1) > 1.4 ? "card@2x" : "card"}.jpg`;
@@ -345,7 +312,6 @@ function card(s, i) {
   const tags = h("div", "tags");
   if (s.status) tags.append(h("em", "st-" + s.status, s.status));
   if (s.stars.length) tags.append(h("em", null, `★ ${Math.min(...s.stars).toFixed(1)}${s.stars.length > 1 ? "–" + Math.max(...s.stars).toFixed(1) : ""}`));
-  const keys = maniaKeyList(s.diffs); if (keys) tags.append(h("em", "kbadge", keys));
   if (s.diffs.length) {
     const dots = h("span", "dots");
     s.diffs.slice(0, 14).forEach(d => { const i = h("i"); i.style.background = starColor(d.stars); dots.append(i); });
@@ -411,7 +377,7 @@ function renderMapperHead() {
   if (!uid && L.length && !(name.toLowerCase() in uidCache)) findUid(name);
   const av = avatarEl(uid, name, "mav");
   const info = h("div", "minfo");
-  info.append(h("h2", null, name), h("p", null, tr("mapper · {mode} maps", { mode: modeName() })));
+  info.append(h("h2", null, name), h("p", null, tr("mapper · {mode} maps", { mode: "osu!" })));
   const stats = h("div", "mstats");
   const stat = (label, v) => { const s = h("span"); s.append(h("b", null, v), " " + tr(label)); stats.append(s); };
   if (L.length) {
@@ -481,7 +447,6 @@ function showDetail(info, onGo, bid) {
   const chips = $("dChips"); chips.innerHTML = "";
   const chip = (txt, cls) => chips.append(h("em", cls, txt));
   if (info.status) chip(info.status === "local" ? tr("Local file") : info.status, "st-" + info.status);
-  if (info.diffs.some(d => d.mode === 3)) { const k = maniaKeyList(info.diffs); chip("osu!mania" + (k ? " · " + k : ""), "kbadge"); }
   if (info.bpm) chip(`${Math.round(info.bpm)} BPM`);
   if (info.len) chip(fmt(info.len));
   if (info.diffs.length) chip(`${info.diffs.length} diff`);
@@ -519,11 +484,9 @@ function showDetail(info, onGo, bid) {
     st.style.background = starColor(d.stars); st.style.color = d.stars != null && d.stars >= 6.7 ? "#fff" : "#1c1726";
     const nm = h("span", "dname"), sm = h("small");
     nm.append(h("b", null, d.name + (d.guest ? ` (${d.guest})` : "")), sm);
-    const mn = d.mode === 3; // osu!mania: the key count instead of CS/AR, notes and hold notes instead of circles/sliders
-    if (mn) sm.append(h("span", "kbadge", `${Math.round(+d.cs) || "?"}K`));
-    for (const [k, v] of mn ? [["OD", d.od], ["HP", d.hp]] : [["CS", d.cs], ["AR", d.ar], ["OD", d.od], ["HP", d.hp]]) sm.append(h("span", null, `${k} ${fmtNum(v)}`));
+    for (const [k, v] of [["CS", d.cs], ["AR", d.ar], ["OD", d.od], ["HP", d.hp]]) sm.append(h("span", null, `${k} ${fmtNum(v)}`));
     if (d.len) sm.append(h("span", null, fmt(d.len)));
-    if (d.circles != null) sm.append(h("span", null, mn ? tr("{n} notes · {h} holds", { n: fmtInt(d.circles), h: fmtInt(d.sliders) }) : `${d.circles}○ ${d.sliders}〰 ${d.spinners}◎`));
+    if (d.circles != null) sm.append(h("span", null, `${d.circles}○ ${d.sliders}〰 ${d.spinners}◎`));
     if (d.combo) sm.append(h("span", null, `${d.combo}x`));
     r.append(st, nm);
     r.onclick = () => pickDiff(i);
@@ -718,58 +681,17 @@ function estimateStars(text) {
   const aim = skill(d => Math.pow(d, 0.99) * 26.25, 0.15), speed = skill(d => speedW(d) * 1400, 0.3);
   return aim + speed + Math.abs(aim - speed) * 0.5;
 }
-// osu!mania star rating like osu!lazer (ManiaDifficultyCalculator, Strain skill, no mods): per column and overall strain,
-// the peak of every 400 ms section, weighted 0.9ⁿ from the hardest, × 0.018
-function estimateManiaStars(text, keys) {
-  const sec = text.indexOf("[HitObjects]"); if (sec < 0) return 0;
-  keys = Math.max(1, Math.min(18, Math.round(keys) || 4));
-  const objs = [];
-  for (const line of text.slice(sec + 12).split(/\r?\n/)) {
-    const p = line.split(","); if (p.length < 4 || !isFinite(+p[2]) || Math.abs(+p[2]) > T_MAX) continue;
-    const t = +p[2], type = +p[3], col = Math.max(0, Math.min(keys - 1, Math.floor(+p[0] * keys / 512)));
-    objs.push({ t, end: type & 128 ? (parseFloat((p[5] || "").split(":")[0]) || t) : t, col });
-  }
-  if (objs.length < 2) return 0;
-  objs.sort((a, b) => Math.round(a.t) - Math.round(b.t)); // (lazer: by rounded start time; chords keep the file order)
-  const big = (a, b) => a - b > 1, logistic = (x, mid, mul) => 1 / (1 + Math.exp(mul * (mid - x)));
-  const ind = new Array(keys).fill(0), prevIn = new Array(keys).fill(null);
-  let highest = 0, overall = 1, peak = 0, sectionEnd = 0, prevStart = 0; const peaks = [];
-  const decay = (v, dt, base) => v * Math.pow(base, dt / 1000);
-  for (let i = 1; i < objs.length; i++) {
-    const o = objs[i], dt = o.t - objs[i - 1].t;
-    if (i === 1) sectionEnd = Math.ceil(o.t / 400) * 400;
-    const prev = prevIn.slice(); // the latest earlier object of every column (lazer: never the map's first object)
-    if (o.t - sectionEnd > 4e5) { peaks.push(peak); peak = 0; sectionEnd = Math.ceil(o.t / 400) * 400 - 400; }
-    while (o.t > sectionEnd) { peaks.push(peak); const off = sectionEnd - prevStart; peak = decay(highest, off, .125) + decay(overall, off, .3); sectionEnd += 400; }
-    let holdI = 1, holdO = 1, overl = false, closest = Math.abs(o.end - o.t);
-    for (const q of prev) {
-      if (!q) continue;
-      if (big(q.end, o.end) && big(o.t, q.t)) { holdI = 1.25; holdO = 1.25; }
-      overl = overl || (big(q.end, o.t) && big(o.end, q.end) && big(o.t, q.t));
-      closest = Math.min(closest, Math.abs(o.end - q.end));
-    }
-    const colTime = prev[o.col] ? o.t - prev[o.col].t : o.t;
-    ind[o.col] = decay(ind[o.col], colTime, .125) + 2 * holdI;
-    highest = dt <= 1 ? Math.max(highest, ind[o.col]) : ind[o.col];
-    overall = decay(overall, dt, .3) + (1 + (overl ? logistic(closest, 30, .27) : 0)) * holdO;
-    peak = Math.max(peak, highest + overall);
-    prevIn[o.col] = o; prevStart = o.t;
-  }
-  peaks.push(peak);
-  let d = 0, w = 1; for (const s of peaks.filter(x => x > 0).sort((a, b) => b - a)) { d += s * w; w *= .9; }
-  return d * .018;
-}
 // difficulties ordered by star rating: the official one when the set is on osu!, else the estimate
 function rateDiffs() {
   const online = curSet && Array.isArray(curSet.diffs) ? curSet.diffs : [];
   for (const o of osuFiles) {
     const d = online.find(x => o.meta.bid && String(x.bid) === String(o.meta.bid)) || online.find(x => x.name === o.meta.version);
     if (d && d.stars > 0) { o.stars = d.stars; o.estStars = false; }
-    else { o.stars = o.meta.mode === "3" ? estimateManiaStars(o.text, +o.meta.cs) : estimateStars(o.text); o.estStars = true; }
+    else { o.stars = estimateStars(o.text); o.estStars = true; }
   }
   osuFiles.sort((a, b) => a.stars - b.stars || a.meta.rank - b.meta.rank);
 }
-const diffLabel = o => (o.meta.mode === "3" ? `[${Math.round(+o.meta.cs) || "?"}K] ` : "") + (o.stars > 0 ? `${o.meta.version} · ${o.estStars ? "≈" : ""}★${o.stars.toFixed(2)}` : o.meta.version);
+const diffLabel = o => (o.stars > 0 ? `${o.meta.version} · ${o.estStars ? "≈" : ""}★${o.stars.toFixed(2)}` : o.meta.version);
 function fillDiffSelects() {
   for (const sel of [$("diff"), $("diffQuick")]) { sel.innerHTML = ""; osuFiles.forEach((o, i) => sel.add(new Option(diffLabel(o), i))); sel.value = curDiff; }
   $("diffQuick").hidden = osuFiles.length < 2;
@@ -836,11 +758,12 @@ async function openEntries(entries, id, want, mode, opts = {}) {
   if (!id) curSet = null;
   A.pause(); audio.pause(); A.buf = null; A.bufKey = ""; A.mode = "virt"; songMeta = null;
   for (const p in entries) files[norm(p)] = entries[p];
+  let mania = false;
   for (const p in files) {
-    if (p.endsWith(".osu")) { const text = await readText(files[p]), meta = quickMeta(text); if (meta.mode === "0" || meta.mode === "3") osuFiles.push({ text, meta, path: files[p].name }); } // osu! and osu!mania
+    if (p.endsWith(".osu")) { const text = await readText(files[p]), meta = quickMeta(text); if (meta.mode === "0") osuFiles.push({ text, meta, path: files[p].name }); else if (meta.mode === "3") mania = true; } // osu!standard only
     else if (p.endsWith(".osb")) osbText = await files[p].async("string");
   }
-  if (!osuFiles.length) { hideLoading(); toast(tr("This package has no osu!standard difficulty")); return; }
+  if (!osuFiles.length) { hideLoading(); toast(tr(mania ? "osu!mania isn't supported: this site opens osu!standard difficulties only" : "This package has no osu!standard difficulty"), mania ? 5000 : undefined); return; }
   rateDiffs();
   if (opts.created) osuFiles.forEach(o => o.created = true); // made in the browser: unsaved until exported
   if (opts.ids) osuFiles.forEach(f => { if (Array.isArray(opts.ids[f.path])) f.ids = opts.ids[f.path]; }); // object ids saved with an online project
@@ -1014,7 +937,6 @@ async function route() {
     R.listURL = location.pathname + location.search;
     showView(v);
     if (v === "songs") {
-      const m = p.get("m") === "3" ? 3 : 0; if (gameMode() !== m) { S.gameMode = m; save(); if (typeof ADV !== "undefined") ADV.tags = null; } // (the list's game mode is in its link)
       const ctx = ctxFromParams(p);
       syncSearchUI(ctx);
       if (ctxKey(ctx) !== R.key) loadList(ctx);

@@ -729,7 +729,7 @@ function allMaps() { // every diff in the package, parsed once (the open one use
 }
 // with the editor's stacking turned off, the open difficulty is read again with stacking, the way the game plays it
 function verifyCopy(m) {
-  if (!m || m.mode === 3 || typeof EDIT === "undefined" || !EDIT.on || S.edStack !== false) return m;
+  if (!m || typeof EDIT === "undefined" || !EDIT.on || S.edStack !== false) return m;
   const text = editedText(), hit = parsedCache.get("stk:" + text); if (hit) return hit;
   let c = null; REAL_STACKS = true; try { c = parseOsu(text); } catch { c = null; } finally { REAL_STACKS = false; }
   if (c) parsedCache.set("stk:" + text, c);

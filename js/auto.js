@@ -24,7 +24,7 @@ function autoSpinsNeeded(o, od) { // lazer: Spinner.SpinsRequired (the clear RPM
 }
 function autoBuild(m) {
   const H = m.hit, F = [], pre = m.preempt, od = +(m.diff.OverallDifficulty ?? 5);
-  if (!H.length || m.mode === 3) return F;
+  if (!H.length) return F;
   const after = t => { let lo = 0, hi = F.length; while (lo < hi) { const k = (lo + hi) >> 1; if (F[k].t <= t) lo = k + 1; else hi = k; } return lo; }; // (first frame later than t)
   const add = f => { if (!F.length || F[F.length - 1].t <= f.t) F.push(f); else F.splice(after(f.t), 0, f); return f; };
   let btnIdx = 0;

@@ -46,7 +46,6 @@ function vfyStaleBar(box) {
 function renderVerify(box) {
   if (!map) return;
   VFY.box = box; box.innerHTML = "";
-  if (map.mode === 3) box.append(h("p", "aalert warn", tr("osu!mania: only the checks for the whole set run here for now (audio, metadata, files). The difficulty checks are written for osu!standard.")));
   const res = VFY.res = vfyResults(), every = [...res.general, ...res.diffs.flatMap(d => d.res)], all = vfyCount(every);
   if (!VFY.tab) VFY.tab = VFY_TABS.some(t => t[0] === S.vfyTab) ? S.vfyTab : "overview";
   const wrap = h("div", "vfyc"), root = h("div", "vfy"), nav = h("nav", "vfynav"), main = h("div", "vfymain");

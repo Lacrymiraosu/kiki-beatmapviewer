@@ -12,14 +12,10 @@ Their notices:
 1. ppy/osu (osu!lazer) - https://github.com/ppy/osu
    Translated into JavaScript (behaviour kept the same, code rewritten):
    - js/parse.js: object stacking (OsuBeatmapProcessor), slider paths
-     (SliderPath, Legacy/ConvertHitObjectParser), osu!mania note conversion
-     (ManiaBeatmapConverter, Legacy pattern generators)
+     (SliderPath, Legacy/ConvertHitObjectParser)
    - js/auto.js: Auto's replay (OsuAutoGenerator)
-   - js/app.js: osu!mania star rating (ManiaDifficultyCalculator)
    Also follow osu!lazer's behaviour and values, under the same notice:
-   - js/mania.js: osu!mania scrolling and bar lines (DrawableScrollingRuleset,
-     SequentialScrollAlgorithm, BarLineGenerator)
-   - js/maniaed.js, js/editor.js: placing and snapping objects (placement
+   - js/editor.js: placing and snapping objects (placement
      blueprints, TrySnapToNearbyObjects)
    - js/player.js, js/play.js: slider drawing and hit timing
    - js/skins.js: the legacy slider body (LegacySliderBody)

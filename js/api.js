@@ -2,25 +2,21 @@
 // ============ mirrors & API ============
 // search(o) gets { q, creator, st, page } and returns a URL (or null when the mirror can't do that query)
 const PS = 30;
-// which game mode the lists show: 0 osu!, 3 osu!mania (Beatmap → mode picker)
-const gameMode = () => +S.gameMode === 3 ? 3 : 0;
-// the game modes the site plays and edits (taiko and catch aren't supported yet)
-const GAME_MODES = [[0, "osu!"], [3, "osu!mania"]];
-const modeName = (m = gameMode()) => m === 3 ? "osu!mania" : "osu!";
+// the site plays and edits osu!standard only (mode 0): lists and mirrors ask for it, other modes are left out
 const MODE_OF = b => { const m = b.mode_int ?? b.Mode ?? b.mode; return m === "osu" ? 0 : m === "mania" ? 3 : m === "taiko" ? 1 : m === "fruits" ? 2 : +m; };
 const enc = encodeURIComponent;
 const CB_ST = { ranked: 1, qualified: 3, loved: 4, pending: 0, graveyard: -2 };
 const cbCreator = n => "creator=" + (/\s/.test(n) ? `"${n}"` : n);
 const MIRRORS = [
   { id: "osudirect", name: "osu.direct",
-    search: o => o.creator ? null : `https://osu.direct/api/v2/search?q=${enc(o.q)}&query=${enc(o.q)}&amount=${PS}&offset=${o.page * PS}&mode=${gameMode()}${o.st in CB_ST ? "&status=" + CB_ST[o.st] : ""}`,
+    search: o => o.creator ? null : `https://osu.direct/api/v2/search?q=${enc(o.q)}&query=${enc(o.q)}&amount=${PS}&offset=${o.page * PS}&mode=0${o.st in CB_ST ? "&status=" + CB_ST[o.st] : ""}`,
     set: id => `https://osu.direct/api/v2/s/${id}`, bm: id => `https://osu.direct/api/v2/b/${id}`,
     dl: id => `https://osu.direct/api/d/${id}?noVideo=1` },
   { id: "nerinyan", name: "Nerinyan",
-    search: o => `https://api.nerinyan.moe/search?q=${enc(o.creator || o.q)}&ps=${PS}&p=${o.page}&m=${gameMode()}${o.creator ? "&option=creator" : ""}${o.st && o.st !== "leaderboard" ? "&s=" + o.st : o.creator || o.st ? "&s=all" : ""}`,
+    search: o => `https://api.nerinyan.moe/search?q=${enc(o.creator || o.q)}&ps=${PS}&p=${o.page}&m=0${o.creator ? "&option=creator" : ""}${o.st && o.st !== "leaderboard" ? "&s=" + o.st : o.creator || o.st ? "&s=all" : ""}`,
     dl: id => `https://api.nerinyan.moe/d/${id}?noVideo=true` },
   { id: "catboy", name: "catboy.best",
-    search: o => `https://catboy.best/api/v2/search?q=${enc(o.creator ? cbCreator(o.creator) : o.q)}&limit=${PS}&offset=${o.page * PS}&mode=${gameMode()}${o.st in CB_ST ? "&status=" + CB_ST[o.st] : ""}`,
+    search: o => `https://catboy.best/api/v2/search?q=${enc(o.creator ? cbCreator(o.creator) : o.q)}&limit=${PS}&offset=${o.page * PS}&mode=0${o.st in CB_ST ? "&status=" + CB_ST[o.st] : ""}`,
     set: id => `https://catboy.best/api/v2/s/${id}`, bm: id => `https://catboy.best/api/v2/b/${id}`,
     dl: id => `https://catboy.best/d/${id}n` },
   { id: "sayobot", name: "Sayobot", search: null, dl: id => `https://dl.sayobot.cn/beatmaps/download/novideo/${id}` },
@@ -49,8 +45,8 @@ function normSet(s) {
   const id = s.id ?? s.SetID ?? s.beatmapset_id ?? s.sid;
   if (!id) return null;
   const maps = s.beatmaps || s.ChildrenBeatmaps || [];
-  const std = maps.filter(b => MODE_OF(b) === gameMode());
-  if (maps.length && !std.length) return null; // no difficulty in the chosen mode
+  const std = maps.filter(b => MODE_OF(b) === 0);
+  if (maps.length && !std.length) return null; // no osu!standard difficulty
   const creator = s.creator ?? s.Creator ?? "";
   const stars = std.map(b => +(b.difficulty_rating ?? b.DifficultyRating ?? 0)).filter(x => x > 0);
   const diffs = std.map(b => {
