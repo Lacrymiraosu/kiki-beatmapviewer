@@ -1,7 +1,7 @@
 # KIKI BEATMAP VIEWER
 
-[![CI](https://github.com/Lacrymiraosu/kiki-beatmap-viewer/actions/workflows/ci.yml/badge.svg)](https://github.com/Lacrymiraosu/kiki-beatmap-viewer/actions/workflows/ci.yml)
-[![Secret scan](https://github.com/Lacrymiraosu/kiki-beatmap-viewer/actions/workflows/secret-scan.yml/badge.svg)](https://github.com/Lacrymiraosu/kiki-beatmap-viewer/actions/workflows/secret-scan.yml)
+[![CI](https://github.com/Lacrymiraosu/kiki-beatmapviewer/actions/workflows/ci.yml/badge.svg)](https://github.com/Lacrymiraosu/kiki-beatmapviewer/actions/workflows/ci.yml)
+[![Secret scan](https://github.com/Lacrymiraosu/kiki-beatmapviewer/actions/workflows/secret-scan.yml/badge.svg)](https://github.com/Lacrymiraosu/kiki-beatmapviewer/actions/workflows/secret-scan.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Live site](https://img.shields.io/badge/live%20site-open-ff66aa.svg)](https://osu-beatmap-viewer.lacrymira.workers.dev)
 

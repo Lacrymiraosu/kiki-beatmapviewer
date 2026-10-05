@@ -410,7 +410,7 @@ function gateRender() {
   const foot = h("footer", "foot"), nav = h("nav");
   for (const [v, l] of [["guide", "Guide"], ["credits", "Credits"], ["privacy", "Privacy"], ["changelog", "Changelog"]]) { const a = h("a", null, tr(l)); a.href = "?view=" + v; nav.append(a); }
   const rp = h("a", null, tr("Report a problem")); rp.href = "#"; rp.onclick = e => { e.preventDefault(); openReport(); }; nav.append(rp);
-  const gh = h("a", null, "GitHub"); gh.href = "https://github.com/Lacrymiraosu/kiki-beatmap-viewer"; gh.target = "_blank"; gh.rel = "noopener"; nav.append(gh);
+  const gh = h("a", null, "GitHub"); gh.href = "https://github.com/Lacrymiraosu/kiki-beatmapviewer"; gh.target = "_blank"; gh.rel = "noopener"; nav.append(gh);
   foot.append(nav, h("small", null, tr("Not affiliated with ppy Pty Ltd. osu! is a trademark of ppy Pty Ltd.")));
   if (!stage.parentNode) g.append(stage);
   g.insertBefore(top, stage); const ib = gateInviteBox(); if (ib) g.insertBefore(ib, stage); g.insertBefore(hero, stage);
