@@ -22,7 +22,7 @@ before(async () => {
 });
 after(async () => { srv.close(); await emu.close(); });
 
-const cookieFor = id => "obv_s=" + encodeURIComponent(auth.sign({ id, username: "user" + id, avatar: "", country: "TH", kind: "session", iat: Date.now(), exp: Date.now() + 36e5 }, auth.cfg({ headers: { host: "x" } })));
+const cookieFor = id => "__Host-obv_s=" + encodeURIComponent(auth.sign({ id, username: "user" + id, avatar: "", country: "TH", kind: "session", iat: Date.now(), exp: Date.now() + 36e5 }, auth.cfg({ headers: { host: "x" } })));
 async function api(method, route, { as, body, ip = "10.0.0.1", origin = "same-origin" } = {}) {
   const h = { "x-real-ip": ip }; if (as) h.cookie = cookieFor(as);
   if (body !== undefined) { h["content-type"] = "application/json"; h["sec-fetch-site"] = origin; }
@@ -94,4 +94,6 @@ test("Report a problem: kept apart from errors, osu! name only when asked, rate-
   assert.ok(errs.body.rows.every(r => r.kind === "error"), "errors list has no reports");
   assert.equal((await send({ message: "sixth one" })).status, 429, "5 a minute per IP");
   assert.equal((await api("GET", "me", { as: OWNER })).body.badges.errors, reps.body.open, "the count includes reports");
+  assert.equal((await send({ message: "The save button  does nothing" }, { ip: "10.1.1.2" })).body.ok, true, "the same text again (another IP, other case)");
+  assert.equal((await api("GET", "admin/errors?kind=report", { as: OWNER })).body.open_reports, 4, "is kept once, so it can't push other reports out");
 });

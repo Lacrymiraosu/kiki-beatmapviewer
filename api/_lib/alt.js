@@ -7,7 +7,7 @@
 //           "Web application", redirect URI https://<site>/api/auth/google)
 // Only the account's ID at Google ("sub") is used: no name, no e-mail (only "openid" is asked for).
 const crypto = require("crypto");
-const { cfg, sign, unsign, cookies, cookie, query, safeNext, redirect, withParam } = require("./auth");
+const { cfg, sign, unsign, cookies, cookie, query, safeNext, redirect, withParam, siteUrl } = require("./auth");
 const db = require("./db");
 
 const env = k => String(process.env[k] || "").trim();
@@ -22,7 +22,7 @@ const PROVIDERS = {
 };
 const configured = () => ({ google: PROVIDERS.google.ok() });
 
-const redirectUri = (req, p) => `https://${req.headers["x-forwarded-host"] || req.headers.host}/api/auth/${p}`;
+const redirectUri = (req, p) => `${siteUrl(req)}/api/auth/${p}`; // (SITE_URL, else the request's host only when it's allowed: auth.js)
 // the id_token comes straight from the provider's token endpoint over HTTPS (with our secret), so its claims are read
 // without checking its signature (as Google allows for this flow); who it's for, who made it, when and the
 // nonce are still checked
@@ -56,8 +56,8 @@ const handler = p => async (req, res) => {
     return redirect(res, u.toString(), cookie("obv_alt", sign(st, c), 600));
   }
   // back from the provider
-  const st = unsign(cookies(req).obv_alt, c), next = st && st.next || "/", clear = cookie("obv_alt", "", 0);
-  const done = (why, extra) => redirect(res, withParam(next, "login", why), [clear, ...(extra || [])]);
+  const st = unsign(cookies(req).obv_alt, c), next = safeNext(st && st.next), clear = cookie("obv_alt", "", 0); // (checked again on the way back)
+  const done = (why, extra) => redirect(res, withParam(next, "login", why), [...clear, ...(extra || [])]); // (cookie() gives a list: auth.js)
   if (q.get("error")) return done(/access_denied/.test(q.get("error")) ? "cancelled" : "alt_error");
   if (!st || st.p !== p || q.get("state") !== st.state) return done("expired");
   try {
@@ -79,7 +79,7 @@ const handler = p => async (req, res) => {
     let u = await db.rpc("obv_login_find", { p_provider: p, p_subject: String(id.sub).slice(0, 255) });
     if (!u || !u.id) u = await db.rpc("obv_google_account", { p_sub: String(id.sub).slice(0, 255) });
     if (!u || !u.id) return done("alt_error");
-    return done("ok", [cookie("obv_s", altSession(c, p, u), 30 * 86400), cookie("obv_gp", "", 0)]);
+    return done("ok", cookie("obv_s", altSession(c, p, u), 30 * 86400));
   } catch (e) {
     console.error(p + " login", e && (e.code || e.message || e.name));
     return done(e && e.code === "not_configured" ? "alt_off" : "network");

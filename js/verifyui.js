@@ -97,7 +97,7 @@ function vfyIssueMap(res) {
       g.fillStyle = "rgba(255,200,80,.13)"; for (const [a, b] of m.kiai) g.fillRect(X(a), y, X(Math.min(b, len)) - X(a), laneH - 2);
       g.fillStyle = "rgba(0,0,0,.35)"; for (const [a, b] of m.breaks) g.fillRect(X(a), y, X(b) - X(a), laneH - 2);
       g.fillStyle = "rgba(255,255,255,.18)"; g.fillRect(X(m.first), y + laneH / 2 - 1, X(m.last) - X(m.first), 1);
-      g.fillStyle = cur ? "#fff" : "#cfc6de"; g.font = (cur ? "600 " : "") + "12px 'Varela Round',sans-serif"; g.textBaseline = "middle";
+      g.fillStyle = cur ? "#fff" : "#cfc6de"; g.font = (cur ? "600 " : "") + "12px Inter,sans-serif"; g.textBaseline = "middle";
       g.fillText((m.meta.Version || "?").slice(0, 20), 9, y + laneH / 2, labelW - 14);
       for (let k = r.iss.length - 1; k >= 0; k--) { const i = r.iss[k], x = X(i.t); g.fillStyle = COL[i.lvl]; if (i.lvl === "minor") { g.globalAlpha = .6; g.fillRect(x - .5, y + 9, 1.5, laneH - 20); g.globalAlpha = 1; } else g.fillRect(x - 1.5, y + 4, 3, laneH - 10); }
     });

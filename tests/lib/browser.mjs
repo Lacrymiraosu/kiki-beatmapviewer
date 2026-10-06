@@ -13,8 +13,8 @@ let map = null;
 class Path2D { moveTo() {} lineTo() {} }
 `;
 
-export function loadScripts(files, extra = "") {
-  const ctx = vm.createContext({ console, Math, JSON, Date, Map, Set, Array, Object, Number, String, Promise, TextEncoder, TextDecoder, crypto: globalThis.crypto, structuredClone });
+export function loadScripts(files, extra = "", globals = {}) { // globals: more names for the scripts (e.g. a fake fetch)
+  const ctx = vm.createContext({ console, Math, JSON, Date, Map, Set, Array, Object, Number, String, Promise, TextEncoder, TextDecoder, crypto: globalThis.crypto, structuredClone, ...globals });
   vm.runInContext(STUBS + extra, ctx, { filename: "stubs.js" });
   for (const f of files) vm.runInContext(readFileSync(join(root, f), "utf8"), ctx, { filename: f });
   return new Proxy({}, { get: (_, k) => typeof k === "string" ? vm.runInContext(k, ctx) : undefined });

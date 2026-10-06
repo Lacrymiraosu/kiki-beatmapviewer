@@ -69,8 +69,8 @@ function goView(v, extra) {
   const s = p.toString(); history.pushState(null, "", location.pathname + (s ? "?" + s : ""));
   route(); scrollTo(0, 0);
 }
-document.addEventListener("click", e => { // <a data-go="view"> links inside the site
-  const a = e.target.closest("[data-go]"); if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
+document.addEventListener("click", e => { // <a data-go="view"> links inside the site (only links: a <button data-go="1"> is a "jump there in Compose" button, tools.js panelClick)
+  const a = e.target.closest("a[data-go]"); if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
   e.preventDefault(); const v = a.dataset.go;
   if (v === "songs") { R.intent = a.dataset.for || ""; goList({ q: "", u: "", st: defSt() }, true); scrollTo(0, 0); } else goView(v);
 });
@@ -122,7 +122,7 @@ function buildFilters() {
   }
   for (const st of STATUSES) {
     const b = h("button", "chip", tr(ST_LABEL[st])); b.dataset.st = st; b.setAttribute("role", "tab");
-    b.onclick = () => goList({ ...(R.ctx || { q: "", u: "" }), st }, false);
+    b.onclick = () => { const c = R.ctx || { q: "", u: "" }; goList({ ...c, q: kwStrip(c.q, t => t.kind === "status"), st }, false); }; // (a chip replaces status=… in the box)
     $("filters").append(b);
   }
   if (typeof advChip === "function" && !(R.ctx && R.ctx.u)) $("filters").append(advChip());
@@ -130,7 +130,8 @@ function buildFilters() {
 }
 buildFilters();
 function syncSearchUI(ctx) {
-  document.querySelectorAll("#filters .chip").forEach(b => { const on = b.dataset.st === ctx.st; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
+  const kst = !ctx.u && kwStatus(kwParse(ctx.q)); // (status=… in the box overrides the chips)
+  document.querySelectorAll("#filters .chip").forEach(b => { const on = !kst && b.dataset.st === ctx.st; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
   const q = $("q"); if (document.activeElement !== q) q.value = ctx.u ? `mapper:${ctx.u}` : ctx.q;
 }
 function goList(ctx, push) {
@@ -157,7 +158,8 @@ function parseQuery(raw) {
   if ((m = q.match(/(?:\/b\/|\/beatmaps\/)(\d+)/))) return { b: m[1] };
   if ((m = q.match(/\/s\/(\d+)/)) || (m = q.match(/^(\d+)$/))) return { s: m[1] };
   if ((m = q.match(/\/users?\/([^/?#\s]+)/))) return /^\d+$/.test(m[1]) ? { err: tr("Type the mapper's name instead of a user ID, e.g. mapper:Sotarks") } : { u: decodeURIComponent(m[1]) };
-  if ((m = q.match(/^(?:mapper|creator|u)\s*[:=]\s*(.+)$/i))) return { u: m[1].trim().replace(/^"|"$/g, "") };
+  // mapper:name alone opens the mapper's page (names can have spaces); with other keywords it's a keyword search
+  if ((m = q.match(/^(?:mapper|creator|u)\s*[:=]\s*(.+)$/i)) && !kwParse(m[1]).terms.length) return { u: m[1].trim().replace(/^"|"$/g, "") };
   return { q };
 }
 $("searchForm").onsubmit = e => {
@@ -216,7 +218,8 @@ async function loadList(ctx, append) {
   // Searches with words go to the mirrors (osu.direct first, the one picked in Mirror) and to osu! through our server
   // when no mirror answers. The list without words (osu!'s own listing: Has leaderboard, newest first) and filtered
   // lists (genre, language, tags, ranges, sort: osu! does them all) go to osu! first, the mirrors filtered here after.
-  const fn = ctx.u ? 0 : fCount(ctx.f);
+  // keywords in the box (stars>5 source="touhou", osudata.js) count as filters: osu! does them all, mirrors partly
+  const kw = ctx.u ? null : kwParse(ctx.q), fn = ctx.u ? 0 : fCount(ctx.f) + kw.terms.length;
   const fromOsu = async () => {
     const r = await osuSearch({ q: ctx.q, st: ctx.st, f: ctx.f, cursor: append ? R.cursor : null }, sig);
     if (R.key !== key) return;
@@ -236,11 +239,11 @@ async function loadList(ctx, append) {
       if (sig.aborted) return;
       if (append) { R.busy = false; toast(tr("Couldn't load more, try again")); $("more").hidden = false; return; } // (the next page has to come from osu! too)
       console.warn("osu! search", e.message, "· trying the mirrors");
-      if (fNeedsOsu(ctx.f)) toast(tr("Tag filters and sorting need the osu! connection; showing mirror results filtered here"), 4000);
+      if (fNeedsOsu(ctx.f) || kw.terms.some(t => t.key === "tag" && t.v.includes("/"))) toast(tr("Tag filters and sorting need the osu! connection; showing mirror results filtered here"), 4000);
     }
   }
   try {
-    const r = await searchSets({ q: ctx.q, creator: ctx.u, st: ctx.st, page: R.page }, sig, R.mirror);
+    const r = await searchSets({ q: ctx.q, creator: ctx.u, st: ctx.st, page: R.page, kw }, sig, R.mirror);
     if (R.key !== key) return;
     if (!append) box.innerHTML = "";
     R.mirror = r.src.id; R.more = r.more; R.page++;
@@ -303,30 +306,28 @@ function mapperLink(name, cls = "mlink") {
 function card(s, i) {
   const c = h("article", "card"); c.style.setProperty("--i", Math.min(i, 12));
   const bg = `https://assets.ppy.sh/beatmaps/${s.id}/covers/${(devicePixelRatio || 1) > 1.4 ? "card@2x" : "card"}.jpg`;
-  if (cardIO) { c.dataset.bg = bg; cardIO.observe(c); } else c.style.backgroundImage = `url("${bg}")`;
+  const cov = h("div", "bc-cov"), img = h("div", "bc-img"); cov.append(img);
+  if (cardIO) { img.dataset.bg = bg; cardIO.observe(img); } else img.style.backgroundImage = `url("${bg}")`;
   const main = h("button", "cmain"); main.setAttribute("aria-label", `${s.artist} - ${s.title} (${s.creator})`);
   main.onclick = () => openSet(s);
-  const ci = h("div", "ci"), sm = h("small");
-  sm.append(avatarEl(s.uid, s.creator), "mapped by ", mapperLink(s.creator));
-  ci.append(h("b", null, s.title), h("span", null, s.artist), sm);
-  const tags = h("div", "tags");
-  if (s.status) tags.append(h("em", "st-" + s.status, s.status));
-  if (s.stars.length) tags.append(h("em", null, `★ ${Math.min(...s.stars).toFixed(1)}${s.stars.length > 1 ? "–" + Math.max(...s.stars).toFixed(1) : ""}`));
-  if (s.diffs.length) {
-    const dots = h("span", "dots");
-    s.diffs.slice(0, 14).forEach(d => { const i = h("i"); i.style.background = starColor(d.stars); dots.append(i); });
-    tags.append(dots);
-  }
-  ci.append(tags);
-  const act = h("div", "cact"), dl = h("a", "cbtn"), pv = h("button", "cbtn cplay");
+  if (s.status) cov.append(h("em", "bc-tag st-" + s.status, s.status));
+  const pv = h("button", "bc-play cplay"), dl = h("a", "bc-dl");
   pv.innerHTML = playIcon; pv.title = tr("Listen to the preview"); pv.setAttribute("aria-label", pv.title);
-  pv.onclick = e => { e.stopPropagation(); togglePreview(`https://b.ppy.sh/preview/${s.id}.mp3`, c); };
+  pv.onclick = e => { e.stopPropagation(); togglePreview(pvURL(s.id), c); };
   dl.href = osuDlURL(s.id); dl.target = "_blank"; dl.rel = "noopener"; dl.innerHTML = dlIcon;
   dl.title = tr("Download from osu! (opens osu.ppy.sh)"); dl.setAttribute("aria-label", dl.title);
   dl.onclick = e => e.stopPropagation();
-  act.append(pv, dl);
-  c.append(main, ci, act, h("i", "cprog"));
-  if (pvOwner && pvOwner.sid === s.id && !prevAudio.paused) setPvOwner(c);
+  cov.append(dl, pv, h("i", "cprog"));
+  const body = h("div", "bc-body"), by = h("div", "bc-by");
+  by.append(h("span", null, s.artist), " · ", mapperLink(s.creator));
+  const ft = h("div", "bc-ft"), bars = h("span", "bc-bars");
+  s.diffs.slice(0, 12).forEach(d => { const k = h("i"); k.style.background = starColor(d.stars); k.title = `${d.name} ★${(+d.stars || 0).toFixed(2)}`; bars.append(k); });
+  const meta = [s.bpm ? `${Math.round(s.bpm)} BPM` : "", s.len ? fmt(s.len) : "", s.stars.length ? `★ ${Math.max(...s.stars).toFixed(2)}` : ""].filter(Boolean).join(" · ");
+  ft.append(bars, h("span", "bc-meta", meta));
+  body.append(h("b", "bc-t", s.title), by, ft);
+  c.append(cov, main, body);
+  if (pvOwner && pvOwner.sid === s.id && !pvPaused()) setPvOwner(c);
+  if (detailInfo && !$("detail").hidden && String(detailInfo.sid) === String(s.id)) c.classList.add("sel");
   c.sid = s.id;
   return c;
 }
@@ -334,28 +335,79 @@ function card(s, i) {
 // ---------- song previews (b.ppy.sh), playable straight from the cards and the detail panel ----------
 const playIcon = `<svg viewBox="0 0 24 24"><path class="pi" d="M8 5l11 7-11 7z"/><path class="pa" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>`;
 let pvOwner = null, pvRaf = 0;
+// a set id is a number: anything else from a mirror gets no preview (no button in the detail panel)
+const pvURL = id => /^\d+$/.test(String(id ?? "")) ? `https://b.ppy.sh/preview/${+id}.mp3` : "";
 function setPvOwner(o) {
   if (pvOwner && pvOwner.classList) { pvOwner.classList.remove("playing"); pvOwner.style.removeProperty("--pp"); }
   pvOwner = o; if (o && o.classList) o.classList.add("playing");
   $("dPrev").textContent = tr(o === "detail" ? "❚❚ Stop" : "▶ Listen");
 }
-function togglePreview(url, owner) {
-  if (pvOwner === owner && !prevAudio.paused) { pausePreview(); return; }
+// iPhone / iPad (VOL_FIXED, core.js): the preview is fetched, decoded and played through pvGain, which applyVolumes keeps
+// at the site volume while it plays; the <audio> element (above) everywhere else, and there too if b.ppy.sh can't be fetched
+let pvWAok = VOL_FIXED && !!(window.AudioContext || window.webkitAudioContext);
+const PVW = { url: "", state: "", req: 0, node: null, at: 0, dur: 0, buf: null, bufUrl: "" }; // state: "" | "load" | "play"
+const pvPaused = () => PVW.state ? false : prevAudio.paused;
+const pvSrc = () => PVW.state ? PVW.url : prevAudio.src;
+// iOS only lets an <audio> element start inside a tap, and the fetch below ends after it: so the tap also starts
+// prevAudio muted (pvPrime). If the fetch fails it's simply unmuted; if it works it's stopped and Web Audio plays.
+// (Its pause / ended events are ignored while PVW.state is set.)
+let pvPrime = false;
+function pvPrimeStart(url) { pvPrime = true; prevAudio.muted = true; prevAudio.src = url; prevAudio.currentTime = 0; prevAudio.play().catch(() => {}); }
+function pvPrimeStop() { if (!pvPrime) return; pvPrime = false; prevAudio.pause(); prevAudio.muted = false; }
+function pvStopWA() {
+  const n = PVW.node; PVW.node = null; PVW.state = ""; PVW.req++;
+  if (n) { n.onended = null; try { n.stop(); } catch {} }
+}
+async function pvPlayWA(url) {
+  const req = ++PVW.req; PVW.url = url; PVW.state = "load";
+  if (PVW.bufUrl !== url) pvPrimeStart(url); else pvPrimeStop(); // (still inside the tap: togglePreview calls this synchronously)
+  try {
+    if (PVW.bufUrl !== url) {
+      const r = await fetch(url); if (!r.ok) throw 0;
+      const ab = await r.arrayBuffer(); if (req !== PVW.req) return;
+      PVW.buf = await decodeAB(ab); PVW.bufUrl = url;
+    }
+  } catch {
+    if (req !== PVW.req) return;
+    pvWAok = false; PVW.state = ""; // (no CORS from the server, say): the <audio> element from now on, at its fixed volume
+    const primed = pvPrime && prevAudio.src === url; pvPrime = false; prevAudio.muted = false;
+    if (!primed) prevAudio.src = url;
+    prevAudio.currentTime = 0; prevAudio.volume = musGain();
+    if (primed && !prevAudio.paused) return pvTick(); // already playing (unlocked in the tap): just heard now
+    prevAudio.play().catch(() => { toast(tr("Couldn't play the preview")); setPvOwner(null); });
+    return;
+  }
+  if (req !== PVW.req) return;
+  pvPrimeStop();
   ensureAudioCtx();
+  if (!pvGain || pvGain.context !== actx) { pvGain = actx.createGain(); pvGain.connect(actx.destination); } // (a new output after audioRestart)
+  pvGain.gain.value = musGain();
+  const n = actx.createBufferSource(); n.buffer = PVW.buf; n.connect(pvGain); n.start(0);
+  PVW.node = n; PVW.at = actx.currentTime; PVW.dur = PVW.buf.duration; PVW.state = "play";
+  n.onended = () => { if (PVW.node === n) { PVW.node = null; PVW.state = ""; setPvOwner(null); } };
+  pvTick();
+}
+function togglePreview(url, owner) {
+  if (pvOwner === owner && !pvPaused()) { pausePreview(); return; }
+  if (!url) { toast(tr("Couldn't play the preview")); return; }
+  ensureAudioCtx();
+  if (pvWAok) { pvStopWA(); setPvOwner(owner); pvPlayWA(url); return; }
+  pvPrime = false; prevAudio.muted = false;
   prevAudio.src = url; prevAudio.currentTime = 0; prevAudio.volume = musGain();
   setPvOwner(owner);
   prevAudio.play().catch(() => { toast(tr("Couldn't play the preview")); setPvOwner(null); });
 }
-function pausePreview() { prevAudio.pause(); }
+function pausePreview() { if (PVW.state) { pvStopWA(); setPvOwner(null); } pvPrime = false; prevAudio.pause(); prevAudio.muted = false; }
 function pvTick() { // progress bar on the playing card
   cancelAnimationFrame(pvRaf);
-  if (prevAudio.paused || !pvOwner || !pvOwner.style) return;
-  pvOwner.style.setProperty("--pp", (prevAudio.currentTime / (prevAudio.duration || 10) * 100).toFixed(2) + "%");
+  if (pvPaused() || !pvOwner || !pvOwner.style) return;
+  const [cur, dur] = PVW.state ? [PVW.node ? actx.currentTime - PVW.at : 0, PVW.dur] : [prevAudio.currentTime, prevAudio.duration];
+  pvOwner.style.setProperty("--pp", (cur / (dur || 10) * 100).toFixed(2) + "%");
   pvRaf = requestAnimationFrame(pvTick);
 }
 prevAudio.addEventListener("play", pvTick);
-prevAudio.addEventListener("pause", () => setPvOwner(null));
-prevAudio.addEventListener("ended", () => setPvOwner(null));
+prevAudio.addEventListener("pause", () => { if (!PVW.state) setPvOwner(null); });
+prevAudio.addEventListener("ended", () => { if (!PVW.state) setPvOwner(null); });
 
 // mapper profile header
 const uidCache = {};
@@ -428,7 +480,7 @@ function starColor(s) {
 function detailFromSet(s) {
   return { sid: s.id, title: s.title, artist: s.artist, creator: s.creator, status: s.status, bpm: s.bpm, len: s.len, plays: s.plays, favs: s.favs, source: s.source,
     cover: `https://assets.ppy.sh/beatmaps/${s.id}/covers/cover@2x.jpg`, fallbackCover: `https://assets.ppy.sh/beatmaps/${s.id}/covers/card@2x.jpg`,
-    preview: `https://b.ppy.sh/preview/${s.id}.mp3`, diffs: s.diffs, video: s.video, storyboard: s.storyboard, genre: s.genre, language: s.language, tags: s.tags, nsfw: s.nsfw };
+    preview: pvURL(s.id), diffs: s.diffs, video: s.video, storyboard: s.storyboard, genre: s.genre, language: s.language, tags: s.tags, nsfw: s.nsfw };
 }
 function openSet(s, bid, noPush) {
   curSet = s;
@@ -438,6 +490,8 @@ function openSet(s, bid, noPush) {
 }
 function showDetail(info, onGo, bid) {
   detailInfo = info; detailOnGo = onGo; detailPick = null; detailBid = bid;
+  document.querySelectorAll("#results .card").forEach(c => c.classList.toggle("sel", !!info.sid && String(c.sid) === String(info.sid)));
+  $("dStats").hidden = true;
   loadJSZip().catch(() => {}); // warm up, the user will probably open it
   $("dCover").style.backgroundImage = info.cover ? `url("${info.cover}")${info.fallbackCover ? `, url("${info.fallbackCover}")` : ""}` : "none";
   $("dTitle").textContent = info.title || "?";
@@ -457,7 +511,7 @@ function showDetail(info, onGo, bid) {
   if (info.source) chip(info.source);
   if (typeof renderSetMeta === "function") renderSetMeta($("dMeta"), info);
   // actions
-  const keepPv = pvOwner && pvOwner !== "detail" && !prevAudio.paused && info.preview && prevAudio.src === info.preview;
+  const keepPv = pvOwner && pvOwner !== "detail" && !pvPaused() && info.preview && pvSrc() === info.preview;
   if (keepPv) setPvOwner("detail"); else pausePreview(); // the card's preview keeps playing into its detail
   const pb = $("dPrev"); pb.hidden = !info.preview; pb.textContent = tr(pvOwner === "detail" ? "❚❚ Stop" : "▶ Listen");
   pb.onclick = () => togglePreview(info.preview, "detail");
@@ -476,7 +530,7 @@ function showDetail(info, onGo, bid) {
   $("dEdit").className = "btn " + (ed ? "main" : "ghost"); $("dGo").className = "btn " + (ed ? "ghost" : "main");
   $("dfoot").classList.toggle("edfirst", ed);
   const list = $("dList"); list.innerHTML = "";
-  if (!info.diffs.length) { list.innerHTML = `<div class="dempty">${esc(tr("The mirror didn't send the difficulty list; you can pick one after the map loads"))}</div>`; $("dGo").textContent = tr("Load map"); }
+  if (!info.diffs.length) { list.innerHTML = `<div class="dempty">${esc(tr("The mirror didn't send the difficulty list; you can pick one after the map loads"))}</div>`; $("dGo").textContent = tr("Load map"); $("dGo").title = ""; }
   info.diffs.forEach((d, i) => {
     const r = h("button", "drow"); r.style.setProperty("--i", Math.min(i, 16));
     const st = h("span", "star", d.stars != null ? `${d.est ? "≈" : ""}★ ${d.stars.toFixed(2)}` : `#${i + 1}`);
@@ -498,19 +552,30 @@ function showDetail(info, onGo, bid) {
     if (bid) { const j = info.diffs.findIndex(d => String(d.bid) === String(bid)); if (j >= 0) i = j; }
     pickDiff(i, true);
   }
-  $("detail").hidden = false;
+  $("detail").classList.remove("out"); $("detail").hidden = false;
   $("dBody").scrollTop = 0;
   $("dGo").focus({ preventScroll: true });
 }
 function pickDiff(i, silent) {
   detailPick = detailInfo.diffs[i];
   $("dList").querySelectorAll(".drow").forEach((r, j) => r.classList.toggle("on", j === i));
-  $("dGo").textContent = tr("Preview: {d}", { d: detailPick.name });
+  // a long difficulty name ends in "…" (the whole name is in the list above and in the tooltip); a flex button can't ellipsize its own text
+  const go = $("dGo"), goT = tr("Preview: {d}", { d: detailPick.name }); go.replaceChildren(h("span", "btxt", goT)); go.title = goT;
+  const st = $("dStats"), d = detailPick; st.innerHTML = ""; st.hidden = false;
+  // BPM/CS/AR/OD/HP are osu!'s own abbreviations in every language; the length label is translated
+  for (const [k, v] of [["BPM", d.bpm || detailInfo.bpm ? Math.round(d.bpm || detailInfo.bpm) : "–"], [tr("Length").toUpperCase(), d.len ? fmt(d.len) : detailInfo.len ? fmt(detailInfo.len) : "–"], ["CS", fmtNum(d.cs)], ["AR", fmtNum(d.ar)], ["OD", fmtNum(d.od)], ["HP", fmtNum(d.hp)]]) {
+    const t = h("div", "dstat"); t.append(h("small", null, k), h("b", null, v == null || v === "" ? "–" : String(v))); st.append(t);
+  }
   if (detailInfo.osuLink) detailInfo.osuLink.href = osuSetURL(detailInfo.sid, detailPick.bid);
   if (!silent) { $("dList").children[i].scrollIntoView({ block: "nearest", behavior: "smooth" }); if (detailInfo.sid && R.inMap) setMapURL(detailInfo.sid, detailPick.bid, false); }
 }
-function hideDetail() { if (!$("detail").hidden) $("detail").hidden = true; if (pvOwner === "detail") pausePreview(); }
-function closeDetail() { hideDetail(); if (detailInfo && detailInfo.sid && UI.player.hidden) leaveMap(); }
+function hideDetail() { const d = $("detail"); if (!d.hidden) d.hidden = true; d.classList.remove("out"); $("dPanel").style.transform = ""; if (pvOwner === "detail") pausePreview(); document.querySelectorAll("#results .card.sel").forEach(c => c.classList.remove("sel")); }
+// closing by hand: the panel sinks away first (.out), then hides
+function closeDetail() {
+  const d = $("detail"), done = () => { hideDetail(); if (detailInfo && detailInfo.sid && UI.player.hidden) leaveMap(); };
+  if (d.hidden || d.classList.contains("out") || RM) return done();
+  d.classList.add("out"); setTimeout(() => { if (d.classList.contains("out")) done(); }, 170);
+}
 $("dClose").onclick = closeDetail;
 $("detail").addEventListener("pointerdown", e => { if (e.target.id === "detail") closeDetail(); });
 const goDetail = mode => { const d = detailPick, go = detailOnGo; hideDetail(); go && go(d, mode); };
@@ -527,7 +592,7 @@ $("dVol").append(volControl());
     if (!cap && dy > 8) { cap = true; try { e.currentTarget.setPointerCapture(e.pointerId); } catch {} }
     pnl.style.transform = `translateY(${dy}px)`;
   };
-  const end = () => { if (y0 == null) return; y0 = null; pnl.style.transition = ""; pnl.style.transform = ""; if (dy > 110) closeDetail(); };
+  const end = () => { if (y0 == null) return; y0 = null; pnl.style.transition = ""; if (dy > 110) closeDetail(); else pnl.style.transform = ""; }; // (closing slides on from where the finger let go)
   for (const el of [$("dGrab"), $("dCover")]) { el.addEventListener("pointerdown", start); el.addEventListener("pointermove", move); el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end); }
 })();
 
@@ -816,7 +881,7 @@ async function selectDiff(i) {
   bgHidden = !!map.bg && sb.some(s => s.frames.includes(norm(map.bg)));
   const title = map.meta.TitleUnicode || map.meta.Title || "", artist = map.meta.ArtistUnicode || map.meta.Artist || "";
   $("mTitle").textContent = artist ? `${artist} - ${title}` : title; // (the invite page's demo map has only a title)
-  $("mSub").textContent = `[${map.meta.Version || "?"}]` + (map.meta.Creator ? ` · mapped by ${map.meta.Creator}` : "");
+  $("mSub").textContent = `[${map.meta.Version || "?"}]` + (map.meta.Creator ? ` · mapped by ${map.meta.Creator}` : ""); edSongSync();
   $("tapInfo").textContent = `${title} [${map.meta.Version || "?"}]${startAt > 0 ? ` · ${tr("starts at {t}", { t: fmtMs(startAt) })}` : ""}`;
   setTitle(`${artist} - ${title} [${map.meta.Version || "?"}]`);
   const songKey = norm(map.general.AudioFilename || ""), af = files[songKey];
@@ -991,7 +1056,7 @@ $("refreshList").onclick = () => { refreshList(); toast(tr("Loading the newest l
 
 // ---------- install as an app (sw.js: the site opens without a connection; maps you downloaded stay in this browser) ----------
 let installPrompt = null;
-const appInstalled = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const appInstalled = () => DEV.standalone; // (display-mode: standalone, or iOS navigator.standalone: device.js)
 if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost") && !DEMO_TOUR)
   addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
 addEventListener("beforeinstallprompt", e => { e.preventDefault(); installPrompt = e; if (typeof renderAccount === "function") renderAccount(); });
@@ -1002,7 +1067,7 @@ function installButton(cls) {
   const b = h("button", cls || "btn ghost sm wide", "⤓ " + tr("Install as an app"));
   b.onclick = async () => {
     if (installPrompt) { installPrompt.prompt(); try { await installPrompt.userChoice; } catch {} installPrompt = null; if (typeof renderAccount === "function") renderAccount(); return; }
-    modal({ title: tr("Install as an app"), body: h("p", null, tr("In Safari, tap Share (the square with an arrow), then \"Add to Home Screen\".")), buttons: [{ label: tr("OK"), value: true, cls: "main" }] });
+    modal({ title: tr("Install as an app"), body: h("p", null, DEV.browser === "safari" ? tr("In Safari, tap Share (the square with an arrow), then \"Add to Home Screen\".") : tr("Tap Share (the square with an arrow, in the address bar or the browser's menu), then \"Add to Home Screen\".")), buttons: [{ label: tr("OK"), value: true, cls: "main" }] }); // (Chrome, Edge and Firefox on iPhone / iPad have it too, since iOS 16.4)
   };
   return b;
 }

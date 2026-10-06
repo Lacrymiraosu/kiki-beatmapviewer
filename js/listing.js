@@ -30,8 +30,12 @@ function advRender() {
   const box = $("advPanel"), pills = $("advPills"); if (!box || !pills) return;
   const onList = R.view === "songs" && !(R.ctx && R.ctx.u), f = curF();
   // what's on, as removable pills (also while the panel is closed)
-  pills.innerHTML = ""; pills.hidden = !onList || !fCount(f);
-  const pill = (label, rm, title) => { const b = h("button", "fpill"); b.type = "button"; b.append(h("span", null, label), h("b", null, "×")); b.title = title || tr("Remove this filter"); b.onclick = () => setF(rm, true); pills.append(b); };
+  // keywords typed in the box (stars>5 source="touhou") first: removing one takes it out of the search text
+  const q = onList && R.ctx ? R.ctx.q : "", terms = kwParse(q).terms, nf = fCount(f) + terms.length;
+  pills.innerHTML = ""; pills.hidden = !onList || !nf;
+  const pill = (label, rm, title) => { const b = h("button", "fpill"); b.type = "button"; b.append(h("span", null, label), h("b", null, "×")); b.title = title || tr("Remove this filter"); b.onclick = () => setF(rm, true); pills.append(b); return b; };
+  const kwGo = (q2, f2) => { clearTimeout(ADV.timer); ADV.pending = null; goList({ ...R.ctx, u: "", q: q2, f: f2 }, false); };
+  for (const t of terms) { const b = pill(kwLabel(t), null, tr("Remove this keyword")); b.classList.add("kwpill"); b.onclick = () => kwGo(kwStrip(q, x => x.start === t.start), curF()); }
   if (f.g) pill(tr(genreName(f.g)), x => { x.g = 0; });
   if (f.l) pill(tr(langName(f.l)), x => { x.l = 0; });
   for (const t of f.tags) pill(`${catLabel(tagCat(t))}: ${tagShort(t)}`, x => { x.tags = x.tags.filter(y => y !== t); });
@@ -40,7 +44,8 @@ function advRender() {
   if (f.sb) pill(tr("Has storyboard"), x => { x.sb = false; });
   if (f.nsfw) pill(tr("Explicit content"), x => { x.nsfw = false; });
   if (f.sort) pill(sortLabel(f.sort), x => { x.sort = ""; });
-  if (fCount(f) > 1) { const c = h("button", "mlink", tr("Clear all")); c.type = "button"; c.onclick = () => setF(x => Object.assign(x, fEmpty()), true); pills.append(c); }
+  if (nf > 1) { const c = h("button", "mlink", tr("Clear all")); c.type = "button"; c.onclick = () => terms.length ? kwGo(kwStrip(q), fEmpty()) : setF(x => Object.assign(x, fEmpty()), true); pills.append(c); }
+  pillsFit(pills, true);
   box.hidden = !onList || !ADV.open;
   if (box.hidden) return;
   box.innerHTML = "";
@@ -103,6 +108,64 @@ function renderTagPicker(box, f) {
   showTip(ADV.tip);
   box.append(tabs, list, tip);
 }
+
+// ---------- Search tips: the osu! keywords the box understands (kwParse in osudata.js); tap one to add it ----------
+const KW_TIPS = [["artist=xi", "Artist"], ['title="night of nights"', "Title (quotes when it has spaces)"], ['source="touhou"', "Source: the game, anime or album"],
+  ["creator=kiki", "Mapper (also mapper=)"], ["tag=jazz", "Mapper tags"], ["difficulty=insane", "Difficulty name"],
+  ["stars>5", "Star rating (also sr= and star=)"], ["ar>=9", "Approach rate"], ["cs=4", "Circle size"], ["od>8", "Overall difficulty"], ["hp<5", "HP drain"], ["bpm>=180", "BPM"],
+  ["length<2:30", "Length: seconds, 90s, 2m or 2:30"], ["drain>90", "Drain time (the length without breaks)"],
+  ["status=loved", "Status: ranked, loved, qualified, pending or graveyard"], ["ranked>2024", "Date ranked: a year, 2024-05 or 2024-05-31"], ["created<2015", "Date submitted"], ["updated>=2025-06", "Last updated"]];
+function kwTipsInit() {
+  const form = $("searchForm"), q = $("q"); if (!form || $("kwTipsBtn")) return;
+  const btn = h("button", "kwbtn", "?"); btn.type = "button"; btn.id = "kwTipsBtn"; btn.setAttribute("aria-expanded", "false"); btn.setAttribute("aria-controls", "kwTips");
+  const pop = h("div", "kwtips"); pop.id = "kwTips"; pop.hidden = true; pop.setAttribute("role", "dialog");
+  const lang = () => { btn.title = tr("Search tips"); btn.setAttribute("aria-label", tr("Search tips")); pop.setAttribute("aria-label", tr("Search tips")); };
+  const add = ex => { // (replaces the same key and operator already in the box: tapping twice doesn't add it twice)
+    const n = kwParse(ex).terms; q.value = (kwStrip(q.value, t => n.some(x => x.key === t.key && x.op === t.op)) + " " + ex).trim(); show(false); q.focus(); q.setSelectionRange(q.value.length, q.value.length); };
+  const exBtn = ex => { const b = h("button", "kwex"); b.type = "button"; b.append(h("code", null, ex)); b.onclick = () => add(ex); return b; };
+  const draw = () => {
+    pop.innerHTML = ""; lang();
+    const head = h("div", "kwhead"); head.append(h("b", null, tr("Search tips")), h("span", null, tr("Keywords work like on the osu! website. Tap one to add it to your search.")));
+    const grid = h("div", "kwgrid");
+    for (const [ex, d] of KW_TIPS) { const r = h("div", "kwrow"); r.append(exBtn(ex), h("span", "kwd", tr(d))); grid.append(r); }
+    const foot = h("div", "kwfoot"); foot.append(h("span", null, tr("Mix them with words:")), exBtn('source="touhou" stars>5'), h("span", "kwops", tr("Operators: = : > >= < <=")));
+    pop.append(head, grid, foot);
+  };
+  const fit = () => { pop.style.maxHeight = ""; const r = pop.getBoundingClientRect(), vb = window.visualViewport ? visualViewport.height : innerHeight; if (r.bottom > vb - 12) pop.style.maxHeight = Math.max(140, vb - 12 - r.top) + "px"; }; // (the search bar is sticky: the popover can't be scrolled into view, so it stops above the bottom of the screen)
+  const show = on => { if (on) draw(); pop.hidden = !on; btn.setAttribute("aria-expanded", on); btn.classList.toggle("on", on); if (on) fit(); };
+  btn.onclick = () => show(pop.hidden);
+  form.insertBefore(btn, form.querySelector("kbd")); form.closest(".searchbar").append(pop); lang();
+  document.addEventListener("pointerdown", e => { if (!pop.hidden && !pop.contains(e.target) && e.target !== btn) show(false); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && !pop.hidden) { e.stopPropagation(); show(false); btn.focus(); } }, true);
+  addEventListener("langchange", () => { lang(); if (!pop.hidden) { draw(); fit(); } });
+  addEventListener("resize", () => { if (!pop.hidden) fit(); });
+  form.addEventListener("submit", () => show(false));
+}
+kwTipsInit();
+// the pills bar sits over the list (position:absolute, under the sticky search bar): the status row moves down by its real height, also when the pills wrap to 2+ lines
+if ($("advPills") && $("select") && window.ResizeObserver) new ResizeObserver(() => $("select").style.setProperty("--pills-h", $("advPills").offsetHeight + "px")).observe($("advPills"));
+// keyword / filter pills fold to 2 rows when they'd wrap to 3+ (mostly phones): a "+N" button at the end of row 2 shows the rest and becomes "Show less"; "Clear all" stays last
+function pillsFit(box, fresh) {
+  if (!box) return;
+  const items = [...box.querySelectorAll(".fpill:not(.fmore)")], clear = box.querySelector(".mlink");
+  if (fresh) { const key = items.map(b => b.textContent); if (!key.every(k => (ADV.pillsKey || []).includes(k))) ADV.pillsOpen = false; ADV.pillsKey = key; } // a new search folds them again (removing a pill doesn't)
+  if (box.hidden || !items.length) return;
+  let more = box.querySelector(".fmore");
+  if (!more) { more = h("button", "fpill fmore"); more.type = "button"; more.setAttribute("aria-controls", box.id); more.onclick = () => { ADV.pillsOpen = !ADV.pillsOpen; pillsFit(box); more.focus(); }; }
+  box.insertBefore(more, clear);
+  for (const b of items) b.classList.remove("pcut");
+  more.hidden = true;
+  const rows = () => { let n = 0, bot = -Infinity; for (const el of box.children) { if (!el.offsetWidth) continue; const t = el.offsetTop, b = t + el.offsetHeight; if (t >= bot - 1) { n++; bot = b; } else bot = Math.max(bot, b); } return n; };
+  if (rows() <= 2) return; // they fit (or the bar isn't on screen yet: the width observer below runs this again)
+  more.hidden = false; more.setAttribute("aria-expanded", !!ADV.pillsOpen);
+  if (ADV.pillsOpen) { more.textContent = tr("Show less"); more.removeAttribute("aria-label"); more.title = ""; return; }
+  for (let n = 1; n < items.length; n++) {
+    items[items.length - n].classList.add("pcut"); more.textContent = "+" + n;
+    more.title = tr("Show all filters"); more.setAttribute("aria-label", `${tr("Show all filters")} (+${n})`);
+    if (rows() <= 2) break;
+  }
+}
+if ($("advPills") && window.ResizeObserver) new ResizeObserver(([e]) => { const w = Math.round(e.contentRect.width); if (w !== ADV.pillsW) { ADV.pillsW = w; pillsFit($("advPills")); } }).observe($("advPills"));
 
 // ---------- a map's details from osu!: genre, language, player tags, mapper tags, nominators, rating ----------
 async function renderSetMeta(box, info) {

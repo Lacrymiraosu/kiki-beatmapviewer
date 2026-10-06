@@ -23,44 +23,47 @@
 <link rel="preconnect" href="https://api.nerinyan.moe" crossorigin>
 <link rel="preconnect" href="https://assets.ppy.sh">
 <link rel="preconnect" href="https://b.ppy.sh">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;600&family=Varela+Round&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/app.css?v=201">
-<script src="js/core.js?v=201" defer></script>
-<script src="js/i18n.js?v=201" defer></script>
-<script src="js/api.js?v=201" defer></script>
-<script src="js/osudata.js?v=201" defer></script>
-<script src="js/parse.js?v=201" defer></script>
-<script src="js/skins.js?v=201" defer></script>
-<script src="js/audio.js?v=201" defer></script>
-<script src="js/auto.js?v=201" defer></script>
-<script src="js/player.js?v=201" defer></script>
-<script src="js/verify.js?v=201" defer></script>
-<script src="js/verifyui.js?v=201" defer></script>
-<script src="js/spectrum.js?v=201" defer></script>
-<script src="js/tools.js?v=201" defer></script>
-<script src="js/compare.js?v=201" defer></script>
-<script src="js/editor.js?v=201" defer></script>
-<script src="js/hsstudio.js?v=201" defer></script>
-<script src="js/play.js?v=201" defer></script>
-<script src="js/app.js?v=201" defer></script>
-<script src="js/listing.js?v=201" defer></script>
-<script src="js/create.js?v=201" defer></script>
-<script src="js/live.js?v=201" defer></script>
-<script src="js/liveink.js?v=201" defer></script>
-<script src="js/drafts.js?v=201" defer></script>
-<script src="js/annot.js?v=201" defer></script>
-<script src="js/sidelists.js?v=201" defer></script>
-<script src="js/collab.js?v=201" defer></script>
-<script src="js/cloud.js?v=201" defer></script>
-<script src="js/admin.js?v=201" defer></script>
-<script src="js/home.js?v=201" defer></script>
-<script src="js/invites.js?v=201" defer></script>
-<script src="js/account.js?v=201" defer></script>
-<script src="js/gdrive.js?v=201" defer></script>
-<script src="js/demo.js?v=201" defer></script>
-<script src="js/invscene.js?v=201" defer></script>
-<script src="js/gate.js?v=201" defer></script>
-<script src="js/pages.js?v=201" defer></script>
+<!-- device.js before the stylesheets (not deferred: the dev-* classes are on <html> for the first paint, and a slow fonts host can't hold it up) -->
+<script src="js/device.js?v=226"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,500;0,600;0,700;0,800;1,800&family=IBM+Plex+Sans+Thai:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/app.css?v=226">
+<script src="js/core.js?v=226" defer></script>
+<script src="js/i18n.js?v=226" defer></script>
+<script src="js/api.js?v=226" defer></script>
+<script src="js/osudata.js?v=226" defer></script>
+<script src="js/parse.js?v=226" defer></script>
+<script src="js/skins.js?v=226" defer></script>
+<script src="js/audio.js?v=226" defer></script>
+<script src="js/auto.js?v=226" defer></script>
+<script src="js/player.js?v=226" defer></script>
+<script src="js/verify.js?v=226" defer></script>
+<script src="js/verifyui.js?v=226" defer></script>
+<script src="js/spectrum.js?v=226" defer></script>
+<script src="js/tools.js?v=226" defer></script>
+<script src="js/compare.js?v=226" defer></script>
+<script src="js/editor.js?v=226" defer></script>
+<script src="js/hsstudio.js?v=226" defer></script>
+<script src="js/play.js?v=226" defer></script>
+<script src="js/app.js?v=226" defer></script>
+<script src="js/listing.js?v=226" defer></script>
+<script src="js/create.js?v=226" defer></script>
+<script src="js/live.js?v=226" defer></script>
+<script src="js/liveink.js?v=226" defer></script>
+<script src="js/drafts.js?v=226" defer></script>
+<script src="js/annot.js?v=226" defer></script>
+<script src="js/sidelists.js?v=226" defer></script>
+<script src="js/edtour.js?v=226" defer></script>
+<script src="js/collab.js?v=226" defer></script>
+<script src="js/cloud.js?v=226" defer></script>
+<script src="js/admin.js?v=226" defer></script>
+<script src="js/home.js?v=226" defer></script>
+<script src="js/invites.js?v=226" defer></script>
+<script src="js/account.js?v=226" defer></script>
+<script src="js/gdrive.js?v=226" defer></script>
+<script src="js/demo.js?v=226" defer></script>
+<script src="js/invscene.js?v=226" defer></script>
+<script src="js/gate.js?v=226" defer></script>
+<script src="js/pages.js?v=226" defer></script>
 </head>
 <body>
 
@@ -69,11 +72,13 @@
   <header class="top apptop">
     <a id="home" class="brand" href="./">
       <div class="logo" aria-hidden="true"></div>
-      <div><strong class="bname">KIKI BEATMAP VIEWER</strong><p data-i18n="Preview and mod osu! beatmaps in your browser">Preview and mod osu! beatmaps in your browser</p></div>
+      <div><strong class="bname" aria-label="KIKI BEATMAP VIEWER">KIKI</strong><p data-i18n="Preview and mod osu! beatmaps in your browser">Preview and mod osu! beatmaps in your browser</p></div>
     </a>
     <nav id="topnav" class="topnav">
-      <a href="?view=songs" data-go="songs" data-perm="listing" data-i18n="Beatmap">Beatmap</a>
+      <a href="./" data-go="home" data-i18n="Home">Home</a>
+      <a href="?view=songs" data-go="songs" data-perm="listing" data-i18n="Beatmaps">Beatmaps</a>
       <a href="?view=editor" data-go="editor" data-perm="editor" data-i18n="Editor">Editor</a>
+      <a href="?view=guide" data-go="guide" data-i18n="Guide">Guide</a>
     </nav>
     <div class="topacts">
       <button id="guestReq" class="btn main sm" type="button" hidden data-i18n="Request access">Request access</button>
@@ -86,64 +91,88 @@
   <div id="acctPop" class="volpop acctpop" hidden></div>
 
   <main id="homeView" class="view homev" hidden>
-    <section class="hero">
-      <div id="heroDemo" class="herodemo" aria-hidden="true"></div>
-      <h1 data-i18n="Preview, mod and map osu! beatmaps right in your browser">Preview, mod and map osu! beatmaps right in your browser</h1>
-      <p data-i18n="Free, nothing to install. What do you want to do?">Free, nothing to install. What do you want to do?</p>
-    </section>
-    <div class="menu">
-      <a class="mcard songs" href="?view=songs" data-go="songs" data-perm="listing">
-        <span class="mic"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></span>
-        <b data-i18n="Beatmap">Beatmap</b>
-        <span data-i18n="Search osu! beatmaps, listen to previews, watch them with storyboard and hitsounds, and download them.">Search osu! beatmaps, listen to previews, watch them with storyboard and hitsounds, and download them.</span>
-        <em data-i18n="Browse maps →">Browse maps →</em>
-      </a>
-      <a class="mcard editor" href="?view=editor" data-go="editor" data-perm="editor">
-        <span class="mic"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg></span>
-        <b data-i18n="Editor">Editor</b>
-        <span data-i18n="Create a new beatmap or open one from osu! to mod it: osu!-style editor, checks, mod notes and live sessions.">Create a new beatmap or open one from osu! to mod it: osu!-style editor, checks, mod notes and live sessions.</span>
-        <em data-i18n="Open the editor →">Open the editor →</em>
-      </a>
-    </div>
-    <div class="quick">
-      <form id="homeSearch" class="searchrow" role="search" data-perm="listing"><input id="homeQ" type="search" enterkeyhint="search" autocomplete="off" data-i18n-aria="Song, artist, mapper:name or an osu.ppy.sh link" aria-label="Song, artist, mapper:name or an osu.ppy.sh link" data-i18n-ph="Song, artist, mapper:name or an osu.ppy.sh link" placeholder="Song, artist, mapper:name or an osu.ppy.sh link"><button class="btn main" data-i18n="Search">Search</button></form>
-      <div class="btnrow"><button id="homeOpen" class="btn ghost sm" data-perm="player" data-i18n="Open .osz file">Open .osz file</button><button class="btn ghost sm gdopen" hidden data-perm="player" data-i18n="Google Drive">Google Drive</button><button id="homeJoin" class="btn ghost sm" data-perm="live" data-i18n="Join live mapping">Join live mapping</button></div>
-    </div>
-    <section id="homeDrafts" class="drafts" data-perm="editor" hidden></section>
-    <section id="homeFeats" class="homefeats" aria-labelledby="homeFeatsH">
-      <h2 id="homeFeatsH" data-i18n="What you can do here">What you can do here</h2>
-      <div class="gfeat">
-        <article class="gcard"><span class="mic" data-feat="1"></span><b data-i18n="Preview player">Preview player</b><span data-i18n="Watch any difficulty with its storyboard, video and hitsounds, in the osu! default or retro skin, or your own .osk. Speed, offset and Bluetooth calibration included.">Watch any difficulty with its storyboard, video and hitsounds, in the osu! default or retro skin, or your own .osk. Speed, offset and Bluetooth calibration included.</span></article>
-        <article class="gcard"><span class="mic" data-feat="2"></span><b data-i18n="An editor like osu!'s">An editor like osu!'s</b><span data-i18n="Compose, Timing, Hitsounds, Verify and Setup, with beat snap, grid and distance snap, mapping guides for spacing and angles, slider previews on the timeline, colours and hotkeys you already know.">Compose, Timing, Hitsounds, Verify and Setup, with beat snap, grid and distance snap, mapping guides for spacing and angles, slider previews on the timeline, colours and hotkeys you already know.</span></article>
-        <article class="gcard"><span class="mic" data-feat="3"></span><b data-i18n="Modding tools">Modding tools</b><span data-i18n="Mod notes with osu! timestamps, annotations (comments, arrows, highlights) on the objects, side lists to follow them through the map, and checks for common issues.">Mod notes with osu! timestamps, annotations (comments, arrows, highlights) on the objects, side lists to follow them through the map, and checks for common issues.</span></article>
-        <article class="gcard"><span class="mic" data-feat="4"></span><b data-i18n="Hitsound Studio">Hitsound Studio</b><span data-i18n="All hitsounds in lanes under the timeline: stretch them, go full screen with a tool dock, right-click for sample sets and green lines, slider ticks, and keysound numbering for piano-style hitsounding.">All hitsounds in lanes under the timeline: stretch them, go full screen with a tool dock, right-click for sample sets and green lines, slider ticks, and keysound numbering for piano-style hitsounding.</span></article>
-        <article class="gcard"><span class="mic" data-feat="5"></span><b data-i18n="Live mapping">Live mapping</b><span data-i18n="Map and mod with friends in real time: a live session led by the host, or a collab where everyone edits one difficulty and the changes merge. With chat, where everyone is in the song and a log of recent changes.">Map and mod with friends in real time: a live session led by the host, or a collab where everyone edits one difficulty and the changes merge. With chat, where everyone is in the song and a log of recent changes.</span></article>
-        <article class="gcard"><span class="mic" data-feat="6"></span><b data-i18n="Online projects">Online projects</b><span data-i18n="Save a whole beatmap package privately, share it with people by osu! name or with a read-only link, and never lose work: drafts are kept on your device too.">Save a whole beatmap package privately, share it with people by osu! name or with a read-only link, and never lose work: drafts are kept on your device too.</span></article>
+    <div class="hwrap">
+      <div class="hero" hidden><div id="heroDemo" class="herodemo" aria-hidden="true"></div></div>
+      <div class="hhead">
+        <div class="htitle">
+          <h1><em>KIKI</em> BEATMAP VIEWER</h1>
+          <p data-i18n="Preview, mod and map osu! beatmaps right in your browser">Preview, mod and map osu! beatmaps right in your browser</p>
+        </div>
+        <span class="hfree" data-i18n="Free · no install · no ads">Free · no install · no ads</span>
       </div>
-    </section>
+      <form id="homeSearch" class="hsearch" role="search" data-perm="listing">
+        <svg class="hsico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+        <input id="homeQ" type="search" enterkeyhint="search" autocomplete="off" data-i18n-aria="Search by song or artist, use keywords like stars>5 or source=&quot;touhou&quot;, or paste an osu.ppy.sh link" aria-label="Search by song or artist, use keywords like stars>5 or source=&quot;touhou&quot;, or paste an osu.ppy.sh link" data-i18n-ph="Song, artist, or keywords like stars>5 source=&quot;touhou&quot;, or an osu.ppy.sh link" data-i18n-ph-fit="Song, artist, or keywords: stars>5|Song or stars>5" placeholder="Song, artist, or keywords like stars>5 source=&quot;touhou&quot;, or an osu.ppy.sh link">
+        <kbd aria-hidden="true">/</kbd>
+        <button class="btn main" data-i18n="Search">Search</button>
+      </form>
+      <div class="hgrid">
+        <a class="htile songs" href="?view=songs" data-go="songs" data-perm="listing">
+          <span class="hic"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></span>
+          <kbd aria-hidden="true">B</kbd><i class="hnum" aria-hidden="true">01</i>
+          <b data-i18n="Beatmaps">Beatmaps</b><span data-i18n="Browse, preview, download">Browse, preview, download</span>
+        </a>
+        <a class="htile editor" href="?view=editor" data-go="editor" data-perm="editor">
+          <span class="hic"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg></span>
+          <kbd aria-hidden="true">E</kbd><i class="hnum" aria-hidden="true">02</i>
+          <b data-i18n="Editor">Editor</b><span data-i18n="Map and mod in the browser">Map and mod in the browser</span>
+        </a>
+        <a class="hcard new" href="?view=create" data-go="create" data-perm="editor">
+          <span class="hic"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span><kbd aria-hidden="true">N</kbd>
+          <b data-i18n="New beatmap">New beatmap</b><span data-i18n="Start from a song file">Start from a song file</span>
+        </a>
+        <div class="hcard open" data-perm="player">
+          <button id="homeOpen" class="hcover" type="button"><span class="hic"><svg viewBox="0 0 24 24"><path d="M4 6h6l2 2h8v11H4z"/></svg></span><kbd aria-hidden="true">O</kbd>
+          <b data-i18n="Open .osz">Open .osz</b><span data-i18n="From your computer or Drive">From your computer or Drive</span></button>
+          <button class="mlink gdopen" type="button" hidden data-i18n="Google Drive">Google Drive</button>
+        </div>
+        <button id="homeJoin" class="hrow live" type="button" data-perm="live">
+          <span class="hic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.5"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2"/></svg></span>
+          <span class="htx"><b data-i18n="Join live">Join live</b><span data-i18n="Enter a session code">Enter a session code</span></span><svg class="harr" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+        <a class="hrow mine" href="?view=projects" data-go="projects" data-perm="editor">
+          <span class="hic"><svg viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .5-7.97A6 6 0 0 0 6 9.5 4.25 4.25 0 0 0 7 18z"/></svg></span>
+          <span class="htx"><b data-i18n="My projects">My projects</b><span data-i18n="Saves and drafts">Saves and drafts</span></span><svg class="harr" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+      </div>
+      <section id="homeFeats" class="hchips" aria-label="What you can do here" data-i18n-aria="What you can do here">
+        <span class="lbl" data-i18n="You can">You can</span>
+        <span class="hchip c1" data-i18n="Preview with storyboard &amp; hitsounds">Preview with storyboard &amp; hitsounds</span>
+        <span class="hchip c2" data-i18n="Edit like osu!">Edit like osu!</span>
+        <span class="hchip c3" data-i18n="Mod notes &amp; checks">Mod notes &amp; checks</span>
+        <span class="hchip c1" data-i18n="Hitsound Studio">Hitsound Studio</span>
+        <span class="hchip c4" data-i18n="Map live with friends">Map live with friends</span>
+        <span class="hchip c5" data-i18n="Save online">Save online</span>
+      </section>
+      <section id="homeDrafts" class="drafts" data-perm="editor" hidden></section>
+    </div>
   </main>
 
   <main id="select" class="view" hidden>
     <div id="pickBanner" class="pickban" hidden><span data-i18n="Pick a map to open in the editor">Pick a map to open in the editor</span><button id="pickBannerX" class="mlink" data-i18n="Just browsing">Just browsing</button></div>
     <div class="searchbar">
-      <form id="searchForm" class="searchrow" role="search">
-        <input id="q" type="search" enterkeyhint="search" autocomplete="off" data-i18n-aria="Song, artist, mapper:name or an osu.ppy.sh link" aria-label="Song, artist, mapper:name or an osu.ppy.sh link" data-i18n-ph="Song, artist, mapper:name or an osu.ppy.sh link" placeholder="Song, artist, mapper:name or an osu.ppy.sh link">
-        <button id="go" class="btn main" data-i18n="Search">Search</button>
+      <form id="searchForm" class="searchrow sbq" role="search">
+        <svg class="hsico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+        <input id="q" type="search" enterkeyhint="search" autocomplete="off" data-i18n-aria="Search by song or artist, use keywords like stars>5 or source=&quot;touhou&quot;, or paste an osu.ppy.sh link" aria-label="Search by song or artist, use keywords like stars>5 or source=&quot;touhou&quot;, or paste an osu.ppy.sh link" data-i18n-ph="Song, artist, or keywords like stars>5 source=&quot;touhou&quot;" data-i18n-ph-fit="Song, artist, or keywords: stars>5|Song or stars>5" placeholder="Song, artist, or keywords like stars>5 source=&quot;touhou&quot;">
+        <kbd aria-hidden="true">/</kbd>
+        <button id="go" class="btn main sm" data-i18n="Search">Search</button>
       </form>
       <div id="filters" class="chips" role="tablist"></div>
+      <div class="sbtools">
+        <label class="mirror"><span class="lbl" data-i18n="Mirror">Mirror</span> <select id="mirrorSel"></select></label>
+        <button id="refreshList" class="icon" type="button" data-i18n-title="Load the list again from the mirror (new and newly ranked maps)" title="Load the list again from the mirror (new and newly ranked maps)" data-i18n-aria="Refresh" aria-label="Refresh"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
+      </div>
       <div id="advPills" class="fpills" hidden></div>
     </div>
     <section id="advPanel" class="advpanel" hidden></section>
+    <section id="mapper" class="mapper" hidden></section>
     <div class="subrow">
-      <label class="mirror">Mirror <select id="mirrorSel"></select></label>
+      <div id="status" class="status" aria-live="polite"></div>
       <div class="btnrow subacts">
-        <button id="refreshList" class="btn ghost sm" data-i18n-title="Load the list again from the mirror (new and newly ranked maps)" title="Load the list again from the mirror (new and newly ranked maps)">↻ <span data-i18n="Refresh">Refresh</span></button>
         <button id="pick" class="btn ghost sm" data-i18n="Open .osz file">Open .osz file</button>
         <button class="btn ghost sm gdopen" hidden data-i18n="Google Drive">Google Drive</button>
       </div>
     </div>
-    <section id="mapper" class="mapper" hidden></section>
-    <div id="status" class="status" aria-live="polite"></div>
     <div id="results" class="grid"></div>
     <button id="more" class="btn ghost wide more" hidden data-i18n="Load more">Load more</button>
   </main>
@@ -155,7 +184,7 @@
         <span class="mic"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></span>
         <b data-i18n="Find an osu! beatmap">Find an osu! beatmap</b>
         <span data-i18n="Search the osu! listing (through the mirrors) and open the map in Modding mode.">Search the osu! listing (through the mirrors) and open the map in Modding mode.</span>
-        <form id="hubSearch" class="searchrow"><input id="hubQ" type="search" enterkeyhint="search" autocomplete="off" data-i18n-aria="Song, artist, mapper:name or an osu.ppy.sh link" aria-label="Song, artist, mapper:name or an osu.ppy.sh link" data-i18n-ph="Song, artist, mapper:name or an osu.ppy.sh link" placeholder="Song, artist, mapper:name or an osu.ppy.sh link"><button class="btn main" data-i18n="Search">Search</button></form>
+        <form id="hubSearch" class="searchrow"><input id="hubQ" type="search" enterkeyhint="search" autocomplete="off" data-i18n-aria="Search by song or artist, use keywords like stars>5 or source=&quot;touhou&quot;, or paste an osu.ppy.sh link" aria-label="Search by song or artist, use keywords like stars>5 or source=&quot;touhou&quot;, or paste an osu.ppy.sh link" data-i18n-ph="Song, artist, or keywords like stars>5 source=&quot;touhou&quot;" data-i18n-ph-fit="Song, artist, or keywords: stars>5|Song or stars>5" placeholder="Song, artist, or keywords like stars>5 source=&quot;touhou&quot;"><button class="btn main" data-i18n="Search">Search</button></form>
         <a class="mlink" href="?view=songs&amp;for=edit" data-go="songs" data-for="edit" data-i18n="Browse the latest maps →">Browse the latest maps →</a>
       </div>
       <a class="mcard create" href="?view=create" data-go="create">
@@ -216,12 +245,14 @@
           <button id="modePrev" class="on" aria-pressed="true">Preview</button><button id="modeEdit" aria-pressed="false" data-perm="editor">Modding</button>
         </div>
         <button id="playBtn" class="btn sm playbtn" data-i18n-title="Test play: play the map yourself (keys in Settings → Test play)" title="Test play: play the map yourself (keys in Settings → Test play)">🎮 <span data-i18n="Test play">Test play</span></button>
-        <div id="edTabs" class="edtabs" role="tablist" hidden>
-          <button data-etab="compose" class="on" data-i18n="Compose">Compose</button><button data-etab="timing" data-i18n="Timing">Timing</button><button data-etab="hitsounds" data-i18n="Hitsounds">Hitsounds</button><button data-etab="verify" data-i18n="Verify">Verify</button><button data-etab="setup" data-i18n="Setup">Setup</button><button data-etab="notes" data-i18n="Mod notes">Mod notes</button><button data-etab="compare" data-i18n="Compare">Compare</button>
+        <div id="edTabs" class="edtabs" role="tablist" data-i18n-aria="Editor tabs" aria-label="Editor tabs" hidden>
+          <button data-etab="compose" class="on" data-i18n="Compose">Compose</button><button data-etab="timing" data-i18n="Timing">Timing</button><button data-etab="hitsounds" data-i18n="Hitsounds">Hitsounds</button><button data-etab="verify" data-i18n="Verify">Verify</button><button data-etab="setup" data-i18n="Setup">Setup</button><button data-etab="notes" class="adv" data-i18n="Mod notes">Mod notes</button><button data-etab="compare" data-i18n="Compare">Compare</button>
         </div>
         <button id="edTest" class="btn sm edtest" hidden data-i18n-title="Test play from here (F5)" title="Test play from here (F5)">▶ <span data-i18n="Test">Test</span></button>
         <button id="edAuto" class="btn sm edauto" hidden data-i18n-title="Watch it on Auto (the preview)" title="Watch it on Auto (the preview)" data-i18n="Auto">Auto</button>
+        <button id="edAdv" class="edadvbtn" type="button" hidden aria-pressed="false" data-i18n-title="Advanced tools: mod notes, annotations and more mapping tools, added under osu!'s own" title="Advanced tools: mod notes, annotations and more mapping tools, added under osu!'s own"><span class="advsw" aria-hidden="true"></span><span data-i18n="Advanced">Advanced</span></button>
         <button id="cloudBtn" class="btn sm cloudbtn" hidden data-i18n-title="Save online (Ctrl+S)" title="Save online (Ctrl+S)"><svg viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.2 9.2 4.4 4.4 0 0 0 7 18z"/><path d="M12 15V10M9.5 12.5L12 10l2.5 2.5"/></svg><span data-i18n="Save online">Save online</span></button>
+        <button id="edSave" class="btn sm edsave" type="button" data-i18n-title="Save: download the .osu or the .osz (Ctrl+S)" title="Save: download the .osu or the .osz (Ctrl+S)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></svg><span data-i18n="Save">Save</span></button>
         <button id="cloudChip" class="cchip" hidden></button>
         <button id="gdBtn" class="icon gdbtn" hidden data-i18n-aria="Google Drive" aria-label="Google Drive" data-i18n-title="Google Drive: save, open and export" title="Google Drive: save, open and export"><svg viewBox="0 0 24 24"><path d="M8.5 3.5h7l6 10.5-3.5 6h-12L2.5 14z"/><path d="M8.5 3.5L15 14.5H2.5M15.5 3.5L9 14.5M18 20l-3-5.5"/></svg></button>
         <button id="gdChip" class="cchip gdchip" hidden></button>
@@ -237,7 +268,6 @@
         <button id="gear" class="icon" data-i18n-aria="Settings" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M18.81 9.66L21.42 10.17L21.42 13.83L18.81 14.34L18.47 15.16L19.96 17.37L17.37 19.96L15.16 18.47L14.34 18.81L13.83 21.42L10.17 21.42L9.66 18.81L8.84 18.47L6.63 19.96L4.04 17.37L5.53 15.16L5.19 14.34L2.58 13.83L2.58 10.17L5.19 9.66L5.53 8.84L4.04 6.63L6.63 4.04L8.84 5.53L9.66 5.19L10.17 2.58L13.83 2.58L14.34 5.19L15.16 5.53L17.37 4.04L19.96 6.63L18.47 8.84Z" stroke-width="1.8"/><circle cx="12" cy="12" r="3.2"/></svg></button>
       </div>
       <div id="edTop" class="edtop" hidden>
-        <button id="edTime" class="edtime" data-i18n-title="Copy timestamp" title="Copy timestamp">00:00:000</button>
         <canvas id="edTl" class="edtl" aria-label="Timeline"></canvas>
         <div class="tlzoom"><button id="tlIn" data-i18n-title="Zoom in (Ctrl+scroll)" title="Zoom in (Ctrl+scroll)">+</button><button id="tlOut" data-i18n-title="Zoom out (Ctrl+scroll)" title="Zoom out (Ctrl+scroll)">−</button></div>
         <button id="tlLock" class="tllock" aria-pressed="false" data-i18n-title="Lock the timeline (Shift+L)" title="Lock the timeline (Shift+L)" data-i18n-aria="Lock the timeline (Shift+L)" aria-label="Lock the timeline (Shift+L)"></button>
@@ -251,43 +281,58 @@
       <button data-tool="spinner" data-i18n-title="Spinner (4)" title="Spinner (4)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg><small>Spinner</small></button>
       <button id="edSliderDone" class="accent" hidden data-i18n="Finish">Finish</button>
       <span class="sep"></span>
-      <button id="edStream" data-i18n-title="Slider → stream (Ctrl+Shift+F)" title="Slider → stream (Ctrl+Shift+F)"><svg viewBox="0 0 24 24"><circle cx="5" cy="17" r="2"/><circle cx="9.5" cy="12.5" r="2"/><circle cx="14" cy="9.5" r="2"/><circle cx="19" cy="8" r="2"/></svg><small>Stream</small></button>
-      <button id="edPoly" data-i18n-title="Polygon circles (Ctrl+Shift+D)" title="Polygon circles (Ctrl+Shift+D)"><svg viewBox="0 0 24 24"><path d="M12 3l8.5 6.2-3.2 10H6.7L3.5 9.2z"/></svg><small>Poly</small></button>
-      <button id="edXform" data-i18n-title="Rotate / scale / flip / reverse (Ctrl+Shift+R)" title="Rotate / scale / flip / reverse (Ctrl+Shift+R)"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg><small>Transform</small></button>
-      <span class="sep"></span>
       <button id="edUndo" data-i18n-title="Undo (Ctrl+Z)" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24"><path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 12"/></svg></button>
       <button id="edRedo" data-i18n-title="Redo (Ctrl+Y)" title="Redo (Ctrl+Y)"><svg viewBox="0 0 24 24"><path d="M15 7l5 5-5 5"/><path d="M20 12H10a6 6 0 0 0 0 12"/></svg></button>
       <button id="edDel" data-i18n-title="Delete (Del)" title="Delete (Del)"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg></button>
+      <span class="sep adv advsep"></span>
+      <button id="edStream" class="adv" data-i18n-title="Slider → stream (Ctrl+Shift+F)" title="Slider → stream (Ctrl+Shift+F)"><svg viewBox="0 0 24 24"><circle cx="5" cy="17" r="2"/><circle cx="9.5" cy="12.5" r="2"/><circle cx="14" cy="9.5" r="2"/><circle cx="19" cy="8" r="2"/></svg><small>Stream</small></button>
+      <button id="edPoly" class="adv" data-i18n-title="Polygon circles (Ctrl+Shift+D)" title="Polygon circles (Ctrl+Shift+D)"><svg viewBox="0 0 24 24"><path d="M12 3l8.5 6.2-3.2 10H6.7L3.5 9.2z"/></svg><small>Poly</small></button>
+      <button id="edXform" class="adv" data-i18n-title="Rotate / scale / flip / reverse (Ctrl+Shift+R)" title="Rotate / scale / flip / reverse (Ctrl+Shift+R)"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg><small>Transform</small></button>
     </div>
     <div id="edRight" class="edcol right" role="toolbar" hidden>
-      <button id="edNC" data-i18n-title="New combo (Q)" title="New combo (Q)">NC</button>
-      <button id="edW" data-i18n-title="Whistle (W)" title="Whistle (W)">W</button>
-      <button id="edF" data-i18n-title="Finish (E)" title="Finish (E)">F</button>
-      <button id="edC" data-i18n-title="Clap (R)" title="Clap (R)">C</button>
+      <button id="edNC" data-i18n-title="New combo (Q)" title="New combo (Q)">NC<small data-i18n="Combo">Combo</small></button>
+      <button id="edW" data-i18n-title="Whistle (W)" title="Whistle (W)">W<small data-i18n="Whistle">Whistle</small></button>
+      <button id="edF" data-i18n-title="Finish (E)" title="Finish (E)">F<small>Finish</small></button>
+      <button id="edC" data-i18n-title="Clap (R)" title="Clap (R)">C<small data-i18n="Clap">Clap</small></button>
       <span class="sep"></span>
-      <button id="edBankN" data-bank="1" data-i18n-title="Sample set: Normal" title="Sample set: Normal">N</button>
-      <button id="edBankS" data-bank="2" data-i18n-title="Sample set: Soft" title="Sample set: Soft">S</button>
-      <button id="edBankD" data-bank="3" data-i18n-title="Sample set: Drum" title="Sample set: Drum">D</button>
-      <button id="edHS" data-i18n-title="Hitsounds: parts of sliders, addition bank, volume, by beat, copy from a difficulty (H)" title="Hitsounds: parts of sliders, addition bank, volume, by beat, copy from a difficulty (H)"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg><small>HS</small></button>
-      <span class="sep"></span>
+      <div id="edBanks" class="edbanks" role="group">
+        <small class="edsec" data-i18n="Sample set">Sample set</small>
+        <span class="bankrow">
+          <button id="edBankN" data-bank="1" data-i18n-title="Sample set: Normal" title="Sample set: Normal">N<small data-i18n="Normal">Normal</small></button>
+          <button id="edBankS" data-bank="2" data-i18n-title="Sample set: Soft" title="Sample set: Soft">S<small data-i18n="Soft">Soft</small></button>
+          <button id="edBankD" data-bank="3" data-i18n-title="Sample set: Drum" title="Sample set: Drum">D<small data-i18n="Drum">Drum</small></button>
+        </span>
+        <small class="edsec addsec" data-i18n="Additions">Additions</small>
+        <span class="bankrow addrow">
+          <button id="edAddN" data-add="1" data-i18n-title="Additions: Normal" title="Additions: Normal">N</button>
+          <button id="edAddS" data-add="2" data-i18n-title="Additions: Soft" title="Additions: Soft">S</button>
+          <button id="edAddD" data-add="3" data-i18n-title="Additions: Drum" title="Additions: Drum">D</button>
+        </span>
+      </div>
+      <span class="sep banksep"></span>
       <button id="edGrid" data-i18n-title="Grid snap (G)" title="Grid snap (G)">#<small>Grid</small></button>
       <button id="edDS" data-i18n-title="Distance snap (T) • Alt+scroll = multiplier" title="Distance snap (T) • Alt+scroll = multiplier">DS<small>1.0x</small></button>
-      <button id="edGuide" data-i18n-title="Mapping guides: distance and angle to the previous objects (Shift+G)" title="Mapping guides: distance and angle to the previous objects (Shift+G)"><svg viewBox="0 0 24 24"><path d="M4 19h16M4 19l11-13"/><path d="M11 19a7 7 0 0 0-2.4-5.3"/></svg><small>Guides</small></button>
-      <button id="edMetro" data-i18n-title="Metronome (M)" title="Metronome (M)">♩<small>Metro</small></button>
-      <button id="edTimingQ" data-i18n-title="Timing point here (Ctrl+P red, Ctrl+Shift+P green)" title="Timing point here (Ctrl+P red, Ctrl+Shift+P green)"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M10 2h4"/></svg><small>Timing</small></button>
-      <button id="edEnd" data-i18n-title="Slider end circles on/off" title="Slider end circles on/off"><svg viewBox="0 0 24 24"><path d="M4 16c3-8 9-9 12-7"/><circle cx="18" cy="10" r="3.5"/></svg><small>End</small></button>
-      <button id="edBook" data-i18n-title="Bookmark (Ctrl+B)" title="Bookmark (Ctrl+B)"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-5-6 5z"/></svg></button>
+      <span class="sep adv"></span>
+      <button id="edHS" class="adv" data-i18n-title="Hitsounds: parts of sliders, addition bank, volume, by beat, copy from a difficulty (H)" title="Hitsounds: parts of sliders, addition bank, volume, by beat, copy from a difficulty (H)"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg><small>HS</small></button>
+      <button id="edGuide" class="adv" data-i18n-title="Mapping guides: distance and angle to the previous objects (Shift+G)" title="Mapping guides: distance and angle to the previous objects (Shift+G)"><svg viewBox="0 0 24 24"><path d="M4 19h16M4 19l11-13"/><path d="M11 19a7 7 0 0 0-2.4-5.3"/></svg><small>Guides</small></button>
+      <button id="edMetro" class="adv" data-i18n-title="Metronome (M)" title="Metronome (M)">♩<small>Metro</small></button>
+      <button id="edTimingQ" class="adv" data-i18n-title="Timing point here (Ctrl+P red, Ctrl+Shift+P green)" title="Timing point here (Ctrl+P red, Ctrl+Shift+P green)"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M10 2h4"/></svg><small>Timing</small></button>
+      <button id="edEnd" class="adv" data-i18n-title="Slider end circles on/off" title="Slider end circles on/off"><svg viewBox="0 0 24 24"><path d="M4 16c3-8 9-9 12-7"/><circle cx="18" cy="10" r="3.5"/></svg><small>End</small></button>
+      <button id="edBook" class="adv" data-i18n-title="Bookmark (Ctrl+B)" title="Bookmark (Ctrl+B)"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-5-6 5z"/></svg><small data-i18n="Bookmark">Bookmark</small></button>
     </div>
     <div id="edPanel" class="edpanel" hidden></div>
     <div id="edDlg" class="eddlg" hidden role="dialog"></div>
     <div class="bar bottom">
-      <div id="edInfo" class="edinfo" hidden><span id="edSel"></span><button id="edCopy" class="btn ghost sm" disabled data-i18n="Copy timing">Copy timing</button><button id="edNote" class="btn ghost sm" data-i18n="+ Note">+ Note</button><span class="annbtns" role="group" data-i18n-aria="Annotations" aria-label="Annotations"><button class="btn ghost sm annb" data-ann="comment" aria-pressed="false" data-i18n-title="Comment on the selected object (or tap one)" title="Comment on the selected object (or tap one)">💬</button><button class="btn ghost sm annb" data-ann="arrow" aria-pressed="false" data-i18n-title="Arrow: drag it toward an object" title="Arrow: drag it toward an object">➚</button><button class="btn ghost sm annb" data-ann="highlight" aria-pressed="false" data-i18n-title="Highlight the selected objects (or tap one)" title="Highlight the selected objects (or tap one)">◎</button></span><button id="edMenu" class="btn ghost sm edmenu" data-i18n-aria="Menu (same as right-click)" aria-label="Menu (same as right-click)" data-i18n-title="Menu (same as right-click)" title="Menu (same as right-click)">⋯</button><button id="edHl" class="btn ghost sm" hidden data-i18n-title="Highlight for everyone (H)" title="Highlight for everyone (H)">✦ <span data-i18n="Highlight">Highlight</span></button></div>
+      <div id="edTray" class="adv" role="group" data-i18n-aria="Advanced tools" aria-label="Advanced tools"><small class="traycap" data-i18n="Mapping">Mapping</small><div class="trayrow" data-grp="map" role="group" data-i18n-aria="Mapping" aria-label="Mapping"></div><small class="traycap" data-i18n="Modding">Modding</small><div class="trayrow" data-grp="mod" role="group" data-i18n-aria="Modding" aria-label="Modding"></div></div>
+      <div id="edInfo" class="edinfo" hidden><span id="edSel"></span><button id="edCopy" class="btn ghost sm adv" disabled data-i18n-title="Copy timing" title="Copy timing"><svg class="trayic" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="edlbl" data-i18n="Copy timing">Copy timing</span><small class="tlbl" data-i18n="Copy">Copy</small></button><button id="edNote" class="btn ghost sm adv" data-i18n-aria="+ Note" aria-label="+ Note"><svg class="trayic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v10l-6 6H5z"/><path d="M13 20v-6h6M12 7.5v5M9.5 10h5"/></svg><span class="edlbl" data-i18n="+ Note">+ Note</span><small class="tlbl" data-i18n="+ Note">+ Note</small></button><span class="annbtns adv" role="group" data-i18n-aria="Annotations" aria-label="Annotations"><button class="btn ghost sm annb" data-ann="comment" aria-pressed="false" data-i18n-title="Comment on the selected object (or tap one)" title="Comment on the selected object (or tap one)">💬<small class="tlbl" data-i18n="Comment">Comment</small></button><button class="btn ghost sm annb" data-ann="arrow" aria-pressed="false" data-i18n-title="Arrow: drag it toward an object" title="Arrow: drag it toward an object">➚<small class="tlbl" data-i18n="Arrow">Arrow</small></button><button class="btn ghost sm annb" data-ann="highlight" aria-pressed="false" data-i18n-title="Highlight the selected objects (or tap one)" title="Highlight the selected objects (or tap one)">◎<small class="tlbl" data-i18n="Highlight">Highlight</small></button></span><span class="edctx"></span><button id="edTrayBtn" class="edtraybtn adv" type="button" aria-expanded="false" aria-controls="edTray" data-i18n-title="Advanced tools" title="Advanced tools"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4.5l5 5-2 2-5-5zM12.5 6.5L4 15v5h5l8.5-8.5"/></svg><small data-i18n="Tools">Tools</small><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button><button id="edMenu" class="btn ghost sm edmenu" data-i18n-aria="Menu (same as right-click)" aria-label="Menu (same as right-click)" data-i18n-title="Menu (same as right-click)" title="Menu (same as right-click)">⋯</button><button id="edHl" class="btn ghost sm adv" hidden data-i18n-title="Highlight for everyone (H)" title="Highlight for everyone (H)">✦ <span data-i18n="Highlight">Highlight</span></button></div>
       <div class="botrow">
         <button id="play" class="icon play" data-i18n-aria="Play" aria-label="Play"><svg viewBox="0 0 24 24"><path id="playPath" d="M7 4l13 8-13 8z"/></svg></button>
         <button id="spd" class="spd" hidden></button>
         <button id="metroChip" class="spd metro" hidden data-i18n-title="Metronome off" title="Metronome off" data-i18n-aria="Metronome off" aria-label="Metronome off">♩<span class="mtxt" data-i18n="Metronome">Metronome</span> ✕</button>
+        <button id="edTime" class="edtime" hidden data-i18n-title="Click: copy the timestamp • Right-click or hold: paste or type one to go there" title="Click: copy the timestamp • Right-click or hold: paste or type one to go there">00:00:000</button>
+        <button id="edBm" class="icon edbm" hidden aria-pressed="false" data-i18n-aria="Bookmark (Ctrl+B)" aria-label="Bookmark (Ctrl+B)" data-i18n-title="Bookmark (Ctrl+B)" title="Bookmark (Ctrl+B)"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-5-6 5z"/></svg></button>
         <span id="tCur" class="time">0:00</span>
-        <div class="seekwrap"><canvas id="tl" aria-hidden="true"></canvas><input id="seek" type="range" min="0" max="1000" value="0" data-i18n-aria="Song position" aria-label="Song position"></div>
+        <div class="seekwrap"><canvas id="tl" aria-hidden="true"></canvas><input id="seek" type="range" min="0" max="1000" value="0" data-i18n-aria="Song position" aria-label="Song position"><div id="edSong" class="edsong" hidden aria-hidden="true"></div></div>
         <span id="tDur" class="time">0:00</span>
         <select id="rateSel" class="ratesel" data-i18n-aria="Playback speed" aria-label="Playback speed" hidden><option value="0.25">25%</option><option value="0.5">50%</option><option value="0.75">75%</option><option value="1" selected>100%</option></select>
       </div>
@@ -415,6 +460,7 @@
         <button id="dShare" class="btn ghost sm" data-i18n="Share">Share</button>
         <details id="dDl" class="ddl"><summary class="btn ghost sm dlsum" data-i18n="Download">Download</summary><div id="dDlMenu" class="ddlmenu"></div></details>
       </div>
+      <div id="dStats" class="dstats" hidden></div>
       <div id="dVol" class="dvol"></div>
       <div class="dlabel" data-i18n="Choose a difficulty">Choose a difficulty</div>
       <div id="dList" class="dlist"></div>

@@ -389,6 +389,43 @@ test("admins: only the owner adds or removes them; admins can't suspend each oth
   assert.ok(acts.includes("admin.add") && acts.includes("admin.remove"));
 });
 
+test("a non-owner admin can't change anything on their own account or the owner's; the owner can", async () => {
+  const M = 4401, U = 4402; await login(M); await login(U);
+  const up = (actor, isOwner, user, patch) => rpc(db, "obv_admin_user_update", { p_actor: actor, p_actor_is_owner: isOwner, p_owner_id: OWNER, p_user: user, p_patch: patch });
+  const upErr = (actor, isOwner, user, patch) => rpcErr(db, "obv_admin_user_update", { p_actor: actor, p_actor_is_owner: isOwner, p_owner_id: OWNER, p_user: user, p_patch: patch });
+  await up(OWNER, true, M, { role: "admin" });
+  for (const patch of [{ max_projects: 1000 }, { max_project_bytes: 2000000000 }, { retention_days: 365 }, { note: "hi" }, { max_projects: null }]) {
+    assert.equal(code(await upErr(M, false, M, patch)), "forbidden", "own account: " + JSON.stringify(patch));
+    assert.equal(code(await upErr(M, false, OWNER, patch)), "forbidden", "owner's account: " + JSON.stringify(patch));
+  }
+  assert.equal((await rpc(db, "obv_admin_user_get", { p_user: M })).limits.custom.max_projects, false, "nothing was written");
+  assert.equal((await rpc(db, "obv_admin_user_get", { p_user: OWNER })).limits.custom.max_project_bytes, false);
+  // another (normal) user's limits are still theirs to change
+  let u = await up(M, false, U, { max_projects: 3, max_project_bytes: 50000000, retention_days: 20, note: "ok" });
+  assert.equal(u.limits.max_projects, 3); assert.equal(u.limits.max_project_bytes, 50000000); assert.equal(u.note, "ok");
+  // the owner can change anything: their own limits, an admin's, a user's
+  u = await up(OWNER, true, OWNER, { max_projects: 1000, max_project_bytes: 2000000000, retention_days: 365, note: "me" });
+  assert.equal(u.limits.max_projects, 1000); assert.equal(u.limits.max_project_bytes, 2000000000); assert.equal(u.note, "me");
+  u = await up(OWNER, true, M, { max_projects: 7, note: "admin" });
+  assert.equal(u.limits.max_projects, 7); assert.equal(u.note, "admin");
+  await up(OWNER, true, OWNER, { max_projects: null, max_project_bytes: null, retention_days: null, note: null });
+  await up(OWNER, true, U, { max_projects: null, max_project_bytes: null, retention_days: null, note: null });
+  await up(OWNER, true, M, { role: "user", max_projects: null, note: null });
+});
+
+test("invite codes: 10 characters from the unambiguous alphabet, all different", async () => {
+  const re = /^[ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789]{10}$/, seen = new Set();
+  const first = await rpc(db, "obv_invite_mine", { p_actor: A, p_owner_id: OWNER });
+  assert.match(first.code, re); seen.add(first.code);
+  for (let i = 0; i < 40; i++) {
+    const c = (await rpc(db, "obv_invite_reset", { p_actor: A, p_owner_id: OWNER })).code;
+    assert.match(c, re); assert.ok(!seen.has(c), "unique"); seen.add(c);
+  }
+  const l = await rpc(db, "obv_admin_invite_link_create", { p_actor: OWNER, p_owner_id: OWNER, p_max: 1, p_note: "rng" });
+  assert.match(l.code, re); assert.ok(!seen.has(l.code));
+  await rpc(db, "obv_admin_invite_link_update", { p_actor: OWNER, p_owner_id: OWNER, p_code: l.code, p_patch: { revoke: true } });
+});
+
 test("an admin can move one project's expiry; nothing else can, and not into the past", async () => {
   const p = await create(A);
   const to = new Date(Date.now() + 40 * 864e5).toISOString();
@@ -422,4 +459,39 @@ test("admin lists: filters and sorting", async () => {
   const b = byBytes.rows.map(r => Number(r.bytes)); assert.deepEqual(b, [...b].sort((x, y) => y - x));
   const o = await rpc(db, "obv_admin_overview");
   assert.equal(o.saves_by_day.length, 14); assert.ok(o.saves_7d > 0); assert.ok(o.top_users.length > 0);
+});
+
+// a Google-only account moving into an osu! account (POST me/merge-google, once its owner confirms): see
+// 20261008120000_obv_google_merge_safe.sql
+test("Google-only merge: never lifts a denial; a denied or suspended Google-only account can't move; the preview says what would move", async () => {
+  const D = 1301, N = 1302, S = 1303;
+  for (const id of [D, N, S]) await login(id);
+  const gacct = async (sub, set) => { const g = await rpc(db, "obv_google_account", { p_sub: sub }); if (set) await db.query(`update obv.users set ${set} where osu_id = $1`, [g.id]); return g.id; };
+  const access = async id => (await db.query("select access from obv.users where osu_id = $1", [id])).rows[0].access;
+  const merge = (from, to) => ["obv_google_merge", { p_from: from, p_to: to, p_username: "u" + to, p_avatar: null, p_country: null }];
+  // an approved Google-only account into a denied osu! account: what it has moves, the denial stays
+  const g1 = await gacct("merge-g1", "access = 'approved'"), p1 = await create(g1);
+  await db.query("update obv.users set access = 'denied' where osu_id = $1", [D]);
+  const pv = await rpc(db, "obv_google_merge_preview", { p_from: g1, p_to: D });
+  assert.equal(pv.ok, true); assert.equal(pv.projects, 1); assert.ok(pv.created_at);
+  assert.equal((await project(p1.id)).owner_id, g1, "the preview changes nothing");
+  const m1 = await rpc(db, ...merge(g1, D));
+  assert.equal(m1.merged, true); assert.equal(m1.projects, 1);
+  assert.equal(await access(D), "denied"); assert.equal((await project(p1.id)).owner_id, D);
+  // a denied or suspended Google-only account doesn't get out of it by moving into a fresh osu! account
+  for (const [sub, set] of [["merge-g2", "access = 'denied'"], ["merge-g3", "status = 'suspended'"]]) {
+    const g = await gacct(sub), p = await create(g); await db.query(`update obv.users set ${set} where osu_id = $1`, [g]);
+    const v = await rpc(db, "obv_google_merge_preview", { p_from: g, p_to: N }); assert.equal(v.ok, false); assert.equal(v.reason, "source_denied");
+    const e = await rpcErr(db, ...merge(g, N)); assert.equal(code(e), "forbidden"); assert.match(String(e.detail), /source_denied/);
+    assert.equal((await project(p.id)).owner_id, g, sub); assert.equal(await access(N), "none"); assert.equal((await db.query("select status from obv.users where osu_id = $1", [N])).rows[0].status, "active");
+  }
+  // otherwise the better access of the two (approved > pending > none)
+  const g4 = await gacct("merge-g4", "access = 'pending'");
+  assert.equal((await rpc(db, ...merge(g4, S))).merged, true); assert.equal(await access(S), "pending");
+  const g5 = await gacct("merge-g5", "access = 'approved'");
+  assert.equal((await rpc(db, ...merge(g5, S))).merged, true); assert.equal(await access(S), "approved");
+  const g6 = await gacct("merge-g6");
+  assert.equal((await rpc(db, ...merge(g6, S))).merged, true); assert.equal(await access(S), "approved", "never downgraded");
+  assert.equal((await rpc(db, "obv_google_merge_preview", { p_from: g6, p_to: S })).reason, "gone");
+  assert.equal(code(await rpcErr(db, "obv_google_merge_preview", { p_from: D, p_to: S })), "bad_user");
 });

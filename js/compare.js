@@ -187,10 +187,14 @@ function cmpOther() {
 }
 
 // ---------- ghost: the other version on the playfield in Compose ----------
-// Its objects that aren't exactly the same here (moved, reshaped, retimed, removed) are drawn see-through and dashed
-// in orange under the map's own objects, at their own time, so before and after show together while you scrub.
-// "Only moved objects" (on by default, S.cmpGhostMoved) leaves out objects whose only change is their hitsounds or new
-// combo, and an object that moved gets an arrow from where it was to where it is now.
+// The other version ("before") is drawn as faint notes, with the same drawing as the map's own objects, under this one
+// ("after") at its own time, so before and after show together while you scrub. Only its objects that aren't exactly
+// the same here are drawn (moved, reshaped, retimed, removed); "Only moved objects" (on by default, S.cmpGhostMoved)
+// also leaves out objects whose only change is their hitsounds or new combo, and a moved object gets an arrow to where
+// it is now. The before objects all take one colour (red by default, S.cmpBeforeCol) instead of the combo colours, so
+// they never look like the map's own. How faint each version is and that colour: the panel at the bottom right of the
+// playfield (Before 40 %, After 100 % by default, after is the one you work on). The ghost turns on the first time
+// Compare is opened, in Simple and Advanced alike.
 const CMPG = { text: null, m: null, list: null, lines: null, pick: null, moved: null };
 const cmpGhostMovedOnly = () => S.cmpGhostMoved !== false;
 function cmpGeomKey(s) { // where an object is and its shape, without hitsounds or new combo
@@ -215,36 +219,83 @@ function cmpGhostObjs() {
   }
   return CMPG.list;
 }
-function cmpDrawGhost(t, px) {
-  const G = cmpGhostObjs(); if (!G || !G.length) return;
-  const pre = map.preempt, r = map.radius, i0 = Math.max(0, lowerIdx(G, t - 3000, "t")), k = Math.min(100, Math.max(10, +S.cmpGhostA || 70)) / 100; // (opacity, Compare panel / Settings → Editor)
-  ctx.save(); ctx.strokeStyle = "#ffb35c"; ctx.fillStyle = `rgba(255,179,92,${(.08 + .12 * k).toFixed(3)})`; ctx.setLineDash([6 * px, 5 * px]);
-  for (let i = i0; i < G.length && G[i].t <= t + pre; i++) {
-    const o = G[i], end = o.kind === "slider" || o.kind === "spinner" ? o.end : o.t;
-    if (t > end + 300) continue;
-    const a = t < o.t ? clamp01(1 - (o.t - t) / pre) : clamp01(1 - (t - end) / 300);
-    ctx.globalAlpha = (.3 + .7 * a) * k; ctx.lineWidth = 2.5 * px;
-    if (o.kind === "spinner") { ctx.beginPath(); ctx.arc(256, 192, 120, 0, 7); ctx.stroke(); continue; }
-    if (o.kind === "slider" && o.path && o.path.length > 1) {
-      ctx.beginPath(); tracePath(ctx, o.path); ctx.lineWidth = 2 * px; ctx.stroke();
-      const e = o.path[o.path.length - 1]; ctx.beginPath(); ctx.arc(e[0], e[1], r * .92, 0, 7); ctx.lineWidth = 1.5 * px; ctx.stroke();
-    }
-    ctx.lineWidth = 2.5 * px; ctx.beginPath(); ctx.arc(o.x, o.y, r * .92, 0, 7); ctx.fill(); ctx.stroke();
-    if (o.to) { // where it went: an arrow from the old spot to the object here
-      const q = o.to, dx = q.x - o.x, dy = q.y - o.y, d = Math.hypot(dx, dy), ux = dx / d, uy = dy / d, a0 = Math.min(r * .92, d / 3), a1 = Math.max(a0, d - Math.min(r * .92, d / 3));
-      const x1 = o.x + ux * a1, y1 = o.y + uy * a1, hd = Math.min(10 * px, d / 3);
-      ctx.save(); ctx.setLineDash([]); ctx.lineWidth = 2 * px; ctx.beginPath(); ctx.moveTo(o.x + ux * a0, o.y + uy * a0); ctx.lineTo(x1, y1); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 - ux * hd - uy * hd * .6, y1 - uy * hd + ux * hd * .6); ctx.lineTo(x1 - ux * hd + uy * hd * .6, y1 - uy * hd - ux * hd * .6); ctx.closePath(); ctx.fillStyle = "#ffb35c"; ctx.fill(); ctx.restore();
-    }
+const cmpPct = (v, def) => Math.min(100, Math.max(5, +v || def)) / 100;
+const CMP_COLS = ["#ff4d5e", "#ffa24d", "#ffd84a", "#57d68d", "#4d9bff", "#ffffff"], CMP_COL_DEF = CMP_COLS[0];
+const cmpBeforeHex = () => /^#[0-9a-f]{6}$/i.test(S.cmpBeforeCol || "") ? S.cmpBeforeCol.toLowerCase() : CMP_COL_DEF;
+function cmpBeforeRGB() { const x = cmpBeforeHex(); if (CMPG.colHex !== x) { CMPG.colHex = x; CMPG.col = [1, 3, 5].map(i => parseInt(x.slice(i, i + 2), 16)); } return CMPG.col; } // ([r, g, b], kept: the textures are tinted by it)
+const cmpGhostOn = () => !!(CMP.ghost && EDIT.on && EDIT.tab === "compose" && map && map.mode !== 3);
+function cmpAfterAlpha() { return cmpGhostOn() && cmpGhostObjs() ? cmpPct(S.cmpAfter, 100) : 1; } // (player.js: this version's objects)
+function cmpGhostFrame(t, px) { // editor.js edDrawUnder, every frame in Compose (under the map's own objects)
+  const G = cmpGhostOn() ? cmpGhostObjs() : null;
+  cmpDockShow(!!G);
+  if (G && G.length) cmpDrawGhost(G, t, px);
+}
+function cmpDrawGhost(G, t, px) {
+  const pre = map.preempt, s = map.radius / 64, r = map.radius, i0 = Math.max(0, lowerIdx(G, t - 30000, "t")), vis = [];
+  for (let i = i0; i < G.length && G[i].t <= t + pre; i++) if (G[i].end + 800 >= t) vis.push(G[i]);
+  if (!vis.length) return;
+  const sel = EDIT.sel, col = cmpBeforeRGB(); EDIT.sel = CMPG.none || (CMPG.none = new Set()); ED_PASS.col = col; // (nothing of the other version shows as selected; passed, it keeps its colour)
+  try {
+    withAlpha(cmpPct(S.cmpBefore, 40), () => { for (let i = vis.length - 1; i >= 0; i--) { const o = vis[i]; drawEditObj(o, t, col, s, clamp01((t - (o.t - pre)) / map.fadeIn), 0); } });
+  } finally { EDIT.sel = sel; ED_PASS.col = null; }
+  ctx.save(); ctx.strokeStyle = ctx.fillStyle = cmpBeforeHex(); ctx.lineWidth = 2 * px;
+  for (const o of vis) if (o.to && t <= o.end + 300) { // where it went: an arrow from the old spot to the object here
+    const q = o.to, dx = q.x - o.x, dy = q.y - o.y, d = Math.hypot(dx, dy), ux = dx / d, uy = dy / d, a0 = Math.min(r * .92, d / 3), a1 = Math.max(a0, d - Math.min(r * .92, d / 3));
+    const x1 = o.x + ux * a1, y1 = o.y + uy * a1, hd = Math.min(10 * px, d / 3);
+    ctx.globalAlpha = .85 * (t < o.t ? clamp01(1 - (o.t - t) / pre) : 1);
+    ctx.beginPath(); ctx.moveTo(o.x + ux * a0, o.y + uy * a0); ctx.lineTo(x1, y1); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 - ux * hd - uy * hd * .6, y1 - uy * hd + ux * hd * .6); ctx.lineTo(x1 - ux * hd + uy * hd * .6, y1 - uy * hd - ux * hd * .6); ctx.closePath(); ctx.fill();
   }
-  ctx.restore();
+  ctx.restore(); ctx.globalAlpha = 1;
 }
-
-function cmpGhostOpacity() { // a slider 10–100 %
-  const r = h("input"), o = h("output"), w = h("span", "edrange"); r.type = "range"; r.min = 10; r.max = 100; r.step = 5; r.value = S.cmpGhostA ?? 70;
-  const show = () => o.textContent = r.value + "%"; show();
-  r.oninput = () => { S.cmpGhostA = +r.value; save(); show(); dirty = true; }; w.append(r, o); return w;
+// a percent slider for S.cmpBefore / S.cmpAfter (the panel on the playfield and Settings → Editor show the same value)
+function cmpPctSlider(key, def) {
+  const r = h("input"), o = h("output"), w = h("span", "edrange cmppct"); r.type = "range"; r.min = 5; r.max = 100; r.step = 5; r.dataset.k = key; r.value = Math.round(cmpPct(S[key], def) * 100);
+  const show = () => o.textContent = r.value + "%"; show(); r.cmpShow = show;
+  r.oninput = () => {
+    S[key] = +r.value; save(); dirty = true;
+    document.querySelectorAll(`.cmppct input[data-k="${key}"]`).forEach(x => { if (x !== r) { x.value = r.value; x.cmpShow(); } }); show(); cmpDockLabel();
+  };
+  w.append(r, o); return w;
 }
+// the before colour: a few swatches and a colour picker (the panel on the playfield and Settings → Editor show the same)
+function cmpColorCtl() {
+  const w = h("span", "cmpcols"), pick = h("input");
+  const sync = () => { const x = cmpBeforeHex(); document.querySelectorAll(".cmpcols").forEach(c => { c.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.c === x)); const p = c.querySelector("input"); if (p) p.value = x; }); };
+  const set = x => { S.cmpBeforeCol = x; save(); dirty = true; bodyCache.clear(); sync(); cmpDockLabel(); };
+  for (const c of CMP_COLS) { const b = h("button", "cmpcol"); b.type = "button"; b.dataset.c = c; b.style.setProperty("--c", c); b.setAttribute("aria-label", c); b.onclick = () => set(c); w.append(b); }
+  pick.type = "color"; pick.value = cmpBeforeHex(); pick.dataset.i18nTitle = pick.dataset.i18nAria = "Pick a colour"; pick.title = tr("Pick a colour"); pick.setAttribute("aria-label", pick.title);
+  pick.oninput = () => set(pick.value.toLowerCase()); w.append(pick);
+  requestAnimationFrame(sync); return w;
+}
+// the panel at the bottom right of the playfield while the ghost shows: Before / After opacity, the before colour, fold, turn off
+const CMPD = { el: null, pos: "" };
+const cmpDockMin = () => S.cmpDockMin ?? matchMedia("(max-width:520px)").matches; // (folded by default on phones: the playfield is small)
+function cmpDockEl() {
+  if (CMPD.el) return CMPD.el;
+  const d = h("div", "cmpdock" + (cmpDockMin() ? " min" : "")); d.id = "cmpDock"; d.hidden = true;
+  const head = h("div", "cmpdhead"), fold = h("button", "cmpdfold"); fold.type = "button";
+  fold.dataset.i18nTitle = "Show or hide the opacity sliders"; fold.title = tr(fold.dataset.i18nTitle); fold.setAttribute("aria-expanded", String(!cmpDockMin()));
+  const name = h("b", null, tr("Compare")); name.dataset.i18n = "Compare";
+  fold.append(name, h("span", "cmpdval"));
+  fold.onclick = () => { S.cmpDockMin = !cmpDockMin(); save(); d.classList.toggle("min", S.cmpDockMin); fold.setAttribute("aria-expanded", String(!S.cmpDockMin)); };
+  const off = h("button", "cmpdoff", "✕"); off.type = "button"; off.dataset.i18nTitle = off.dataset.i18nAria = "Hide the other version"; off.title = tr("Hide the other version"); off.setAttribute("aria-label", off.title);
+  off.onclick = () => { CMP.ghost = false; CMP.touched = true; cmpDockShow(false); dirty = true; if (EDIT.tab === "compare") rerenderCompare(); };
+  head.append(fold, off);
+  const row = (label, key, def, cls) => { const l = h("label", "cmpdrow " + cls), n = h("span", null, tr(label)); n.dataset.i18n = label; l.append(n, cmpPctSlider(key, def)); return l; };
+  const colRow = h("div", "cmpdrow cmpdcol"), cn = h("span", null, tr("Colour")); cn.dataset.i18n = "Colour"; colRow.append(cn, cmpColorCtl());
+  d.append(head, row("Before", "cmpBefore", 40, "before"), colRow, row("After", "cmpAfter", 100, "after"));
+  $("ui").append(d); CMPD.el = d; cmpDockLabel(); return d;
+}
+function cmpDockLabel() { if (CMPD.el) CMPD.el.style.setProperty("--bc", cmpBeforeHex()); const v = CMPD.el && CMPD.el.querySelector(".cmpdval"); if (v) v.textContent = `${Math.round(cmpPct(S.cmpBefore, 40) * 100)}% / ${Math.round(cmpPct(S.cmpAfter, 100) * 100)}%`; }
+function cmpDockShow(want) {
+  if (!want && !CMPD.el) return;
+  const d = cmpDockEl(); if (d.hidden === want) d.hidden = !want;
+  if (!want) return;
+  const q = cv.dpr || 1, pos = `${Math.round(INS.r / q + 10)}|${Math.round(INS.b / q + 10)}`; // (inside the playfield: left of the tool column, above the bars)
+  if (pos !== CMPD.pos) { CMPD.pos = pos; const [rt, bt] = pos.split("|"); d.style.right = rt + "px"; d.style.bottom = bt + "px"; }
+}
+function cmpDockSync() { cmpDockShow(cmpGhostOn() && !!cmpGhostObjs()); }
 
 // ---------- the panel (Tools → Compare, editor tab Compare) ----------
 function cmpCurrentText() { return typeof editedText === "function" ? editedText() : osuFiles[curDiff].text; }
@@ -277,18 +328,17 @@ function renderCompare(body) {
     body.append(h("h4", "cmpdh", tr("[{v}] in detail", { v: map.meta.Version || "" })));
   }
   if (other == null) { body.append(h("p", "hint", tr("Pick the version to compare with."))); return; }
-  if (map.mode !== 3) { // ghost in Compose
+  if (map.mode !== 3) { // ghost in Compose (on the first time Compare has a version to show; the panel on the playfield sets how faint)
+    if (!CMP.touched) { CMP.ghost = true; CMP.touched = true; }
     const g = h("div", "cmpghost"), lab = h("label", "sw"), t2 = h("span", "swt"), i2 = h("input"); i2.type = "checkbox"; i2.className = "switch"; i2.checked = CMP.ghost;
-    t2.append(h("b", null, tr("Ghost in Compose")), h("small", null, tr("The other version's objects that differ show as orange dashed outlines under yours, so you see before and after together")));
-    i2.onchange = () => { CMP.ghost = i2.checked; dirty = true; go.hidden = !CMP.ghost || !EDIT.on; };
+    t2.append(h("b", null, tr("Ghost in Compose")), h("small", null, tr("The other version's objects that differ show as faint notes in one colour (red unless you change it) under yours. Set how faint each version is and that colour in the panel at the bottom right of the playfield")));
+    i2.onchange = () => { CMP.ghost = i2.checked; CMP.touched = true; dirty = true; go.hidden = !CMP.ghost || !EDIT.on; mv.hidden = !CMP.ghost; };
     lab.append(t2, i2);
     const go = h("button", "btn ghost sm", tr("Show in Compose")); go.type = "button"; go.hidden = !CMP.ghost || !EDIT.on; go.onclick = () => edTab("compose");
-    const op = h("label", "row cmpghosta"); op.append(h("span", null, tr("Ghost opacity")), cmpGhostOpacity()); op.hidden = !CMP.ghost;
     const mv = h("label", "sw cmpghostmv"), t3 = h("span", "swt"), i3 = h("input"); i3.type = "checkbox"; i3.className = "switch"; i3.checked = cmpGhostMovedOnly(); mv.hidden = !CMP.ghost;
     t3.append(h("b", null, tr("Only moved objects")), h("small", null, tr("Hide objects whose only change is their hitsounds or new combo; an arrow shows where each moved object went")));
     i3.onchange = () => { S.cmpGhostMoved = i3.checked; save(); dirty = true; }; mv.append(t3, i3);
-    i2.addEventListener("change", () => { op.hidden = mv.hidden = !CMP.ghost; });
-    g.append(lab, mv, op, go); body.append(g);
+    g.append(lab, mv, go); body.append(g);
   }
   const res = mapDiff(other, cmpCurrentText()), rows = res.rows;
   const counts = {}; for (const r of rows) counts[r.kind] = (counts[r.kind] || 0) + 1;

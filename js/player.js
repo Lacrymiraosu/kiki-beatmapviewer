@@ -135,7 +135,7 @@ function showSetTab(k) {
 // keyboard shortcuts, grouped like the osu! editor's menus
 const KEY_GROUPS = [
   ["Playback", [["Space", "Play / pause"], ["← →", "Seek 5 s (Modding: one beat snap)"], ["Shift + ← →", "Seek one beat"], ["M", "Metronome on/off"], ["Esc", "Close / back"]]],
-  ["Compose", [["1 2 3 4", "Select / Circle / Slider / Spinner"], ["F1 / F2 / F3 / F4", "Compose / Hitsounds / Timing / Setup"], ["G  T", "Grid snap / Distance snap"], ["Shift + G", "Mapping guides (distance and angle) on/off"], ["Alt + scroll", "Distance snap multiplier"], ["Enter / right-click", "Finish the slider you're placing"]]],
+  ["Compose", [["1 2 3 4", "Select / Circle / Slider / Spinner"], ["F1 / F2 / F3 / F4", "Compose / Hitsounds / Timing / Setup"], ["G  T", "Grid snap / Distance snap"], ["Shift + G", "Mapping guides (distance and angle) on/off"], ["Alt + scroll", "Distance snap multiplier"], ["Enter / right-click", "Finish the slider you're placing"], ["?", "Editor tour"]]],
   ["Hitsounds", [["Q W E R", "New combo / Whistle / Finish / Clap"], ["Shift / Alt + Q W E R", "Sample set / addition bank: Auto, Normal, Soft, Drum"], ["H", "Hitsound panel (live session: highlight)"]]],
   ["Selection and editing", [["Ctrl + Z / Y", "Undo / redo"], ["Ctrl + A", "Select all"], ["Del", "Delete selected objects"], ["Ctrl + C / X / V", "Copy / cut / paste objects"], ["Ctrl + D", "Clone the selection"],
     ["↑ ↓", "Move the selection by the grid"], ["Alt + ← →", "Move the selection by one beat snap"], ["Right-click", "Menu for objects / empty space (long-press on touch)"], ["Shift + right-click", "Delete the object under the cursor"]]],
@@ -150,10 +150,10 @@ function buildKeys() {
   const tp = typeof tpOn === "function" && tpOn(); // (test play's keys can be changed: play.js; with it off, F5 switches Preview / Modding)
   const groups = tp ? [["Test play", tpKeyRows()], ...KEY_GROUPS] : KEY_GROUPS.map(([g, r]) => g === "Playback" ? [g, [...r.slice(0, -1), ["F5", "Switch Preview / Modding"], r[r.length - 1]]] : [g, r]);
   for (const [g, rows] of groups) {
-    const list = rows.filter(([k, d]) => !q || k.toLowerCase().includes(q) || tr(d).toLowerCase().includes(q) || d.toLowerCase().includes(q));
+    const list = rows.filter(([k, d]) => !q || k.toLowerCase().includes(q) || kbdMod(k).toLowerCase().includes(q) || tr(d).toLowerCase().includes(q) || d.toLowerCase().includes(q));
     if (!list.length) continue;
     const card = h("div", "card2 keys");
-    for (const [k, d] of list) { const r = h("div", "krow"); r.append(h("kbd", null, k), h("span", null, tr(d))); card.append(r); }
+    for (const [k, d] of list) { const r = h("div", "krow"); r.append(h("kbd", null, kbdMod(k)), h("span", null, tr(d))); card.append(r); } // (kbdMod: ⌘ on a Mac / iPad)
     if (g === "Test play") { const ed = h("button", "mlink", tr("Change these keys →")); ed.onclick = () => showSetTab("test"); card.append(ed); }
     box.append(h("div", "subh", tr(g)), card);
   }
@@ -169,6 +169,7 @@ function syncToggles() {
   $("metroChip").hidden = !S.metro;
   $("edMetro").classList.toggle("lit", !!S.metro);
   $("edEnd").classList.toggle("lit", !!S.sliderEnd);
+  if (typeof edTrayDot === "function") edTrayDot(); // (the dot on the closed Tools tray, editor.js)
 }
 $("edEnd").onclick = () => { setToggle("sliderEnd", !S.sliderEnd); toast(tr(S.sliderEnd ? "Slider end circles on" : "Slider end circles off"), 1200); };
 function setToggle(k, v) {
@@ -342,6 +343,17 @@ UI.seek.addEventListener("input", e => {
   showUI();
 });
 UI.seek.addEventListener("change", () => seeking = false);
+// a tap right on a bookmark tick goes exactly there (the bar alone lands within 1/1000 of the song); a drag seeks as usual
+const bmTap = { b: null, x: 0 };
+UI.seek.addEventListener("pointerdown", e => {
+  bmTap.b = null; if (!map || !map.bookmarks.length) return;
+  const r = UI.tl.getBoundingClientRect(), dur = A.dur() || 1; let bd = e.pointerType === "mouse" ? 5 : 9;
+  for (const b of map.bookmarks) { const d = Math.abs(r.left + b / dur * r.width - e.clientX); if (d <= bd) { bd = d; bmTap.b = b; } }
+  bmTap.x = e.clientX;
+});
+UI.seek.addEventListener("pointermove", e => { if (bmTap.b != null && Math.abs(e.clientX - bmTap.x) > 4) bmTap.b = null; });
+UI.seek.addEventListener("input", () => { if (bmTap.b != null) seekTo(bmTap.b); }); // (after the handler above: the bar's own seek, then the bookmark)
+UI.seek.addEventListener("pointerup", () => { if (bmTap.b != null) { seekTo(bmTap.b); showUI(); } bmTap.b = null; }); // (iOS: a tap on the track doesn't move the thumb)
 function stepBeat(dir) { // jump to the previous/next beat line
   const t = A.cur(), b = beatInfo(t), n = Math.round((t - b.off) / b.len) + dir;
   seekTo(b.off + n * b.len);
@@ -388,7 +400,8 @@ function measureIns() { // editor: the playfield sits between the bars and the t
   const t = top.offsetHeight, b = bot.offsetHeight, L = $("edLeft"), Rt = $("edRight");
   UI.player.style.setProperty("--insT", t + "px"); UI.player.style.setProperty("--insB", b + "px");
   INS.t = t * q; INS.b = b * q; INS.l = INS.r = 0;
-  if (getComputedStyle(L).flexDirection === "row") { INS.t += L.offsetHeight * q; INS.b += Rt.offsetHeight * q; } // portrait: toolbars are rows
+  if (L.closest(".bar")) {} // upright phones: the tool rows are docked in the bottom bar (editor.js edDock), already in b
+  else if (getComputedStyle(L).flexDirection === "row") { INS.t += L.offsetHeight * q; INS.b += Rt.offsetHeight * q; } // portrait: toolbars are rows
   else { INS.l = L.offsetParent ? (L.offsetLeft + L.offsetWidth) * q : 0; INS.r = Rt.offsetParent ? (UI.player.clientWidth - Rt.offsetLeft) * q : 0; } // (hidden while watching a live session)
 }
 addEventListener("resize", resize);
@@ -412,11 +425,12 @@ function drawTimeline() {
   for (let i = 0; i < bins; i++) if (cnt[i]) { const bh = Math.max(1, cnt[i] / mx * hh); g.fillRect(i * w / bins, hh - bh, Math.max(1, w / bins - .6), bh); }
   const reds = map.timing.filter(x => x.uninherited);
   if (reds.length > 1 && reds.length < 300) { g.fillStyle = "#ff5a6e"; for (const r of reds) g.fillRect(X(r.time) - .5, 0, 1, hh); }
-  g.fillStyle = "#4d9bff"; for (const b of map.bookmarks) g.fillRect(X(b) - 1, 0, 2, hh);
   const NC = { problem: "#ff5a6e", suggestion: "#ffcf6b", praise: "#57d68d", note: "#66ccff" };
-  for (const n of notesCached()) { g.fillStyle = NC[n.type] || "#66ccff"; g.fillRect(X(n.t) - 1, 0, 2, hh); }
+  if (!EDIT.on || S.edAdv === true) for (const n of notesCached()) { g.fillStyle = NC[n.type] || "#66ccff"; g.fillRect(X(n.t) - 1, 0, 2, hh); } // (the editor's Simple tools leave mod notes out)
   const pv = +(map.general.PreviewTime ?? -1);
   if (pv > 0) { g.fillStyle = "#ffd84a"; g.fillRect(X(pv) - 1, 0, 2, hh); }
+  // bookmarks on top, like osu!'s blue ticks: a dark edge and a cap so they read over the density bars (tap one: bmTap)
+  for (const b of map.bookmarks) { const x = X(b); g.fillStyle = "rgba(10,14,30,.7)"; g.fillRect(x - 2.5, 0, 5, hh); g.fillStyle = "#4d9bff"; g.fillRect(x - 1.5, 0, 3, hh); g.beginPath(); g.moveTo(x - 4.5, 0); g.lineTo(x + 4.5, 0); g.lineTo(x, 5); g.fill(); }
 }
 
 // ============ gameplay rendering (follows osu!'s legacy skin behaviour) ============
@@ -624,6 +638,7 @@ function drawFollowPoints(t, lo, hi) {
 // follow circle follows the ball, spinners spin. Without hit markers objects play their hit animations like in
 // gameplay. No judgements either way.
 const ED_FADE = 700, WHITE = [255, 255, 255];
+const ED_PASS = { col: null }; // (the colour an object turns once passed: white, or Compare's ghost colour while the ghost is drawn)
 const outQuint = k => 1 - (1 - k) ** 5;
 const edMarkers = () => S.edHitMarkers !== false;
 // osu!'s HitCircleOverlapMarker: a ring (4 px of a 128 px circle) that grows to 1.1x in 350 ms (OutQuint) while it
@@ -637,7 +652,7 @@ function edHitMarker(x, y, col, t, at) {
 // a circle (or slider head) where it is: as it is before its time, white and fading (linear, 700 ms) after
 function edCircle(o, x, y, col, s, aIn, t, at, sliderHead) {
   if (t < at) { drawHead(o, x, y, col, s, aIn, sliderHead); return; }
-  const a = 1 - (t - at) / ED_FADE; if (a > 0) drawHead(o, x, y, WHITE, s, a, sliderHead);
+  const a = 1 - (t - at) / ED_FADE; if (a > 0) drawHead(o, x, y, ED_PASS.col || WHITE, s, a, sliderHead);
 }
 // slider ticks as osu! has them (gameplay with autoplay, and the editor): one per tick per span, each appearing (tick time - span start) / 2 + 0.66 preempt
 // before it (200 ms on repeats) with a 150 ms fade and an elastic scale from 0.5, and popping when passed (autoplay
@@ -677,7 +692,7 @@ function drawEditObj(o, t, col, s, aIn, beatK) {
     if (bodyA > 0) drawBody(o, col, bodyA, frac, from);
     sliderTicks(o, t, s, aIn);
     // the tail: as it is until the slider ends, then white and fading
-    if (S.sliderEnd) { if (t <= o.end) drawEndCircle(o, col, s, aIn); else { const ta = 1 - (t - o.end) / ED_FADE; if (ta > 0) drawEndCircle(o, WHITE, s, ta); } }
+    if (S.sliderEnd) { if (t <= o.end) drawEndCircle(o, col, s, aIn); else { const ta = 1 - (t - o.end) / ED_FADE; if (ta > 0) drawEndCircle(o, ED_PASS.col || WHITE, s, ta); } }
     else if (bodyA > 0) { const e = endPos(o); ctx.globalAlpha = bodyA * .8; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e[0], e[1], r * .25, 0, 7); ctx.stroke(); }
     // repeat arrows until their repeat is reached (repeat k is at the end of the path when k is odd)
     if (frac >= 1) for (let k = 1; k < o.slides; k++) if (t < o.t + o.span * k) drawArrow(o, k % 2 === 1, s, aIn, 0);
@@ -692,6 +707,17 @@ function drawEditObj(o, t, col, s, aIn, beatK) {
   else if (t < o.t + 50) blit(T("approachcircle", col), o.x, o.y, s, approachAlpha(o, o.t) * (1 - (t - o.t) / 50));
 }
 
+// a layer opacity for a whole group of drawing (Compare: the other version faint, this one at its own opacity): while
+// ALPHA.k is under 1 every globalAlpha the drawing code sets is multiplied by it (save / restore inside stay balanced)
+const ALPHA = { k: 1 };
+{
+  const d = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, "globalAlpha");
+  if (d && d.get && d.set) Object.defineProperty(ctx, "globalAlpha", { configurable: true, get() { return d.get.call(this) / ALPHA.k; }, set(v) { d.set.call(this, v * ALPHA.k); } });
+}
+function withAlpha(k, fn) {
+  const was = ALPHA.k; ALPHA.k = Math.max(.01, Math.min(1, k)); ctx.globalAlpha = 1;
+  try { fn(); } finally { ALPHA.k = was; ctx.globalAlpha = 1; }
+}
 function drawObjects(t, beatK) {
   const H = map.hit, pre = map.preempt, s = map.radius / 64, ed = EDIT.on, keep = 800;
   const hi = lastBefore(H, t + pre, "t");
@@ -783,11 +809,11 @@ function drawHUD(t, B) {
   if (target < dispScore) dispScore = target; else dispScore += (target - dispScore) * Math.min(1, frameDt / 90);
   const pad = 14 * u, top = B.top + pad, right = B.r - pad, left = B.l + pad, W = B.r - B.l;
   ctx.textBaseline = "top"; ctx.globalAlpha = 1; ctx.textAlign = "right";
-  ctx.font = `600 ${34 * u}px "Varela Round",sans-serif`;
+  ctx.font = `600 ${34 * u}px Inter,sans-serif`;
   sText(String(Math.round(dispScore)).padStart(8, "0"), right, top, u, "#fff");
-  ctx.font = `600 ${18 * u}px "Varela Round",sans-serif`;
+  ctx.font = `600 ${18 * u}px Inter,sans-serif`;
   sText("100.00%", right, top + 40 * u, u, "#fff");
-  ctx.font = `600 ${14 * u}px "Varela Round",sans-serif`; sText(A.rate !== 1 ? `Auto ${A.rate}x` : "Auto", right, top + 64 * u, u, "#ff99cc");
+  ctx.font = `600 ${14 * u}px Inter,sans-serif`; sText(A.rate !== 1 ? `Auto ${A.rate}x` : "Auto", right, top + 64 * u, u, "#ff99cc");
   const dur = A.dur() || 1, px = right - 96 * u, py = top + 50 * u, pr = 10 * u;
   ctx.globalAlpha = .9;
   ctx.beginPath(); ctx.arc(px, py, pr, 0, 7); ctx.fillStyle = "rgba(255,255,255,.2)"; ctx.fill();
@@ -802,7 +828,7 @@ function drawHUD(t, B) {
     const since = t - ev[i].t, pop = 1 + .28 * clamp01(1 - since / 140);
     ctx.save(); ctx.translate(left, B.bottom - pad); ctx.scale(pop, pop);
     ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.globalAlpha = 1;
-    ctx.font = `600 ${46 * u}px "Varela Round",sans-serif`; sText(combo + "x", 0, 0, u, "#fff");
+    ctx.font = `600 ${46 * u}px Inter,sans-serif`; sText(combo + "x", 0, 0, u, "#fff");
     ctx.restore();
   }
   ctx.globalAlpha = 1;
@@ -817,9 +843,9 @@ function drawTitleCard(B) {
   const title = map.meta.TitleUnicode || map.meta.Title || "", artist = map.meta.ArtistUnicode || map.meta.Artist || "";
   ctx.globalAlpha = a; ctx.fillStyle = "#ff66aa"; ctx.fillRect(x, y, 5 * u, 86 * u);
   ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.shadowColor = "rgba(0,0,0,.7)"; ctx.shadowBlur = 10 * u; ctx.fillStyle = "#fff";
-  ctx.font = `600 ${30 * u}px "Varela Round","IBM Plex Sans Thai",sans-serif`; ctx.fillText(title, x + 16 * u, y, W * .85);
-  ctx.font = `${19 * u}px "Varela Round","IBM Plex Sans Thai",sans-serif`; ctx.fillStyle = "#eee"; ctx.fillText(artist, x + 16 * u, y + 40 * u, W * .85);
-  ctx.font = `${14 * u}px "Varela Round","IBM Plex Sans Thai",sans-serif`; ctx.fillStyle = "#ffb3d6"; ctx.fillText(`[${map.meta.Version || ""}]` + (map.meta.Creator ? `  mapped by ${map.meta.Creator}` : ""), x + 16 * u, y + 68 * u, W * .85);
+  ctx.font = `600 ${30 * u}px Inter,"IBM Plex Sans Thai",sans-serif`; ctx.fillText(title, x + 16 * u, y, W * .85);
+  ctx.font = `${19 * u}px Inter,"IBM Plex Sans Thai",sans-serif`; ctx.fillStyle = "#eee"; ctx.fillText(artist, x + 16 * u, y + 40 * u, W * .85);
+  ctx.font = `${14 * u}px Inter,"IBM Plex Sans Thai",sans-serif`; ctx.fillStyle = "#ffb3d6"; ctx.fillText(`[${map.meta.Version || ""}]` + (map.meta.Creator ? `  mapped by ${map.meta.Creator}` : ""), x + 16 * u, y + 68 * u, W * .85);
   ctx.shadowBlur = 0; ctx.globalAlpha = 1;
   return true;
 }
@@ -829,17 +855,36 @@ function drawOverlay(t, B, atTop) {
   const u = atTop ? (cv.dpr || 1) : Math.max(B.u, (cv.dpr || 1) * .8), b = beatInfo(t), bpm = 60000 / b.len, sv = svAt(map, t);
   const n = Math.floor((t - b.off) / b.len + 1e-6), meter = b.meter, beat = ((n % meter) + meter) % meter;
   const txt = `${atTop ? "" : fmtMs(t) + "   "}${Math.round(bpm * 100) / 100} BPM   ${sv.toFixed(2)}x   ${Math.floor(n / meter) + 1}:${beat + 1}${kiaiAt(t) ? "   KIAI" : ""}`;
-  ctx.font = `600 ${13 * u}px "Varela Round",sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  ctx.font = `600 ${13 * u}px Inter,sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "middle";
   const tw = ctx.measureText(txt).width, dotsW = meter * 12 * u, w = tw + dotsW + 34 * u, hh = 26 * u;
   const cxm = atTop ? INS.l + (VIEW.W - INS.l - INS.r) / 2 : (B.l + B.r) / 2;
-  const x = cxm - w / 2, y = atTop ? INS.t + 4 * (cv.dpr || 1) : B.bottom - hh - 12 * u;
+  // editor: the selection's info (time, combo, snap, position, spacing) on a line or two under it, in the same pill
+  // (a short playfield, e.g. a phone with Advanced's tool rows: one line, so the pill doesn't cover the objects)
+  const sel = atTop && typeof EDIT !== "undefined" && EDIT.sel.size && EDIT.selTxt ? pillLines(EDIT.selTxt, VIEW.W - INS.l - INS.r - 40 * u, u, cv.height - INS.t - INS.b < 300 * u ? 1 : 2) : [];
+  const lh = 18 * u, pw = Math.max(w, ...sel.map(s => s.w + 28 * u)), ph = hh + (sel.length ? sel.length * lh + 6 * u : 0);
+  const x = cxm - pw / 2, y = atTop ? INS.t + 4 * (cv.dpr || 1) : B.bottom - hh - 12 * u, x0 = cxm - w / 2;
+  if (atTop) drawOverlay.box = { x, y, w: pw, h: ph }; // (canvas px: the editor tour lights it up with the playfield)
   ctx.globalAlpha = .78; ctx.fillStyle = "#120e19";
-  ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, hh, hh / 2); else ctx.rect(x, y, w, hh); ctx.fill();
-  ctx.globalAlpha = 1; ctx.fillStyle = "#fff"; ctx.fillText(txt, x + 14 * u, y + hh / 2);
+  ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, pw, ph, hh / 2); else ctx.rect(x, y, pw, ph); ctx.fill();
+  ctx.globalAlpha = 1; ctx.fillStyle = "#fff"; ctx.fillText(txt, x0 + 14 * u, y + hh / 2);
   for (let i = 0; i < meter; i++) {
     ctx.fillStyle = i === beat ? (i === 0 ? "#ff66aa" : "#66ccff") : "rgba(255,255,255,.3)";
-    ctx.beginPath(); ctx.arc(x + tw + 26 * u + i * 12 * u, y + hh / 2, 4 * u, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(x0 + tw + 26 * u + i * 12 * u, y + hh / 2, 4 * u, 0, 7); ctx.fill();
   }
+  if (!sel.length) return;
+  ctx.fillStyle = "rgba(255,255,255,.12)"; ctx.fillRect(x + 12 * u, y + hh - .5 * u, pw - 24 * u, Math.max(1, u)); // (a hairline between the timing and the selection)
+  ctx.font = `500 ${12 * u}px Inter,"IBM Plex Sans Thai",sans-serif`; ctx.textAlign = "center"; ctx.fillStyle = "#ffd6ea";
+  sel.forEach((s, i) => ctx.fillText(s.t, cxm, y + hh + 3 * u + lh * (i + .5)));
+}
+// the selection text in at most two lines of maxW (broken at " • ", so a phone keeps the spacing info on the 2nd line); the rest is cut with …
+function pillLines(txt, maxW, u, maxLines = 2) {
+  ctx.font = `500 ${12 * u}px Inter,"IBM Plex Sans Thai",sans-serif`;
+  const key = [txt, maxW, u, maxLines, document.fonts && document.fonts.status].join("|"); if (pillLines.k === key) return pillLines.v; // (drawn every frame: measured once per text and size)
+  const mw = s => ctx.measureText(s).width, parts = txt.replace(/ - $/, "").split(" • "), out = []; // (several objects: no dangling " - " after the timestamp)
+  let cur = "";
+  for (const p of parts) { const c = cur ? cur + " • " + p : p; if (!cur || mw(c) <= maxW || out.length >= maxLines - 1) cur = c; else { out.push(cur); cur = p; } }
+  out.push(cur);
+  pillLines.k = key; return pillLines.v = out.map(s => { if (mw(s) > maxW) { while (s.length > 1 && mw(s + "…") > maxW) s = s.slice(0, -1); s = s.trimEnd() + "…"; } return { t: s, w: mw(s) }; });
 }
 
 // pre-scaled copies of big background images, so they aren't resampled every frame
@@ -897,7 +942,7 @@ function frame() {
   const c = ed ? fmtMs(t) : fmt(t / 1000), d = fmt(dur);
   if (c !== domCur) UI.tCur.textContent = domCur = c;
   if (d !== domDur) UI.tDur.textContent = domDur = d;
-  if (ed) { const s = fmtMs(t); if (s !== domEd) UI.edTime.textContent = domEd = s; }
+  if (ed) { const s = fmtMs(t), k = s + "|" + map.bookmarks.length; if (k !== domEd) { UI.edTime.textContent = s; domEd = k; edBmSync(t); } } // (the bottom bar's bookmark button lights up on one)
   const showSkip = !ed && playing && map.first > 6000 && t < map.first - 2500;
   if (UI.skip.hidden === showSkip) UI.skip.hidden = !showSkip;
   if (lastPlayIcon !== playing) { lastPlayIcon = playing; UI.playPath.setAttribute("d", playing ? "M7 4h3.5v16H7zM13.5 4H17v16h-3.5z" : "M7 4l13 8-13 8z"); UI.play.setAttribute("aria-label", tr(playing ? "Pause" : "Play")); }
@@ -916,7 +961,7 @@ function frame() {
   let vs, ox, oy, box, lock;
   if (ed) { // fit the 512x384 field (+ margin for circles) between the bars and the tool columns, under the timing pill
     const q = cv.dpr || 1, top = INS.t + 32 * q, avail = Math.max(1, LH - top - INS.b), availW = Math.max(1, LW - INS.l - INS.r);
-    if (S.edSize !== "fit") { // Settings → Editor → Playfield size: the scale gameplay uses on this screen, so objects are their in-game size
+    if (edSizeNow() !== "fit") { // Settings → Editor → Playfield size: the scale gameplay uses on this screen, so objects are their in-game size
       vs = (S.view === "auto" && portrait) ? Math.min(LW / 640, LH / 480) : Math.min(LW / 854, LH / 480);
       // ...but where objects go never leaves the screen: smaller when the whole field (and a small margin) doesn't fit
       // between the tool columns and the bars (a taller timeline, a short window)
@@ -936,7 +981,7 @@ function frame() {
   if (Math.abs(VS - vs) > 1e-6) bodyCache.clear();
   VS = vs; VIEW.vs = vs; VIEW.ox = ox; VIEW.oy = oy; VIEW.rotated = rotated; VIEW.W = W;
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; ctx.shadowBlur = 0;
-  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = ed ? "#1a1d2c" : "#000"; ctx.fillRect(0, 0, W, H); // (the editor: flat navy, and its dim fades toward it)
 
   const bg = map.bg ? images[norm(map.bg)] : null;
   const kiai = S.fx && !ed ? kiaiAt(t) : null;
@@ -971,7 +1016,7 @@ function frame() {
   }
   ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
   const dim = ed ? Math.max(0, Math.min(100, S.edDim ?? 60)) : S.dim; // (the editor has its own: Settings → Editor)
-  if (dim) { ctx.fillStyle = `rgba(0,0,0,${dim / 100})`; ctx.fillRect(-107, 0, 854, 480); }
+  if (dim) { ctx.fillStyle = ed ? `rgba(26,29,44,${dim / 100})` : `rgba(0,0,0,${dim / 100})`; ctx.fillRect(-107, 0, 854, 480); }
   if (kiai) drawKiai(t);
   ctx.restore();
 
@@ -979,7 +1024,7 @@ function frame() {
   else if (S.notes || S.cursor || ed) {
     ctx.save(); ctx.translate(64, 56);
     if (ed) edDrawUnder(t);
-    if (S.notes || ed) drawObjects(t, beatK);
+    if (S.notes || ed) { const ak = ed && typeof cmpAfterAlpha === "function" ? cmpAfterAlpha() : 1; if (ak < 1) withAlpha(ak, () => drawObjects(t, beatK)); else drawObjects(t, beatK); } // (Compare: this version's opacity)
     if (ed) edDrawOver(t);
     else if (S.cursor && map.hit.length) drawCursor(t);
     ctx.restore();

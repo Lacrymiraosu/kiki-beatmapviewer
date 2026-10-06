@@ -139,7 +139,7 @@ function inkDraw(px) {
       const k = (now - s.at) / 2600, [x, y] = s.pts[0];
       for (const off of [0, .33]) { const kk = (k + off) % 1; ctx.globalAlpha = (1 - kk) * .9; ctx.strokeStyle = s.color; ctx.lineWidth = 3 * px; ctx.beginPath(); ctx.arc(x, y, (8 + kk * 46) * px, 0, 7); ctx.stroke(); }
       ctx.globalAlpha = 1 - k; ctx.fillStyle = s.color; ctx.beginPath(); ctx.arc(x, y, 5 * px, 0, 7); ctx.fill();
-      ctx.font = `600 ${11 * px}px "Varela Round",sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillText(s.name || "", x + 10 * px, y - 8 * px);
+      ctx.font = `600 ${11 * px}px Inter,sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillText(s.name || "", x + 10 * px, y - 8 * px);
       dirty = true; continue;
     }
     ctx.globalAlpha = (s.kind === "hl" ? .38 : .95) * fade; ctx.strokeStyle = s.color; ctx.lineWidth = (s.kind === "hl" ? 18 : 3.2) * px;

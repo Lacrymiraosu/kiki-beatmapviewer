@@ -648,7 +648,7 @@ function collabDrawOver(t, px) {
     if (p.x > -100 && p.x < 612 && p.y > -100 && p.y < 484) {
       ctx.globalAlpha = 1; ctx.fillStyle = m.color; ctx.strokeStyle = "#000"; ctx.lineWidth = 1.2 * px;
       ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 11 * px, p.y + 12 * px); ctx.lineTo(p.x + 4.5 * px, p.y + 12 * px); ctx.lineTo(p.x, p.y + 17 * px); ctx.closePath(); ctx.fill(); ctx.stroke();
-      ctx.font = `600 ${11 * px}px "Varela Round",sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "top";
+      ctx.font = `600 ${11 * px}px Inter,sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "top";
       const w = ctx.measureText(m.name).width + 10 * px;
       ctx.fillRect(p.x + 12 * px, p.y + 14 * px, w, 16 * px); ctx.fillStyle = "#1c1726"; ctx.fillText(m.name, p.x + 17 * px, p.y + 16 * px);
     }

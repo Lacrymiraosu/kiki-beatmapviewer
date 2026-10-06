@@ -14,7 +14,7 @@ async function demoLoad() {
   return DEMO.map;
 }
 async function demoStart() {
-  const box = $("heroDemo"); if (!box || DEMO.on) return;
+  const box = $("heroDemo"); if (!box || DEMO.on || !box.getClientRects().length) return; // (only where it shows: the access page)
   DEMO.on = true;
   if (!await demoLoad() || !DEMO.on) return;
   if (!DEMO.cv) { DEMO.cv = h("canvas"); DEMO.cv.setAttribute("aria-hidden", "true"); box.append(DEMO.cv); DEMO.g = DEMO.cv.getContext("2d"); }
@@ -186,3 +186,21 @@ function demoFrame(now) {
   g.globalAlpha = 1;
   if (RM) { cancelAnimationFrame(DEMO.raf); DEMO.on = false; } // reduced motion: one still frame
 }
+
+// home page keys, as the tiles show them: B Beatmaps, E Editor, N new beatmap, O open a .osz, / the search box (also on Beatmaps)
+addEventListener("keydown", e => {
+  if (!/^(home|songs)$/.test(R.view) || !UI.player.hidden || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+  const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+  const vis = el => el && !el.closest("[hidden]") && el.getClientRects().length;
+  if (R.view === "songs") { if (e.key === "/" && vis($("q"))) { e.preventDefault(); $("q").focus(); } return; } // (Beatmaps: / is the search box)
+  if (document.querySelector(".mdl:not([hidden]),#detail:not([hidden])")) return;
+  const go = { KeyB: ".htile.songs", KeyE: ".htile.editor", KeyN: ".hcard.new", KeyO: "#homeOpen" }[e.code];
+  if (go) { const el = document.querySelector(go); if (vis(el)) { e.preventDefault(); el.click(); } return; }
+  if (e.key === "/" && vis($("homeQ"))) { e.preventDefault(); $("homeQ").focus(); }
+});
+
+// the home tiles' big numbers drift a little with the pointer (CSS reads --mx / --my, from -1 to 1)
+document.querySelectorAll(".htile").forEach(t => {
+  t.addEventListener("pointermove", e => { if (e.pointerType !== "mouse") return; const r = t.getBoundingClientRect(); t.style.setProperty("--mx", ((e.clientX - r.left) / r.width * 2 - 1).toFixed(3)); t.style.setProperty("--my", ((e.clientY - r.top) / r.height * 2 - 1).toFixed(3)); });
+  t.addEventListener("pointerleave", () => { t.style.removeProperty("--mx"); t.style.removeProperty("--my"); });
+});

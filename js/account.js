@@ -3,7 +3,7 @@
 // ---------- "Sync my settings across devices": the site's settings follow the account ----------
 // Device-specific ones stay on each device (audio offset and calibration, volumes, quality, frame rate, view) and so
 // does a skin loaded from a file (.osk lives in this browser only).
-const PREFS_LOCAL = new Set(["tlH", "edSize", "offset", "offsetBt", "btMode", "hsDelay", "quality", "fps", "masterVol", "musVol", "hsVol", "view", "prefsAt", "acctSync", "skinDefV", "mirrorDefV"]);
+const PREFS_LOCAL = new Set(["tlH", "edSize", "cmpDockMin", "offset", "offsetBt", "btMode", "hsDelay", "quality", "fps", "masterVol", "musVol", "hsVol", "view", "prefsAt", "acctSync", "skinDefV", "mirrorDefV", "edTourSeen", "edTourAdvSeen", "edTourSnooze", "edTourAdvSnooze", "edTray"]);
 function prefsOut() {
   const o = {};
   for (const [k, v] of Object.entries(S)) if (!PREFS_LOCAL.has(k) && !(k === "skin" && /^osk:/.test(v)) && v !== undefined) o[k] = v;
@@ -96,6 +96,21 @@ async function renderAccountPage() {
   const dl = h("a", "btn ghost sm", tr("Download my data (.json)")); dl.href = "/api/v1/me/export";
   const pv = h("a", "mlink", tr("Privacy")); pv.href = "?view=privacy"; pv.dataset.go = "privacy";
   card(tr("Your data"), h("p", "hint", tr("A file with everything this site keeps about your account: your profile here, projects, shares, backup logins, settings and recent activity.")), dl, pv);
+
+  // log out everywhere (POST me/logout-all): every login of this account ends, this one included
+  const lo = h("button", "btn ghost sm", tr("Log out everywhere…"));
+  lo.onclick = async () => {
+    const ok = await modal({ title: tr("Log out everywhere?"), body: tr("Ends your login on every device and browser, this one included (also one you forgot to log out of, or that someone else got hold of). You can log in again right away."),
+      dismiss: false, buttons: [{ label: tr("Cancel"), value: false }, { label: tr("Log out everywhere"), value: true, cls: "danger" }] });
+    if (!ok) return;
+    lo.disabled = true;
+    try { await capi("POST", "me/logout-all", {}); }
+    catch (e) { lo.disabled = false; toast(tr("Couldn't log out everywhere: {err}", { err: e.message }), 3000); return; }
+    try { localStorage.removeItem("obv-gate"); } catch {}
+    toast(tr("Logged out on every device"), 2000);
+    setTimeout(() => location.replace(location.pathname + location.search), 1200);
+  };
+  card(tr("Logins"), h("p", "hint", tr("Logged in somewhere you don't use any more? This ends every login of your account at once.")), lo);
 
   // delete account
   const del = h("button", "btn danger sm", tr("Delete account…"));

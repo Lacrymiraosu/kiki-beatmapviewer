@@ -1,6 +1,6 @@
 // /api/v1/<route>: one function for the app's API (vercel.json rewrites /api/v1/* here with ?route=).
 //
-// Who you are comes only from the signed osu! session cookie (obv_s, set by /api/auth/callback). Every database call
+// Who you are comes only from the signed osu! session cookie (__Host-obv_s, set by /api/auth/callback). Every database call
 // passes that verified osu! id to a database function that checks it again (account status, project role, expiry),
 // so hiding buttons in the page is never what protects data. The browser never gets database or storage keys: only
 // short-lived signed URLs for the files of projects it may read (10 min) or write (one object each, 2 h).
@@ -8,8 +8,9 @@
 // make other accounts admins (a role in the database, checked again on every admin request); only the owner changes
 // site-wide settings and who is an admin.
 const crypto = require("crypto");
-const { cfg, unsign, sign, cookies, cookie, query } = require("./_lib/auth");
+const { cfg, keys, unsign, sign, cookies, cookie, query, sameOrigin } = require("./_lib/auth");
 const osu = require("./_lib/osu");
+const { limiter, clientIp } = require("./_lib/rate");
 const alt = require("./_lib/alt");
 const db = require("./_lib/db");
 const turn = require("./_lib/turn");
@@ -35,25 +36,32 @@ async function body(req, max = 1.5e6) {
   try { const j = JSON.parse(raw || "{}"); if (j && typeof j === "object" && !Array.isArray(j)) return j; } catch {}
   throw new ApiError("bad_request", 400);
 }
-// state-changing requests must come from this site (cookies are SameSite=Lax; this is a second check)
-function sameOrigin(req) {
-  const site = req.headers["sec-fetch-site"];
-  if (site && site !== "same-origin" && site !== "none") return false;
-  const origin = req.headers.origin, host = req.headers["x-forwarded-host"] || req.headers.host;
-  if (origin) { try { if (new URL(origin).host !== host) return false; } catch { return false; } }
-  return /application\/json/.test(req.headers["content-type"] || "");
-}
+// state-changing requests must come from this site: sameOrigin (api/_lib/auth.js, shared with /api/auth/logout)
 function session(req) {
   const c = cfg(req); if (!c.secret) return null;
-  const s = unsign(cookies(req).obv_s, c);
-  return s && s.kind === "session" && s.id > 0 ? s : null;
+  const ck = cookies(req), s = unsign(ck.obv_s, c);
+  if (!(s && s.kind === "session" && s.id > 0)) return null;
+  if (ck.legacy.has("obv_s")) Object.defineProperty(s, "legacyName", { value: true }); // (from before the __Host- name: written again in touch())
+  const t = touched.get(s.id); return t && revoked(s, t.va) ? null : s; // (ended by "Log out everywhere" & co., as last seen here)
 }
 const ownerId = () => { const o = String(process.env.OWNER_OSU_ID || "").trim(); return /^\d{1,12}$/.test(o) ? +o : null; };
 const isOwner = s => !!s && ownerId() !== null && +s.id === ownerId();
-const touched = new Map(); // osu id -> time the user row was last refreshed (per server instance)
-function googlePending(req) { const g = unsign(cookies(req).obv_gp, cfg(req)); return g && g.kind === "gpend" && g.sub ? g : null; }
+const touched = new Map(); // osu id -> { at: when the user row was last refreshed, va: its sessions_valid_after (ms) } (per server instance)
+// Ending sessions (they're stateless): every login made up to sessions_valid_after stops working. Set by "Log out
+// everywhere", unlinking Google and an admin's suspension; read with the user row in touch() (no extra query), so
+// another server instance notices within 5 minutes (actor()) or on the next /me.
+const validAfter = u => { const t = u && u.sessions_valid_after ? Date.parse(u.sessions_valid_after) : 0; return Number.isFinite(t) ? t : 0; };
+const revoked = (s, va) => va > 0 && !(+s.iat > va);
+async function revokeSessions(uid) { // -> the time (ms): sessions made up to then are over
+  const at = Date.now();
+  await db.rpc("obv_sessions_revoke", { p_user: uid, p_at: new Date(at).toISOString() });
+  const t = touched.get(uid); touched.set(uid, { at: t ? t.at : 0, va: Math.max(at, t ? t.va : 0) });
+  return at;
+}
 // refresh the user row; a deleted account (Account settings → Delete account) isn't brought back: a login made after
-// the deletion starts a new, empty account, an older one (another device…) is logged out -> null
+// the deletion starts a new, empty account, an older one (another device…) is logged out -> null. Also null (with
+// s.revoked) for a session ended since; a cookie still signed with the old key (auth.js keys), or still under its old
+// name (obv_s, before __Host-obv_s: auth.js cookies), is written again here.
 async function touch(s, res) {
   const args = { p_id: s.id, p_username: String(s.username || "").slice(0, 64), p_avatar: s.avatar || null, p_country: s.country || null };
   let u = await db.rpc("obv_user_touch", args);
@@ -61,9 +69,13 @@ async function touch(s, res) {
     if (s.iat && s.iat > Date.parse(u.deleted_at)) { await db.rpc("obv_account_restart", { p_id: s.id, p_since: new Date(s.iat).toISOString() }); u = await db.rpc("obv_user_touch", args); }
     else { touched.delete(s.id); if (res) res.setHeader("Set-Cookie", cookie("obv_s", "", 0)); return null; }
   }
-  touched.set(s.id, Date.now()); if (touched.size > 5000) touched.clear();
+  const va = validAfter(u);
+  touched.set(s.id, { at: Date.now(), va }); if (touched.size > 5000) touched.clear();
+  if (revoked(s, va)) { s.revoked = true; if (res) res.setHeader("Set-Cookie", cookie("obv_s", "", 0)); return null; }
+  if ((s.legacyKey || s.legacyName) && res) res.setHeader("Set-Cookie", cookie("obv_s", sign({ ...s }, cfg({ headers: {} })), Math.max(0, Math.floor((s.exp - Date.now()) / 1000))));
   return u;
 }
+const gone = s => s.revoked ? new ApiError("login_required", 401, { reason: "session_revoked" }) : new ApiError("account_deleted", 401);
 // A session asked for with Google for an osu! name (unverified: never confirmed by that osu! account) only lasts as
 // long as its Google link does: an osu! login by the real owner removes unconfirmed links, and with it every such
 // session (they're stateless, so it's checked on every use: one small query, only for these few sessions).
@@ -78,7 +90,7 @@ async function actor(req, res) {
   if (!db.configured()) throw new ApiError("not_configured", 503);
   if (!(await unverifiedOk(s))) { if (res) res.setHeader("Set-Cookie", cookie("obv_s", "", 0)); throw new ApiError("login_required", 401, { reason: "unverified_link_gone" }); }
   const t = touched.get(s.id);
-  if ((!t || Date.now() - t > 300000) && !(await touch(s))) throw new ApiError("account_deleted", 401);
+  if ((!t || Date.now() - t.at > 300000) && !(await touch(s, res))) throw gone(s);
   return s;
 }
 // "owner" | "admin" | null, never cached: removing an admin takes effect on their next request
@@ -142,10 +154,17 @@ async function requireAccess(req, key) {
   if (who === "guest") throw s ? new ApiError("no_access", 403) : new ApiError("login_required", 401);
   throw new ApiError("forbidden", 403, { reason: "permission" });
 }
+const FB_SEEN = new Map(); // report text -> when it was last kept (POST feedback)
 // routes anyone may call on an invite-only site (the rest need access; admin routes check the admin role themselves)
-const OPEN = new Set(["GET me", "POST access/request", "GET changelog", "GET invite", "POST invite/accept", "POST invite/accept-google", "POST live/ice", "POST live/ticket", "GET me/logins", "DELETE me/logins/google", "POST access/request-google",
-  "GET me/account", "POST me/account", "GET me/prefs", "GET me/export", "POST me/delete", "POST errors", "POST feedback"]); // (your own account: always, whatever the site's permissions)
-const userUpdate = (s, uid, patch) => db.rpc("obv_admin_user_update", { p_actor: s.id, p_actor_is_owner: s.role === "owner", p_owner_id: ownerId(), p_user: uid, p_patch: patch });
+const OPEN = new Set(["GET me", "POST access/request", "GET changelog", "GET invite", "POST invite/accept", "POST live/ice", "POST live/ticket", "GET me/logins", "DELETE me/logins/google", "POST me/logout-all",
+  "GET me/account", "POST me/account", "GET me/prefs", "GET me/export", "POST me/delete", "POST me/merge-google", "POST me/merge-google/skip", "POST errors", "POST feedback"]); // (your own account: always, whatever the site's permissions)
+const userUpdate = async (s, uid, patch) => {
+  const u = await db.rpc("obv_admin_user_update", { p_actor: s.id, p_actor_is_owner: s.role === "owner", p_owner_id: ownerId(), p_user: uid, p_patch: patch });
+  if (patch.status === "suspended" && u && u.status === "suspended") { // suspended: logged out on every device too
+    try { await revokeSessions(uid); } catch (e) { if (e.code !== "db_error") throw e; } // (before the session migration)
+  }
+  return u;
+};
 async function lookupOsu(who) { // "<osu name or id>" -> osu! user (the server asks osu!)
   who = String(who || "").trim();
   if (!/^[\w\-\[\] ]{1,32}$/.test(who)) throw new ApiError("bad_request", 400);
@@ -168,26 +187,38 @@ async function withFiles(p) {
 // signed by this server with its end time. Anyone in that session (guests too) can then get relay credentials with it,
 // until the session ends. Nobody gets the relay without a started session.
 const LIVE_MS = 3 * 3600 * 1000;
-const liveSig = (req, code, exp) => crypto.createHmac("sha256", cfg(req).key).update(`live:${code}:${exp}`).digest("base64").replace(/\+/g, "-").replace(/\//g, "_").slice(0, 22);
+const liveSig = (req, code, exp) => crypto.createHmac("sha256", keys("live").key).update(`live:${code}:${exp}`).digest("base64").replace(/\+/g, "-").replace(/\//g, "_").slice(0, 22);
 function liveToken(req, code, exp) { return exp.toString(36) + "." + liveSig(req, code, exp); }
 function liveTokenExp(req, code, tok) { // -> end time, or 0 when the token isn't valid (any more)
   const m = /^([0-9a-z]{1,12})\.([A-Za-z0-9_-]{22})$/.exec(String(tok || "")); if (!m || !cfg(req).secret) return 0;
   const exp = parseInt(m[1], 36), want = Buffer.from(liveSig(req, code, exp)), got = Buffer.from(m[2]);
   return exp > Date.now() && exp < Date.now() + LIVE_MS + 600000 && got.length === want.length && crypto.timingSafeEqual(got, want) ? exp : 0;
 }
-// { on, ping_ms, relay, month_gb, capped } (Admin → Settings → TURN relay, and the person's own "always use the relay").
-// Over the monthly limit (Cloudflare's usage numbers, when the analytics token is set) nobody gets the relay until the
-// next month: live sessions stay peer-to-peer.
+// { on, ping_ms, relay, month_gb, capped, blocked } (Admin → Settings → TURN relay, and the person's own "always use the
+// relay"). Over the monthly limit (Cloudflare's usage numbers) nobody gets the relay until the next month: live sessions
+// stay peer-to-peer. The limit fails closed: when it can't be checked (no analytics token, a limit of 0, or the usage
+// can't be read) nobody gets the relay either -> blocked: "no_analytics" | "no_limit" | "usage_error". Only the env flag
+// TURN_CAP_DISABLED=1 lets the relay run without a working limit (no analytics token / 0 = no limit); a limit that can
+// be checked is still enforced, and unreadable usage still means no relay.
 const GB = 1e9;
+const turnCapDisabled = () => /^(1|true|yes|on)$/i.test(String(process.env.TURN_CAP_DISABLED || "").trim());
 async function turnConf(uid) {
-  const out = { on: turn.configured(), ping_ms: 150, relay: false, month_gb: 0, capped: false };
-  if (!out.on || !db.configured()) return out;
-  try { const c = await db.rpc("obv_turn_conf", { p_user: uid || null }); out.on = c.on !== false; out.ping_ms = +c.ping_ms || 150; out.relay = c.relay === true; out.month_gb = +c.month_gb || 0; }
-  catch {} // before the TURN migration: on, 150 ms, nobody forced
-  if (out.on && out.month_gb > 0 && turn.analyticsConfigured()) {
-    try { const u = await turn.usageCached(); if (u && u.bytes >= out.month_gb * GB) { out.on = false; out.capped = true; } }
-    catch {} // usage unknown: keep the relay
+  const out = { on: turn.configured(), ping_ms: 150, relay: false, month_gb: 0, capped: false, blocked: null };
+  if (!out.on) return out;
+  if (db.configured()) {
+    try { const c = await db.rpc("obv_turn_conf", { p_user: uid || null }); out.on = c.on !== false; out.ping_ms = +c.ping_ms || 150; out.relay = c.relay === true; out.month_gb = +c.month_gb || 0; }
+    catch {} // before the TURN migration: 150 ms, nobody forced, no known limit (so: the relay only with TURN_CAP_DISABLED)
   }
+  if (!out.on) return out;
+  if (!(out.month_gb > 0) || !turn.analyticsConfigured()) {
+    if (!turnCapDisabled()) { out.on = false; out.blocked = out.month_gb > 0 ? "no_analytics" : "no_limit"; }
+    return out;
+  }
+  try {
+    const u = await turn.usageCached();
+    if (!u || !Number.isFinite(+u.bytes)) throw new Error("no usage");
+    if (+u.bytes >= out.month_gb * GB) { out.on = false; out.capped = true; }
+  } catch { out.on = false; out.blocked = "usage_error"; } // usage unknown: no relay (fails closed)
   return out;
 }
 const turnIdent = s => s && s.id > 0 ? "u" + s.id : "guest";
@@ -208,6 +239,17 @@ function driveConf() {
   return { client_id: id, ...(key && /^\d{6,20}$/.test(app) ? { api_key: key, app_id: app } : {}) };
 }
 
+// ---------- a Google-only account moving into an osu! account ----------
+// The osu! login (api/auth/callback.js) leaves a signed note (cookie obv_gm, 10 minutes) when this browser held a
+// Google-only login: { from: that account, to: the osu! account, sid: the new login's own id }. Nothing moves until the
+// person answers the page's question: POST me/merge-google (from the same login only) or POST me/merge-google/skip.
+function mergeNote(req) {
+  const c = cfg(req); if (!c.secret) return null;
+  const g = unsign(cookies(req).obv_gm, c);
+  return g && g.kind === "gmerge" && +g.from >= alt.GONLY && +g.to > 0 && +g.to < alt.GONLY && typeof g.sid === "string" ? g : null;
+}
+const mergeMine = (g, s) => !!(g && s && +g.to === +s.id && s.sid && g.sid === s.sid && !s.gonly && !s.via && !s.unverified);
+
 // ---------- routes ----------
 const routes = {
   // who am I (+ owner flag for the admin link; the server checks the id again on every admin request)
@@ -220,40 +262,27 @@ const routes = {
       try {
         if (!(await unverifiedOk(s))) { res.setHeader("Set-Cookie", cookie("obv_s", "", 0)); send(res, 200, { ...out, user: null, owner: false, admin: null, access: null, gate: await gateOn() }); return; } // (asked for with Google; the osu! owner has since logged in)
         const u = await touch(s, res);
-        if (!u) { send(res, 200, { ...out, user: null, owner: false, admin: null, access: null, deleted: true, gate: await gateOn() }); return; } // (logged out: the account was deleted)
+        if (!u) { send(res, 200, { ...out, user: null, owner: false, admin: null, access: null, ...(s.revoked ? { revoked: true } : { deleted: true }), gate: await gateOn() }); return; } // (logged out: the account was deleted, or this login was ended)
         out.status = u.status; out.limits = u.limits || null; out.prefs_at = u.prefs_at || null;
         if (!out.admin && u.role === "admin" && u.status === "active") out.admin = "admin";
         if (!out.access) out.access = out.admin ? "approved" : u.access || "none";
         out.access_requested_at = u.access_requested_at || null;
         if (u.access_required !== undefined) { out.gate = u.access_required !== false; gate = { at: Date.now(), on: out.gate }; }
+        const g = mergeNote(req); // just logged in with osu! where a Google-only login was: the page asks whether to move it here
+        if (g && mergeMine(g, s)) { try { const m = await db.rpc("obv_google_merge_preview", { p_from: g.from, p_to: s.id }); if (m && m.ok) out.merge_pending = { projects: +m.projects || 0, since: m.created_at || null }; } catch {} }
       } catch { out.cloud = false; }
     }
     if (out.gate === null) out.gate = await gateOn();
     if (out.gate) out.perms = await sitePerms(); // what guests and members can use (the client hides the rest)
     if (out.admin && db.configured()) try { out.badges = await db.rpc("obv_admin_badges", {}); } catch {} // (people waiting for an answer, new errors)
-    if (!s && googlePending(req)) out.google_pending = true; // signed in with a Google account that isn't linked yet (gate page: type the osu! name)
     send(res, 200, out);
   },
 
-  // ----- access: ask for it (after logging in with osu!) -----
-  // Request access with Google (gate page): signed in with a Google account that isn't linked to anyone, they type
-  // their osu! name; the server looks it up on osu! and the request is marked "via Google, not verified" for the admins
-  "POST access/request-google": async (req, res) => {
-    const gp = googlePending(req); if (!gp) throw new ApiError("google_expired", 401);
-    if (!db.configured()) throw new ApiError("not_configured", 503);
-    if (!(await gateOn())) throw new ApiError("bad_request", 400, { reason: "open" });
-    const b = await body(req, 4000), u = await lookupOsu(String(b.osu || "").replace(/^(?:https?:\/\/)?(?:www\.)?osu\.ppy\.sh\/(?:users|u)\//i, "").replace(/[/?#].*$/, ""));
-    const r = await db.rpc("obv_google_request", { p_sub: gp.sub, p_id: u.id, p_username: String(u.username || "").slice(0, 64), p_avatar: u.avatar_url || null, p_country: u.country_code || null, p_message: String(b.message || "").slice(0, 300) });
-    accessSeen.delete(u.id); touched.delete(u.id);
-    const c = cfg(req);
-    res.setHeader("Set-Cookie", [cookie("obv_s", alt.altSession(c, "google", { id: u.id, username: u.username, avatar: u.avatar_url, country: u.country_code, verified: r.verified }), 30 * 86400),
-      cookie("obv_gl", sign({ kind: "glink", sub: gp.sub, osu: u.id, exp: Date.now() + 400 * 864e5 }, c), 400 * 86400), cookie("obv_gp", "", 0)]);
-    send(res, 200, { ...r, user: { id: u.id, username: u.username } });
-  },
+  // ----- access: ask for it (after logging in with osu! or Google) -----
   "POST access/request": async (req, res) => {
     const s = session(req); if (!s) throw new ApiError("login_required", 401);
     if (!db.configured()) throw new ApiError("not_configured", 503);
-    if (!(await touch(s, res))) throw new ApiError("account_deleted", 401);
+    if (!(await touch(s, res))) throw gone(s);
     const b = await body(req, 4000);
     const r = await db.rpc("obv_access_request", { p_id: s.id, p_username: String(s.username || "").slice(0, 64), p_avatar: s.avatar || null, p_country: s.country || null, p_message: String(b.message || "").slice(0, 300) });
     accessSeen.delete(s.id);
@@ -285,31 +314,11 @@ const routes = {
   "POST invite/accept": async (req, res) => {
     const s = session(req); if (!s) throw new ApiError("login_required", 401);
     if (!db.configured()) throw new ApiError("not_configured", 503);
-    if (!(await touch(s, res))) throw new ApiError("account_deleted", 401);
+    if (!(await touch(s, res))) throw gone(s);
     const b = await body(req), code = String(b.code || "");
     if (!/^[A-Za-z0-9]{10}$/.test(code)) throw new ApiError("not_found", 404);
     const r = await db.rpc("obv_invite_accept", { p_id: s.id, p_username: String(s.username || "").slice(0, 64), p_avatar: s.avatar || null, p_country: s.country || null, p_code: code, p_owner_id: ownerId() });
     accessSeen.delete(s.id); send(res, 200, r);
-  },
-
-  // accept an invite with a Google account that isn't linked yet: they type their osu! name, like access/request-google
-  // (the link stays "not verified" until that osu! account logs in once; an osu! login removes links it didn't confirm)
-  "POST invite/accept-google": async (req, res) => {
-    const gp = googlePending(req); if (!gp) throw new ApiError("google_expired", 401);
-    if (!db.configured()) throw new ApiError("not_configured", 503);
-    const b = await body(req, 4000), code = String(b.code || "");
-    if (!/^[A-Za-z0-9]{10}$/.test(code)) throw new ApiError("not_found", 404);
-    const info = await db.rpc("obv_invite_info", { p_code: code, p_owner_id: ownerId() });
-    if (!info || !info.ok) throw new ApiError(info && info.reason === "full" ? "invite_full" : "invite_inactive", info && info.reason === "full" ? 409 : 403);
-    const u = await lookupOsu(String(b.osu || "").replace(/^(?:https?:\/\/)?(?:www\.)?osu\.ppy\.sh\/(?:users|u)\//i, "").replace(/[/?#].*$/, ""));
-    const prof = { p_id: u.id, p_username: String(u.username || "").slice(0, 64), p_avatar: u.avatar_url || null, p_country: u.country_code || null };
-    const g = await db.rpc("obv_google_request", { p_sub: gp.sub, ...prof, p_message: "" });
-    const r = await db.rpc("obv_invite_accept", { ...prof, p_code: code, p_owner_id: ownerId() });
-    accessSeen.delete(u.id); touched.delete(u.id);
-    const c = cfg(req);
-    res.setHeader("Set-Cookie", [cookie("obv_s", alt.altSession(c, "google", { id: u.id, username: u.username, avatar: u.avatar_url, country: u.country_code, verified: g.verified }), 30 * 86400),
-      cookie("obv_gl", sign({ kind: "glink", sub: gp.sub, osu: u.id, exp: Date.now() + 400 * 864e5 }, c), 400 * 86400), cookie("obv_gp", "", 0)]);
-    send(res, 200, { ...r, user: { id: u.id, username: u.username } });
   },
 
   // ----- projects -----
@@ -357,9 +366,10 @@ const routes = {
     const s = await actor(req), b = await body(req);
     const r = await db.rpc("obv_save_begin", { p_actor: s.id, p_project: P.id, p_base_revision: int(b.baseRevision, 0, 1e9, -1), p_files: Array.isArray(b.files) ? b.files : null });
     const uploads = [];
-    if (db.r2on() && r.uploads.length) { // R2: each upload is one Class A operation (counted, refused above the month's limit)
+    if (db.r2on() && r.uploads.length) { // R2: each upload is one Class A write + one Class B check, counted by worker.js per PUT; refused here early if they won't fit
       if (r.uploads.some(u => u.size > db.UPLOAD_MAX)) throw new ApiError("too_large", 413, { limit: db.UPLOAD_MAX });
-      await db.r2Use(r.uploads.length, 0);
+      const n = r.uploads.length, u = await db.r2Use(0, 0);
+      if (u.a + n > u.max_a || u.b + n > u.max_b) throw new ApiError("storage_limit", 503, { a: u.a, b: u.b, max_a: u.max_a, max_b: u.max_b });
     }
     for (let i = 0; i < r.uploads.length; i += 8) uploads.push(...await Promise.all(r.uploads.slice(i, i + 8).map(async u => ({ path: u.path, size: u.size, url: await db.signUpload(u.key, u.size) }))));
     send(res, 200, { saveId: r.save_id, uploads, reused: r.reused, size: r.size, limit: r.limit });
@@ -453,10 +463,12 @@ const routes = {
     send(res, 200, { on: c.on && iceServers.length > 0, ping_ms: c.ping_ms, relay: c.relay && iceServers.length > 0, iceServers });
   },
   // TURN servers for collab: Cloudflare's relay when set up (Admin → Settings → TURN relay: also { on, ping_ms, relay }),
-  // else TURN_URLS (a fallback only), else none
+  // else TURN_URLS (a fallback only), else none. Logged in only (collab needs an osu! login anyway; anonymous live guests
+  // use POST live/ice with the session's token), 10 a minute per IP (limited()), credentials for 3 hours at most.
   "GET ice": async (req, res) => {
+    const s = await actor(req, res);
     if (turn.configured()) {
-      const s = session(req), c = await turnConf(s && s.id), list = c.on ? await turn.iceServers(4 * 3600, turnIdent(s)) : [];
+      const c = await turnConf(s.id), list = c.on ? await turn.iceServers(LIVE_MS / 1000, turnIdent(s)) : [];
       // with the same switches as live sessions: the ping limit, and whether this person always uses the relay
       if (list.length) return send(res, 200, { iceServers: list, on: true, ping_ms: c.ping_ms, relay: c.relay });
     }
@@ -477,7 +489,32 @@ const routes = {
     try { linked = await db.rpc("obv_login_list", { p_user: s.id }); } catch (e) { if (e.code !== "db_error") throw e; } // (before the migration)
     send(res, 200, { configured: alt.configured(), linked, via: s.via || "osu" });
   },
-  "DELETE me/logins/google": async (req, res) => { const s = await actor(req); send(res, 200, { linked: await db.rpc("obv_login_unlink", { p_user: s.id, p_provider: "google" }) }); },
+  // unlinking also ends the logins made with that Google account (sessions end per account: older ones on other devices
+  // too); this one stays, signed again, unless it was made with Google
+  "DELETE me/logins/google": async (req, res) => {
+    const s = await actor(req), linked = await db.rpc("obv_login_unlink", { p_user: s.id, p_provider: "google" });
+    let at = 0; try { at = await revokeSessions(s.id); } catch (e) { if (e.code !== "db_error") throw e; } // (before the session migration)
+    if (at) res.setHeader("Set-Cookie", s.via === "google" ? cookie("obv_s", "", 0) : cookie("obv_s", sign({ ...s, iat: at + 1 }, cfg(req)), Math.max(0, Math.floor((s.exp - Date.now()) / 1000))));
+    send(res, 200, { linked, ...(at && s.via === "google" ? { logged_out: true } : {}) });
+  },
+  // "Log out everywhere": every login of this account ends, on every device, this one included
+  "POST me/logout-all": async (req, res) => {
+    const s = await actor(req, res); await revokeSessions(s.id);
+    res.setHeader("Set-Cookie", cookie("obv_s", "", 0));
+    send(res, 200, { ok: true });
+  },
+  // move the Google-only account this browser was logged in with into this osu! account (it asked: see mergeNote), or not
+  "POST me/merge-google": async (req, res) => {
+    const s = await actor(req), g = mergeNote(req);
+    if (!g) throw new ApiError("bad_request", 400, { reason: "no_merge_pending" });
+    if (!mergeMine(g, s)) throw new ApiError("forbidden", 403, { reason: "merge_not_yours" });
+    const done = () => res.setHeader("Set-Cookie", cookie("obv_gm", "", 0)); let r;
+    try { r = await db.rpc("obv_google_merge", { p_from: +g.from, p_to: s.id, p_username: String(s.username || "").slice(0, 64), p_avatar: s.avatar || null, p_country: s.country || null }); }
+    catch (e) { if (e && (e.code === "forbidden" || e.code === "bad_user")) done(); throw e; } // (refused for good: the page stops asking; a network error can be tried again)
+    done(); accessSeen.delete(s.id); touched.delete(s.id);
+    send(res, 200, { merged: !!(r && r.merged), projects: r && r.projects || 0 });
+  },
+  "POST me/merge-google/skip": async (req, res) => { res.setHeader("Set-Cookie", cookie("obv_gm", "", 0)); send(res, 200, { ok: true }); },
   // ---------- your account (Account settings) ----------
   "GET me/account": async (req, res) => { const s = await actor(req); send(res, 200, { ...await db.rpc("obv_account_get", { p_user: s.id }), owner: isOwner(s), via: s.via || "osu" }); },
   "POST me/account": async (req, res) => { // { allow_add?, sync?, prefs? }
@@ -501,7 +538,7 @@ const routes = {
     let left = 0; const t0 = Date.now(); // the projects' files now (what's left goes with the daily cleanup)
     for (const id of r.projects || []) { if (Date.now() - t0 > 20000) { left++; continue; } try { const x = await purgeProject(id); if (!(x && x.done)) left++; } catch { left++; } }
     if (!left) { try { await db.rpc("obv_account_finish", { p_user: s.id }); } catch {} }
-    res.setHeader("Set-Cookie", [cookie("obv_s", "", 0), cookie("obv_alt", "", 0)]);
+    res.setHeader("Set-Cookie", [...cookie("obv_s", "", 0), ...cookie("obv_alt", "", 0), ...cookie("obv_gm", "", 0)]);
     send(res, 200, { deleted: true, projects: (r.projects || []).length, pending: left });
   },
   "GET changelog": async (req, res) => { send(res, 200, { entries: await db.rpc("obv_changelog_public", {}) }); },
@@ -567,7 +604,7 @@ const routes = {
   // TURN relay: set up?, this month's usage from Cloudflare (total, per day, biggest users) and the limit. ?fresh=1 asks again.
   "GET admin/turn": async (req, res, q) => {
     await admin(req);
-    const c = await turnConf(null), out = { key: turn.configured(), analytics: turn.analyticsConfigured(), on: c.on || c.capped, capped: c.capped, ping_ms: c.ping_ms, month_gb: c.month_gb, usage: null, error: null };
+    const c = await turnConf(null), out = { key: turn.configured(), analytics: turn.analyticsConfigured(), on: c.on || c.capped || !!c.blocked, capped: c.capped, blocked: c.blocked, cap_disabled: turnCapDisabled(), ping_ms: c.ping_ms, month_gb: c.month_gb, usage: null, error: null };
     if (out.analytics) {
       try {
         out.usage = await turn.usageCached(q.get("fresh") === "1");
@@ -669,12 +706,18 @@ const routes = {
     send(res, 200, { ok: true });
   },
   // "Report a problem": what the person wrote, and their osu! name only if they asked to add it
+  // (each text once a day per server instance: FB_SEEN)
   "POST feedback": async (req, res) => {
     if (!db.configured()) throw new ApiError("not_configured", 503);
     const b = await body(req, 8000), str = (v, n) => typeof v === "string" && v.trim() ? v.trim().slice(0, n) : null;
     const message = str(b.message, 1000); if (!message || message.length < 3) throw new ApiError("bad_request", 400, { field: "message" });
     const s = b.with_name ? session(req) : null;
-    await db.rpc("obv_feedback", { p_message: message, p_page: str(b.page, 60), p_version: str(b.version, 20), p_browser: str(b.browser, 60), p_reporter: s ? `${String(s.username || "").slice(0, 40)} (#${s.id})` : null });
+    const k = message.replace(/\s+/g, " ").toLowerCase(); // the same text again (a double click, a resend, spam): kept once a day
+    if (Date.now() - (FB_SEEN.get(k) || 0) < 86400000) return send(res, 200, { ok: true });
+    FB_SEEN.delete(k); FB_SEEN.set(k, Date.now()); if (FB_SEEN.size > 2000) FB_SEEN.delete(FB_SEEN.keys().next().value);
+    try {
+      await db.rpc("obv_feedback", { p_message: message, p_page: str(b.page, 60), p_version: str(b.version, 20), p_browser: str(b.browser, 60), p_reporter: s ? `${String(s.username || "").slice(0, 40)} (#${s.id})` : null });
+    } catch (e) { FB_SEEN.delete(k); throw e; }
     send(res, 200, { ok: true });
   },
   "GET admin/errors": async (req, res, q) => {
@@ -731,13 +774,15 @@ function routeOf(req) {
 }
 // requests that anyone can make without logging in (osu! data, share links): a per-IP budget per minute, so nobody can
 // use this site to flood osu! (and get its app key blocked) or guess share links. Per server instance, best effort.
-const RATE = { osu: 90, link: 30, live: 60, err: 20, fb: 5 }, hits = new Map();
+// osu: under the app's own osu! budget (osu.js BUDGET: 50 a minute for everyone together; osu! asks for ~60). Browsing
+// takes far less: a map's panel is 1-2 requests, a mapper page 3-4, a search or "more" 1 (most answers are cached).
+// err / fb: the error and report lists keep the newest 300 / 200, so one IP also gets an hourly cap (HOURLY) and can't
+// push genuine reports out (the same error is one row anyway, and the same report text is kept once: POST feedback).
+const RATE = { osu: 40, link: 30, live: 60, ice: 10, err: 10, fb: 5 }, HOURLY = { err: 30, fb: 10 }, over = limiter();
 function limited(req, route) {
-  const kind = route.startsWith("osu/") ? "osu" : route.startsWith("link/") || route === "invite" || route === "invite/accept" || route === "invite/accept-google" || route === "access/request-google" ? "link" : route.startsWith("live/") ? "live" : route === "errors" ? "err" : route === "feedback" ? "fb" : null; if (!kind) return false;
-  const ip = String(req.headers["x-real-ip"] || req.headers["x-forwarded-for"] || "").split(",")[0].trim() || "?";
-  const key = kind + ":" + ip, now = Date.now(), e = hits.get(key);
-  if (!e || now - e.at > 60000) { hits.set(key, { at: now, n: 1 }); if (hits.size > 20000) hits.clear(); return false; }
-  return ++e.n > RATE[kind];
+  const kind = route.startsWith("osu/") ? "osu" : route.startsWith("link/") || route === "invite" || route === "invite/accept" ? "link" : route.startsWith("live/") ? "live" : route === "ice" ? "ice" : route === "errors" ? "err" : route === "feedback" ? "fb" : null; if (!kind) return false;
+  const ip = clientIp(req);
+  return over(kind + ":" + ip, RATE[kind]) || (kind in HOURLY && over("h:" + kind + ":" + ip, HOURLY[kind], 3600000));
 }
 async function handler(req, res) {
   const route = routeOf(req), q = query(req), m = match(req.method, route);
@@ -750,7 +795,7 @@ async function handler(req, res) {
     await m.fn(req, res, q, m.P);
   }
   catch (e) {
-    if (e instanceof ApiError || (e && e.status && e.code)) return send(res, e.status, { error: e.code, detail: e.detail || undefined });
+    if (e instanceof ApiError || (e && e.status && e.code)) { if (e.retryAfter) res.setHeader("Retry-After", String(e.retryAfter)); return send(res, e.status, { error: e.code, detail: e.detail || undefined }); } // (osu.js: osu! busy, try again then)
     console.error("api", route.replace(/[0-9a-f-]{36}/g, ":id"), e && e.message);
     send(res, 500, { error: "server_error" });
   }

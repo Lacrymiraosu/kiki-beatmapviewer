@@ -1,11 +1,12 @@
 // GET /api/auth/callback?code=&state=  (osu! sends the user back here)
 // Swaps the code for a token, reads /me once, then forgets the token and sets a signed session cookie.
-const { cfg, sign, unsign, cookies, cookie, query, redirect, withParam } = require("../_lib/auth");
+const { cfg, sign, unsign, cookies, cookie, query, safeNext, redirect, withParam } = require("../_lib/auth");
+const crypto = require("crypto");
 const db = require("../_lib/db");
 
 module.exports = async (req, res) => {
   const c = cfg(req), q = query(req), st = unsign(cookies(req).obv_st, c);
-  const next = st && st.next || "/", clear = cookie("obv_st", "", 0);
+  const next = safeNext(st && st.next), clear = cookie("obv_st", "", 0); // (checked again on the way back too)
   const fail = why => redirect(res, withParam(next, "login", why), clear);
   if (!c.secret || !c.id) return fail("not_configured");
   if (q.get("error")) return fail(q.get("error") === "access_denied" ? "cancelled" : "error");
@@ -28,19 +29,19 @@ module.exports = async (req, res) => {
     if (!mr.ok) { console.error("osu! /me", mr.status); return fail("profile"); }
     const me = await mr.json();
     const user = { id: me.id, username: me.username, avatar: me.avatar_url || `https://a.ppy.sh/${me.id}`, country: me.country_code || "" };
-    const days = 30, session = sign({ ...user, kind: "session", iat: Date.now(), exp: Date.now() + days * 864e5 }, c);
+    // sid: this login's own random id, which the "move your Google-only account here?" note below is bound to
+    const days = 30, sid = crypto.randomBytes(12).toString("hex"), session = sign({ ...user, kind: "session", sid, iat: Date.now(), exp: Date.now() + days * 864e5 }, c);
     // a Google account that asked for access for this osu! account in this browser is now confirmed; an unconfirmed one
     // from anywhere else is removed (someone may have typed this person's osu! name)
     const gl = unsign(cookies(req).obv_gl, c), mine = gl && gl.kind === "glink" && +gl.osu === +me.id ? gl.sub : null, extra = [];
-    if (db.configured()) { try { await db.rpc("obv_osu_login", { p_id: me.id, p_google_sub: mine }); if (mine) extra.push(cookie("obv_gl", "", 0)); } catch {} }
-    // logged in with Google only (no osu!) in this browser until now: that account and all it has move to this osu! one,
-    // and the Google login opens this account from now on
-    const was = unsign(cookies(req).obv_s, c);
-    if (was && was.kind === "session" && was.gonly && +was.id >= 1e12 && db.configured()) {
-      try { await db.rpc("obv_google_merge", { p_from: +was.id, p_to: me.id, p_username: String(me.username || "").slice(0, 64), p_avatar: user.avatar, p_country: user.country || null }); }
-      catch (e) { console.error("google merge", e && (e.code || e.message)); }
-    }
-    redirect(res, withParam(next, "login", "ok"), [clear, cookie("obv_s", session, days * 86400), ...extra]);
+    if (db.configured()) { try { await db.rpc("obv_osu_login", { p_id: me.id, p_google_sub: mine }); if (mine) extra.push(...cookie("obv_gl", "", 0)); } catch {} }
+    // logged in with Google only (no osu!) in this browser until now: that account and what it has can move to this osu!
+    // one (and its Google login then opens this account), but only once this person says so: the page asks, and
+    // POST /api/v1/me/merge-google does it. Nothing moves here: that Google-only login may have been left by someone else
+    // (a shared computer) or set by another site. The note lasts 10 minutes and only counts for this login (sid).
+    const was = unsign(cookies(req).obv_s, c), gm = was && was.kind === "session" && was.gonly && +was.id >= 1e12 && db.configured()
+      ? cookie("obv_gm", sign({ kind: "gmerge", from: +was.id, to: me.id, sid, exp: Date.now() + 10 * 60000 }, c), 600) : cookie("obv_gm", "", 0);
+    redirect(res, withParam(next, "login", "ok"), [...clear, ...cookie("obv_s", session, days * 86400), ...gm, ...extra]);
   } catch (e) {
     console.error("osu! login", e && (e.message || e.name));
     fail("network");

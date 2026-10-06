@@ -134,7 +134,8 @@ async function linkJson(q, l, owner) {
 const CODE_CH = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
 async function newInviteCode(q) {
   for (;;) {
-    let c = ""; const b = crypto.randomBytes(10); for (let i = 0; i < 10; i++) c += CODE_CH[b[i] % CODE_CH.length];
+    // bytes >= 224 (= 56 * 4) are dropped so every character is equally likely (no modulo bias)
+    let c = ""; while (c.length < 10) for (const x of crypto.randomBytes(16)) if (x < 224 && c.length < 10) c += CODE_CH[x % CODE_CH.length];
     if (!await q.one("select 1 from users where invite_code = ?", c) && !await q.one("select 1 from invite_links where code = ?", c)) return c;
   }
 }
@@ -160,7 +161,15 @@ F.obv_user_touch = async (q, { p_id, p_username, p_avatar, p_country }) => {
     p_id, left(p_username, 64), left(p_avatar, 300), left(p_country, 4), q.now, q.now);
   const u = await userRow(q, p_id);
   return { id: u.osu_id, username: u.username, status: u.status, status_reason: u.status_reason, role: u.role, limits: await userLimits(q, u.osu_id),
-    access: u.access, access_requested_at: u.access_requested_at, access_decided_at: u.access_decided_at, access_required: await accessRequired(q), prefs_at: u.prefs_at };
+    access: u.access, access_requested_at: u.access_requested_at, access_decided_at: u.access_decided_at, access_required: await accessRequired(q), prefs_at: u.prefs_at,
+    sessions_valid_after: u.sessions_valid_after == null ? null : u.sessions_valid_after };
+};
+// every login of p_user made up to p_at ends (d1/migrations/0004_session_revoke.sql); never moves back
+F.obv_sessions_revoke = async (q, { p_user, p_at }) => {
+  if (!(p_user > 0)) err("bad_user");
+  const t = Date.parse(p_at), at = Number.isFinite(t) ? new Date(t).toISOString() : q.now;
+  await q.run("update users set sessions_valid_after = case when sessions_valid_after is not null and sessions_valid_after > ? then sessions_valid_after else ? end where osu_id = ?", at, at, p_user);
+  return { sessions_valid_after: await q.val("select sessions_valid_after from users where osu_id = ?", p_user) };
 };
 F.obv_usernames = async (q, { p_ids }) => {
   const ids = (Array.isArray(p_ids) ? p_ids : []).slice(0, 100).map(Number).filter(Number.isFinite); if (!ids.length) return [];
@@ -240,19 +249,31 @@ F.obv_google_account = async (q, { p_sub }) => {
   }
   return F.obv_login_find(q, { p_provider: "google", p_subject: p_sub });
 };
-// the Google-only account p_from logged in with osu! (p_to): everything moves to the osu! account, p_from is gone
+// what a merge of p_from into p_to would do, without changing anything (20261008120000_obv_google_merge_safe.sql)
+F.obv_google_merge_preview = async (q, { p_from, p_to }) => {
+  if (!(p_from >= GONLY) || !(p_to > 0 && p_to < GONLY)) err("bad_user");
+  const f = await userRow(q, p_from); if (!f) return { ok: false, reason: "gone" };
+  if (f.access === "denied" || f.status !== "active") return { ok: false, reason: "source_denied" };
+  if (await q.one("select 1 from account_deletions where osu_id = ?", p_to)) return { ok: false, reason: "deleted" };
+  return { ok: true, created_at: f.created_at, projects: Number(await q.val("select count(*) from projects where owner_id = ? and status = 'active'", p_from)) };
+};
+// the Google-only account p_from moves into the osu! account p_to (confirmed by its owner: POST me/merge-google):
+// everything moves, p_from is gone. A denial is never lifted: a denied or suspended p_from can't move, a denied p_to stays
+// denied (see 20261008120000_obv_google_merge_safe.sql)
 F.obv_google_merge = async (q, { p_from, p_to, p_username, p_avatar, p_country }) => {
   if (!(p_from >= GONLY) || !(p_to > 0 && p_to < GONLY)) err("bad_user");
   const f = await userRow(q, p_from); if (!f) return { merged: false };
+  if (f.access === "denied" || f.status !== "active") err("forbidden", { reason: "source_denied" });
   if (await q.one("select 1 from account_deletions where osu_id = ?", p_to)) return { merged: false };
   await q.run("insert into users (osu_id, username, avatar_url, country, last_login_at, last_seen_at, created_at) values (?, ?, ?, ?, ?, ?, ?) on conflict (osu_id) do nothing",
     p_to, left(p_username || "user", 64), left(p_avatar, 300), left(p_country, 4), q.now, q.now, q.now);
-  const t = await userRow(q, p_to), rank = a => ({ approved: 3, pending: 2, denied: 1 })[a] || 0, st = [];
-  if (rank(f.access) > rank(t.access)) st.push(["update users set access = ?, access_message = ?, access_requested_at = ?, access_decided_at = ?, access_decided_by = ?, invited_by = coalesce(invited_by, ?), invited_at = coalesce(invited_at, ?), invited_via = coalesce(invited_via, ?) where osu_id = ?",
-    f.access, f.access_message, f.access_requested_at, f.access_decided_at, f.access_decided_by, f.invited_by, f.invited_at, f.invited_via, p_to]);
-  if (f.status === "suspended" && t.status === "active") st.push(["update users set status = 'suspended', status_reason = ? where osu_id = ?", f.status_reason, p_to]);
-  st.push(["update users set can_invite = coalesce(can_invite, ?), invite_limit = coalesce(invite_limit, ?) where osu_id = ?", f.can_invite == null ? null : f.can_invite ? 1 : 0, f.invite_limit, p_to]);
-  if (t.invite_code == null && f.invite_code != null) st.push(["update users set invite_code = null where osu_id = ?", p_from], ["update users set invite_code = ? where osu_id = ?", f.invite_code, p_to]);
+  const t = await userRow(q, p_to), rank = a => ({ approved: 3, pending: 2 })[a] || 0, st = [];
+  if (t.access !== "denied") {
+    if (rank(f.access) > rank(t.access)) st.push(["update users set access = ?, access_message = ?, access_requested_at = ?, access_decided_at = ?, access_decided_by = ?, invited_by = coalesce(invited_by, ?), invited_at = coalesce(invited_at, ?), invited_via = coalesce(invited_via, ?) where osu_id = ?",
+      f.access, f.access_message, f.access_requested_at, f.access_decided_at, f.access_decided_by, f.invited_by, f.invited_at, f.invited_via, p_to]);
+    st.push(["update users set can_invite = coalesce(can_invite, ?), invite_limit = coalesce(invite_limit, ?) where osu_id = ?", f.can_invite == null ? null : f.can_invite ? 1 : 0, f.invite_limit, p_to]);
+    if (t.invite_code == null && f.invite_code != null) st.push(["update users set invite_code = null where osu_id = ?", p_from], ["update users set invite_code = ? where osu_id = ?", f.invite_code, p_to]);
+  }
   const moved = await q.val("select count(*) from projects where owner_id = ?", p_from);
   st.push(["update projects set client_key = substr(client_key, 1, 50) || '-g' || substr(id, 1, 8) where owner_id = ? and exists (select 1 from projects x where x.owner_id = ? and x.client_key = projects.client_key)", p_from, p_to],
     ["update projects set owner_id = ? where owner_id = ?", p_to, p_from],

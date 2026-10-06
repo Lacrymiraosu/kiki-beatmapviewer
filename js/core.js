@@ -30,21 +30,22 @@ const norm = p => String(p).replace(/\\/g, "/").replace(/^"|"$/g, "").trim().toL
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function h(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 
-// ============ device ============
+// ============ device ============ (what kind of device: DEV and kbdMod, js/device.js)
 const RM = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const LOWEND = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 3;
-const TOUCH = matchMedia("(pointer: coarse)").matches;
-const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+const TOUCH = DEV.coarse; // (at load: the wording of one-off hints)
+const isIOS = () => DEV.webkitOnly; // iPhone / iPad (iPadOS included)
 // iPhone / iPad grey out files of a type they don't know (.osz, .osk, .osu) when the picker is limited to them, so
 // there the picker takes any file and the name is checked after it's picked (fileIs)
-function fileAccept(input, accept) { if (isIOS()) input.removeAttribute("accept"); else input.accept = accept; return input; }
+function fileAccept(input, accept) { if (DEV.webkitOnly) input.removeAttribute("accept"); else input.accept = accept; return input; }
 const fileIs = (f, exts) => new RegExp("\\.(" + exts.join("|") + ")$", "i").test(f && f.name || "");
 
 // ============ settings ============
 const DEF = { lang: "", mirror: "osudirect", skin: "default", sb: true, notes: true, cursor: true, hsSrc: "beatmap", hud: true, fx: false, parallax: false, video: true, followPts: true,
   judge: false, snaking: true, snakingOut: true, sliderEnd: true, offset: 0, dim: 25, masterVol: 10, hsVol: 60, musVol: 80, quality: "auto", view: "lock16", overlay: false, metro: false, btMode: false, hsDelay: 0, offsetBt: null,
   snap: 4, grid: 0, ds: false, dsMul: 1, guides: true, sideNotes: false, sideAnns: false, gLine: true, gAngle: true, gPlace: true, gRings: true, notePrefix: "", noteSuffix: "", replyQuote: false, sliderShadow: true, edStack: true, edDim: 60, edSampleName: false, gameMode: 0, edHitMarkers: true, gdAuto: true, fps: 50, tlZoom: .25, tlLock: false,
-  vfyAuto: true, vfyWait: true, cmpGhostA: 70, stDiv: 4, stStart: 1, stEnd: 1, stEase: "linear", stNC: true, stLen: 1, pivot: "sel", trRot: 0, trScale: 1, polyN: 5, polyR: 100, polyRot: 0, polyRep: 1 };
+  vfyAuto: true, vfyWait: true, cmpBefore: 40, cmpBeforeCol: "#ff4d5e", cmpAfter: 100, edAdv: false, stDiv: 4, stStart: 1, stEnd: 1, stEase: "linear", stNC: true, stLen: 1, pivot: "sel", trRot: 0, trScale: 1, polyN: 5, polyR: 100, polyRot: 0, polyRep: 1,
+  edTour: true, edTourSeen: 0, edTourAdvSeen: 0, edTourSnooze: 0, edTourAdvSnooze: 0 }; // (the editor tour, edtour.js: the switch syncs, the rest is per device)
 const FPS_OPTS = [30, 50, 60, 120, 240];
 const S = { ...DEF };
 let savedS = {};
@@ -112,12 +113,17 @@ const setTitle = t => document.title = t ? `${t} · KIKI BEATMAP VIEWER` : "KIKI
 // ============ volume (music + hitsound), shared by home, detail and player ============
 const audio = $("audio");
 const prevAudio = new Audio(); prevAudio.preload = "none";
+// iPhone / iPad ignore an <audio>'s volume (it always plays at full volume, reading it gives 1): there the previews
+// play through Web Audio instead, where a gain node follows the site volume (app.js, song previews)
+const VOL_FIXED = DEV.webkitOnly || (() => { try { const a = new Audio(); a.volume = .5; return Math.abs(a.volume - .5) > .01; } catch { return false; } })();
+let pvGain = null;
 // master scales music and hitsounds (and previews / metronome)
 const musGain = () => S.musVol / 100 * S.masterVol / 100;
 const hsGain = () => S.hsVol / 100 * S.masterVol / 100;
 function applyVolumes() {
   const mv = musGain();
   if (A.gain) A.gain.gain.value = mv;
+  if (pvGain) pvGain.gain.value = mv;
   audio.volume = mv; prevAudio.volume = mv;
 }
 const VOL_KEYS = [["masterVol", "Master"], ["musVol", "Music"], ["hsVol", "Hitsound"]];
@@ -141,6 +147,14 @@ function syncVol(except) {
     i.nextElementSibling.textContent = S[i.dataset.vol] + "%";
   });
 }
+// the volume changed in another tab of the site (the player in one, the beatmaps in another): follow it here too
+addEventListener("storage", e => {
+  if (e.key !== "obv-settings" || !e.newValue) return;
+  let n; try { n = JSON.parse(e.newValue) || {}; } catch { return; }
+  let ch = false;
+  for (const [k] of VOL_KEYS) if (typeof n[k] === "number" && n[k] !== S[k]) { S[k] = n[k]; ch = true; }
+  if (ch) { syncVol(); applyVolumes(); }
+});
 
 // ============ lazy JSZip (only needed once a .osz/.osk is opened) ============
 let jszipP = null;
@@ -149,6 +163,9 @@ function loadJSZip() {
   return jszipP || (jszipP = new Promise((res, rej) => {
     const s = document.createElement("script");
     s.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+    // SRI: cdnjs's published hash for this exact file (the CSP also only allows this library's path)
+    s.integrity = "sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg==";
+    s.crossOrigin = "anonymous";
     s.onload = () => res(window.JSZip);
     s.onerror = () => { jszipP = null; rej(new Error(tr("Couldn't load JSZip, check your internet connection"))); };
     document.head.append(s);
@@ -277,11 +294,19 @@ function errReport(message, stack, source) {
 function siteContext() {
   const q = new URLSearchParams(location.search), kind = ["s", "b", "u", "live", "collab", "project", "invite"].find(k => q.has(k));
   const page = (document.body && document.body.classList.contains("gated") ? "gate:" : "") + (q.get("view") || (kind ? "?" + kind : "home"));
-  const ua = navigator.userAgent, browser = (/Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /OPR\//.test(ua) ? "Opera" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Other")
-    + (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? " · iOS" : /Android/.test(ua) ? " · Android" : /Windows/.test(ua) ? " · Windows" : /Mac OS X/.test(ua) ? " · macOS" : /Linux/.test(ua) ? " · Linux" : "")
-    + (matchMedia("(pointer:coarse)").matches ? " · touch" : "") + (matchMedia("(display-mode: standalone)").matches ? " · app" : "");
+  // (the browser family, system, touch screen and installed app only: never the full user agent; see the Privacy page)
+  const browser = ({ edge: "Edge", firefox: "Firefox", opera: "Opera", chrome: "Chrome", safari: "Safari", samsung: "Samsung Internet" }[DEV.browser] || "Other")
+    + ({ ios: " · iOS", ipados: " · iOS", android: " · Android", windows: " · Windows", mac: " · macOS", linux: " · Linux", chromeos: " · ChromeOS" }[DEV.os] || "")
+    + (DEV.coarse ? " · touch" : "") + (DEV.standalone ? " · app" : "");
   const s = document.querySelector('script[src*="js/core.js"]'), version = (s && /[?&]v=(\d+)/.exec(s.getAttribute("src")) || [])[1] || "";
   return { page, version, browser };
 }
 addEventListener("error", e => { if (e.error || e.message) errReport(e.message || (e.error && e.error.message), e.error && e.error.stack, e.filename ? `${e.filename}:${e.lineno}:${e.colno}` : ""); });
 addEventListener("unhandledrejection", e => { const r = e.reason; if (r instanceof Error) errReport(r.name && r.name !== "Error" ? `${r.name}: ${r.message}` : r.message, r.stack, ""); });
+
+// a preview build (Cloudflare's preview URL of a branch or version, e.g. my-branch-kiki-beatmap-viewer.….workers.dev)
+// says so in a corner, so it isn't mistaken for the live site
+if (/\.workers\.dev$/.test(location.hostname) && !/^(?:kiki|osu)-beatmap-viewer\./.test(location.hostname)) {
+  const b = document.createElement("div"); b.className = "previewbadge"; b.textContent = "Preview";
+  b.title = location.hostname.replace(/-(?:kiki|osu)-beatmap-viewer\..*$/, ""); document.body.append(b);
+}

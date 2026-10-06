@@ -35,9 +35,9 @@ function tr(k, v) {
 }
 function applyI18n(root = document) {
   root.querySelectorAll("[data-i18n]").forEach(e => e.textContent = tr(e.dataset.i18n));
-  root.querySelectorAll("[data-i18n-ph]").forEach(e => e.placeholder = tr(e.dataset.i18nPh));
-  root.querySelectorAll("[data-i18n-aria]").forEach(e => e.setAttribute("aria-label", tr(e.dataset.i18nAria)));
-  root.querySelectorAll("[data-i18n-title]").forEach(e => e.title = tr(e.dataset.i18nTitle));
+  root.querySelectorAll("[data-i18n-ph]").forEach(e => { e.placeholder = kbdMod(tr(e.dataset.i18nPh)); if (e.dataset.i18nPhFit) phFit(e); });
+  root.querySelectorAll("[data-i18n-aria]").forEach(e => e.setAttribute("aria-label", kbdMod(tr(e.dataset.i18nAria))));
+  root.querySelectorAll("[data-i18n-title]").forEach(e => e.title = kbdMod(tr(e.dataset.i18nTitle))); // (kbdMod: "⌘S" on a Mac / iPad, device.js)
 }
 function fillLangSelects() {
   for (const id of ["langSel", "langSel2"]) {
@@ -49,6 +49,20 @@ function fillLangSelects() {
     s.onpointerdown = s.onfocus = () => names(true); s.onblur = () => names(false); names(false);
   }
 }
+// data-i18n-ph-fit="shorter|shortest": the box shows the longest placeholder that fits its width (phones, long translations),
+// checked again when the box is resized or shown and when the web font arrives
+let PH_CTX = null;
+const PH_RO = typeof ResizeObserver === "function" ? new ResizeObserver(es => es.forEach(x => phFit(x.target, true))) : null;
+function phFit(e, resized) {
+  if (!resized && PH_RO) PH_RO.observe(e);
+  const opts = [e.dataset.i18nPh, ...e.dataset.i18nPhFit.split("|")].map(k => kbdMod(tr(k))), cs = getComputedStyle(e);
+  const w = e.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  if (!(w > 0)) return; // hidden: measured when it's shown
+  PH_CTX = PH_CTX || document.createElement("canvas").getContext("2d");
+  PH_CTX.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  e.placeholder = opts.find(s => PH_CTX.measureText(s).width <= w - 2) || opts[opts.length - 1];
+}
+if (document.fonts) { const refit = () => document.querySelectorAll("[data-i18n-ph-fit]").forEach(e => phFit(e, true)); document.fonts.ready.then(refit); document.fonts.addEventListener("loadingdone", refit); }
 function i18nRefresh() { applyI18n(); fillLangSelects(); dispatchEvent(new Event("langchange")); }
 async function setLang(l) {
   LANG = l; S.lang = l; save();

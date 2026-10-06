@@ -277,7 +277,7 @@ const numCache = new Map();
 if (document.fonts) document.fonts.ready.then(() => numCache.clear());
 function numTex(n) {
   const key = n + "", hit = numCache.get(key); if (hit) return hit;
-  const fs = 76, font = `600 ${fs}px "Varela Round",sans-serif`, txt = String(n);
+  const fs = 76, font = `600 ${fs}px Inter,sans-serif`, txt = String(n);
   const g0 = document.createElement("canvas").getContext("2d"); g0.font = font;
   const c = document.createElement("canvas"); c.width = Math.ceil(g0.measureText(txt).width) + 28; c.height = fs + 28;
   const g = c.getContext("2d"); g.font = font; g.textAlign = "center"; g.textBaseline = "middle";

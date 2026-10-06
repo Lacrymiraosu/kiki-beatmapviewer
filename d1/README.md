@@ -9,5 +9,7 @@ functions in `api/_lib/d1*.js`. Times are ISO 8601 text in UTC, JSON is text, tr
   only the first statement of a paste.
 - `migrations/0002_changelog_seed.sql`: the first changelog entry for a new empty site. Not needed when the data is
   copied from Supabase (Admin → Settings → Database).
+- `migrations/0004_session_revoke.sql`: `users.sessions_valid_after` ("Log out everywhere", unlinking Google, suspending:
+  logins made up to then stop working). Same as `supabase/migrations/20261008110000_obv_session_revoke.sql`.
 
 From the command line: `npx wrangler d1 migrations apply osu-beatmap-viewer-db --remote`

@@ -14,7 +14,7 @@ const require = createRequire(import.meta.url);
 const A = 1001, B = 4242, C = 1003, OWNER = 9999, LIMIT = 30000000;
 let emu, osuSrv, srv, base, auth;
 // OBV_R2=1 / OBV_D1=1: the project files on an R2 stand-in, the database on a D1 stand-in (tests/lib/server.mjs)
-let r2 = null, stored = null;
+let r2 = null, stored = null, d1 = null;
 const abs = u => u && u.startsWith("/") ? base + u : u;
 
 before(async () => {
@@ -23,14 +23,14 @@ before(async () => {
   Object.assign(process.env, { SUPABASE_URL: emu.url, SUPABASE_SECRET_KEY: emu.key, OSU_CLIENT_ID: "1", OSU_CLIENT_SECRET: "test-only-secret", OSU_API_BASE: "http://127.0.0.1:54331",
     OWNER_OSU_ID: String(OWNER), CRON_SECRET: "cron-secret-for-tests" });
   auth = require(join(root, "api/_lib/auth.js"));
-  const A2 = await startApi(root, emu); srv = A2.srv; r2 = A2.r2; stored = A2.stored;
+  const A2 = await startApi(root, emu); srv = A2.srv; r2 = A2.r2; stored = A2.stored; d1 = A2.d1;
   base = A2.base;
   await emu.db.query("update obv.settings set value = '100' where key = 'max_projects_per_user'");
   await emu.db.query("update obv.settings set value = 'false' where key = 'access_required'"); // the access test turns it on
 });
 after(async () => { srv.close(); osuSrv.close(); await emu.close(); });
 
-const cookieFor = (id, username = "user" + id) => "obv_s=" + encodeURIComponent(auth.sign({ id, username, avatar: "", country: "TH", kind: "session", exp: Date.now() + 36e5 }, auth.cfg({ headers: { host: "x" } })));
+const cookieFor = (id, username = "user" + id) => "__Host-obv_s=" + encodeURIComponent(auth.sign({ id, username, avatar: "", country: "TH", kind: "session", iat: Date.now(), exp: Date.now() + 36e5 }, auth.cfg({ headers: { host: "x" } }))); // (a fresh login: iat = now)
 async function api(method, route, { as, body, headers = {} } = {}) {
   const h = { ...headers };
   if (as) h.cookie = cookieFor(as);
@@ -61,6 +61,41 @@ test("logged out: no project access; requests from other sites are refused", asy
   assert.equal((await api("POST", "projects", { as: A, body: { clientKey: "abcdefgh12" }, headers: { origin: "https://evil.example" } })).status, 403);
   const me = await api("GET", "me");
   assert.equal(me.body.user, null); assert.equal(me.body.owner, false);
+});
+
+test("the JSON check reads the media type itself: a type that only mentions application/json is refused", async () => {
+  const post = ct => fetch(base + "/api/v1/projects", { method: "POST", headers: { cookie: cookieFor(A), "content-type": ct, "sec-fetch-site": "same-origin" }, body: "{}" });
+  assert.equal((await post("text/plain; x=application/json")).status, 403);
+  assert.equal((await post("text/plain;application/json")).status, 403);
+  assert.equal((await post("application/jsonx")).status, 403);
+  assert.notEqual((await post("Application/JSON; charset=utf-8")).status, 403, "parameters and case are fine");
+});
+
+// POST only (with the same checks as the API's other POSTs); a GET changes nothing, so another site can't log you out.
+// Through the Worker (test:worker) when it runs, else the handler as Vercel runs it.
+test("logout: POST from this site clears the session; a GET or a cross-site POST doesn't", async () => {
+  const viaWorker = !!process.env.OBV_VIA_WORKER || !!process.env.OBV_R2 || !!process.env.OBV_D1;
+  const logout = require(join(root, "api/auth/logout.js"));
+  async function call(method, headers = {}) {
+    const h = { cookie: cookieFor(A), ...headers }, body = method === "POST" ? "{}" : undefined;
+    if (viaWorker) {
+      const r = await fetch(base + "/api/auth/logout", { method, headers: h, body, redirect: "manual" });
+      return { status: r.status, location: r.headers.get("location"), cookies: r.headers.getSetCookie() };
+    }
+    const out = { status: 0, location: null, cookies: [] };
+    await logout({ method, url: "/api/auth/logout?next=/x", headers: { host: "127.0.0.1", ...h }, body }, {
+      set statusCode(v) { out.status = v; }, get statusCode() { return out.status; },
+      setHeader(k, v) { if (k.toLowerCase() === "location") out.location = v; if (k.toLowerCase() === "set-cookie") out.cookies.push(...[].concat(v)); }, end() {} });
+    return out;
+  }
+  const g = await call("GET");
+  assert.equal(g.status, 302); assert.equal(g.location, "/"); assert.deepEqual(g.cookies, [], "a GET doesn't log out");
+  for (const bad of [{ "content-type": "application/json", "sec-fetch-site": "cross-site" }, { "content-type": "application/json", origin: "https://evil.example" }, { "content-type": "text/plain" }]) {
+    const r = await call("POST", bad); assert.equal(r.status, 403, JSON.stringify(bad)); assert.deepEqual(r.cookies, []);
+  }
+  const ok = await call("POST", { "content-type": "application/json", "sec-fetch-site": "same-origin" });
+  assert.equal(ok.status, 200); assert.ok(ok.cookies.some(x => /^__Host-obv_s=;.*Max-Age=0/.test(x)) && ok.cookies.some(x => /^obv_s=;.*Max-Age=0/.test(x)), "the session cookie is cleared (and its old name)");
+  assert.equal((await call("PUT", { "content-type": "application/json" })).status, 405);
 });
 
 test("save online, reopen and download: the files come back exactly", async () => {
@@ -159,6 +194,11 @@ test("expired projects are refused, and the daily cleanup deletes their files (n
   assert.equal(g.status, 410); assert.equal(g.body.error, "expired");
   const clBefore = (await emu.db.query("select count(*)::int n from obv.changelog")).rows[0].n;
   assert.equal((await fetch(base + "/api/cron")).status, 401, "cron needs the secret");
+  // same length in characters as the secret, not in bytes (latin-1 "é" is 2 bytes in UTF-8): refused, not a 500
+  assert.equal((await fetch(base + "/api/cron", { headers: { authorization: "Bearer " + "\u00e9".repeat("cron-secret-for-tests".length) } })).status, 401);
+  assert.equal((await fetch(base + "/api/cron", { headers: { authorization: "Bearer cron-secret-for-tests\u00e9" } })).status, 401);
+  const keep = process.env.CRON_SECRET; delete process.env.CRON_SECRET; // no secret set: always refused (never "Bearer " alone)
+  try { assert.equal((await fetch(base + "/api/cron", { headers: { authorization: "Bearer " } })).status, 401); } finally { process.env.CRON_SECRET = keep; }
   const c = await fetch(base + "/api/cron", { headers: { authorization: "Bearer cron-secret-for-tests" } });
   assert.equal(c.status, 200);
   assert.equal(stored().filter(k => k.includes(p.id)).length, 0, "files deleted from storage");
@@ -532,7 +572,8 @@ test("live sessions: TURN relay only for a started session, per-person relay and
     // not set up on the server: a token, but no relay
     let st = await api("POST", "live/start", { as: P, body: { code: "abcdef" } });
     assert.equal(st.status, 200); assert.equal(st.body.on, false); assert.deepEqual(st.body.iceServers, []);
-    Object.assign(process.env, { TURN_KEY_ID: "abcdef0123456789", TURN_KEY_API_TOKEN: "turn-token-for-tests" });
+    // (no analytics token here: the relay runs without a monthly limit only because TURN_CAP_DISABLED says so; see the limit test)
+    Object.assign(process.env, { TURN_KEY_ID: "abcdef0123456789", TURN_KEY_API_TOKEN: "turn-token-for-tests", TURN_CAP_DISABLED: "1" });
     assert.equal((await api("POST", "live/start", { body: { code: "abcdef" } })).status, 401); // hosting needs a login
     assert.equal((await api("POST", "live/start", { as: P, body: { code: "AB" } })).status, 400);
     st = await api("POST", "live/start", { as: P, body: { code: "abcdef" } });
@@ -559,7 +600,9 @@ test("live sessions: TURN relay only for a started session, per-person relay and
     // collab asks GET ice: the same relay, the ping limit and the person's own "always use the relay"
     const ci = await api("GET", "ice", { as: P });
     assert.equal(ci.status, 200); assert.equal(ci.body.iceServers.length, 2); assert.equal(ci.body.relay, true); assert.equal(ci.body.ping_ms, 150); assert.equal(ci.body.on, true);
-    assert.equal((await api("GET", "ice")).status, 200); // (collab needs a login in the page; the route itself stays as before)
+    assert.ok(asked.at(-1).ttl <= 3 * 3600, "collab credentials last 3 hours at most");
+    const anon = await api("GET", "ice"); // logged in only: nothing for anyone who asks
+    assert.equal(anon.status, 401); assert.equal(anon.body.iceServers, undefined);
     // settings: the ping limit, and the switch for everyone
     assert.equal((await api("POST", "admin/settings", { as: OWNER, body: { values: { turn_ping_ms: 20 } } })).status, 400);
     await api("POST", "admin/settings", { as: OWNER, body: { values: { turn_ping_ms: 220 } } });
@@ -574,7 +617,7 @@ test("live sessions: TURN relay only for a started session, per-person relay and
     const audit = (await emu.db.query("select action from obv.audit_log where action like 'turn.%'")).rows.map(x => x.action);
     for (const x of ["turn.relay_on", "turn.relay_off"]) assert.ok(audit.includes(x), x);
   } finally {
-    globalThis.fetch = real; delete process.env.TURN_KEY_ID; delete process.env.TURN_KEY_API_TOKEN;
+    globalThis.fetch = real; delete process.env.TURN_KEY_ID; delete process.env.TURN_KEY_API_TOKEN; delete process.env.TURN_CAP_DISABLED;
   }
 });
 
@@ -605,11 +648,12 @@ test("live sessions: guests may be allowed to watch; the host learns who is a me
 
 test("TURN relay: usage from Cloudflare's analytics, per person, and the monthly limit", async () => {
   const P = 8831, real = globalThis.fetch, seen = { ice: [], gql: [] };
-  let bytes = 2e9;
+  let bytes = 2e9, gqlDown = false;
   globalThis.fetch = async (url, opts) => {
     const u = String(url);
     if (u.startsWith("https://rtc.live.cloudflare.com/")) { seen.ice.push(JSON.parse(opts.body)); return new Response(JSON.stringify({ iceServers: [{ urls: ["turn:turn.cloudflare.com:3478"], username: "u", credential: "c" }] }), { status: 201 }); }
     if (u === "https://api.cloudflare.com/client/v4/graphql") {
+      if (gqlDown) return new Response(JSON.stringify({ errors: [{ message: "analytics down" }] }), { status: 500 });
       const b = JSON.parse(opts.body); seen.gql.push({ auth: opts.headers.Authorization, vars: b.variables });
       const g = b.query.includes("datetimeHour") ? [{ dimensions: { datetimeHour: "2026-10-01T03:00:00Z" }, sum: { egressBytes: bytes / 2 } }, { dimensions: { datetimeHour: "2026-10-01T09:00:00Z" }, sum: { egressBytes: bytes / 4 } }, { dimensions: { datetimeHour: "2026-10-02T01:00:00Z" }, sum: { egressBytes: bytes / 4 } }]
         : b.query.includes("customIdentifier") ? [{ dimensions: { customIdentifier: "u8831" }, sum: { egressBytes: bytes * .7 } }, { dimensions: { customIdentifier: "guest" }, sum: { egressBytes: bytes * .3 } }]
@@ -621,14 +665,24 @@ test("TURN relay: usage from Cloudflare's analytics, per person, and the monthly
   Object.assign(process.env, { TURN_KEY_ID: "abcdef0123456789", TURN_KEY_API_TOKEN: "turn-token-for-tests" });
   try {
     await emu.db.query("select public.obv_user_touch(8831, 'turnheavy', null, null)");
-    // no analytics token yet: the relay works, the usage is unknown
+    // no analytics token yet: the limit can't be checked, so no relay (fails closed); the session still gets its token
     let t = await api("GET", "admin/turn", { as: OWNER });
     assert.equal(t.body.key, true); assert.equal(t.body.analytics, false); assert.equal(t.body.usage, null); assert.equal(t.body.month_gb, 1000);
+    assert.equal(t.body.on, true); assert.equal(t.body.blocked, "no_analytics"); assert.equal(t.body.cap_disabled, false);
     assert.equal((await api("GET", "admin/turn", { as: P })).status, 403);
-    const st = await api("POST", "live/start", { as: P, body: { code: "lmnopq" } });
+    const asked0 = seen.ice.length;
+    let st = await api("POST", "live/start", { as: P, body: { code: "lmnopq" } });
+    assert.equal(st.status, 200); assert.ok(st.body.token); assert.equal(st.body.on, false); assert.deepEqual(st.body.iceServers, []);
+    assert.deepEqual((await api("POST", "live/ice", { body: { code: "lmnopq", token: st.body.token } })).body.iceServers, []);
+    assert.deepEqual((await api("GET", "ice", { as: P, headers: { "x-real-ip": "10.77.0.1" } })).body.iceServers, []);
+    assert.equal(seen.ice.length, asked0, "no credentials were even made");
+    // TURN_CAP_DISABLED=1: the operator lets it run without a limit
+    process.env.TURN_CAP_DISABLED = "1";
+    st = await api("POST", "live/start", { as: P, body: { code: "lmnopq" } });
     assert.equal(st.body.on, true); assert.equal(seen.ice.at(-1).customIdentifier, "u8831");
     await api("POST", "live/ice", { body: { code: "lmnopq", token: st.body.token } });
     assert.equal(seen.ice.at(-1).customIdentifier, "guest");
+    delete process.env.TURN_CAP_DISABLED;
     Object.assign(process.env, { CF_ANALYTICS_TOKEN: "analytics-token-for-tests", CF_ACCOUNT_ID: "0123456789abcdef0123456789abcdef" });
     t = await api("GET", "admin/turn?fresh=1", { as: OWNER });
     assert.equal(t.body.analytics, true); assert.equal(t.body.usage.bytes, 2e9);
@@ -636,19 +690,63 @@ test("TURN relay: usage from Cloudflare's analytics, per person, and the monthly
     assert.equal(t.body.usage.people[0].username, "user8831"); assert.equal(t.body.usage.people[0].id, 8831); assert.equal(t.body.usage.people[1].ident, "guest");
     assert.equal(seen.gql.at(-1).auth, "Bearer analytics-token-for-tests"); assert.equal(seen.gql.at(-1).vars.account, "0123456789abcdef0123456789abcdef");
     assert.ok(seen.gql.at(-1).vars.from.endsWith("-01T00:00:00.000Z"));
+    assert.equal(t.body.blocked, null);
+    assert.equal((await api("POST", "live/ice", { body: { code: "lmnopq", token: st.body.token } })).body.on, true); // 2 of 1000 GB
     // limit 1 GB: 2 GB used, so nobody gets the relay
     assert.equal((await api("POST", "admin/settings", { as: OWNER, body: { values: { turn_month_gb: -1 } } })).status, 400);
     await api("POST", "admin/settings", { as: OWNER, body: { values: { turn_month_gb: 1 } } });
     const capped = await api("POST", "live/ice", { body: { code: "lmnopq", token: st.body.token } });
     assert.equal(capped.body.on, false); assert.deepEqual(capped.body.iceServers, []);
     t = await api("GET", "admin/turn", { as: OWNER }); assert.equal(t.body.capped, true);
-    // 0 = no limit
+    // 0 = no relay; no limit only with TURN_CAP_DISABLED=1
     await api("POST", "admin/settings", { as: OWNER, body: { values: { turn_month_gb: 0 } } });
+    const zero = await api("POST", "live/ice", { body: { code: "lmnopq", token: st.body.token } });
+    assert.equal(zero.body.on, false); assert.deepEqual(zero.body.iceServers, []);
+    t = await api("GET", "admin/turn", { as: OWNER }); assert.equal(t.body.blocked, "no_limit"); assert.equal(t.body.capped, false);
+    process.env.TURN_CAP_DISABLED = "1";
     assert.equal((await api("POST", "live/ice", { body: { code: "lmnopq", token: st.body.token } })).body.on, true);
+    delete process.env.TURN_CAP_DISABLED;
     await api("POST", "admin/settings", { as: OWNER, body: { values: { turn_month_gb: 1000 } } });
+    assert.equal((await api("POST", "live/ice", { body: { code: "lmnopq", token: st.body.token } })).body.on, true);
+    // the usage can't be read: no relay (even with TURN_CAP_DISABLED), until it can again
+    gqlDown = true; process.env.TURN_CAP_DISABLED = "1";
+    t = await api("GET", "admin/turn?fresh=1", { as: OWNER }); assert.ok(t.body.error);
+    const down = await api("POST", "live/ice", { body: { code: "lmnopq", token: st.body.token } });
+    assert.equal(down.body.on, false); assert.deepEqual(down.body.iceServers, []);
+    assert.deepEqual((await api("GET", "ice", { as: P, headers: { "x-real-ip": "10.77.0.2" } })).body.iceServers, []);
+    assert.equal((await api("GET", "admin/turn", { as: OWNER })).body.blocked, "usage_error");
+    gqlDown = false; delete process.env.TURN_CAP_DISABLED;
+    await api("GET", "admin/turn?fresh=1", { as: OWNER });
+    assert.equal((await api("POST", "live/ice", { body: { code: "lmnopq", token: st.body.token } })).body.on, true);
   } finally {
     globalThis.fetch = real;
-    for (const k of ["TURN_KEY_ID", "TURN_KEY_API_TOKEN", "CF_ANALYTICS_TOKEN", "CF_ACCOUNT_ID"]) delete process.env[k];
+    for (const k of ["TURN_KEY_ID", "TURN_KEY_API_TOKEN", "CF_ANALYTICS_TOKEN", "CF_ACCOUNT_ID", "TURN_CAP_DISABLED"]) delete process.env[k];
+  }
+});
+
+test("TURN credentials: GET ice needs a login (the fixed TURN login too), 10 a minute per IP; live guests use the session's token", async () => {
+  const P = 8841, ip = { "x-real-ip": "10.78.0.1" };
+  await emu.db.query("select public.obv_user_touch(8841, 'iceuser', null, null)");
+  Object.assign(process.env, { TURN_URLS: "turn:turn.example.test:3478,turns:turn.example.test:5349", TURN_USERNAME: "fixed-user", TURN_CREDENTIAL: "fixed-credential-not-for-anyone" });
+  try {
+    const anon = await api("GET", "ice", { headers: ip });
+    assert.equal(anon.status, 401); assert.ok(!JSON.stringify(anon.body).includes("fixed-credential"), "the fixed TURN login isn't handed out");
+    const bad = await api("GET", "ice", { headers: { ...ip, cookie: "__Host-obv_s=forged.cookie" } });
+    assert.equal(bad.status, 401);
+    const ok = await api("GET", "ice", { as: P, headers: ip });
+    assert.equal(ok.status, 200); assert.equal(ok.body.iceServers[1].credential, "fixed-credential-not-for-anyone");
+    // a live session's token (anonymous guests): POST live/ice, which hands out the Cloudflare relay only (no fixed login)
+    const st = await api("POST", "live/start", { as: P, body: { code: "icetst" }, headers: ip });
+    assert.equal(st.status, 200);
+    const g = await api("POST", "live/ice", { body: { code: "icetst", token: st.body.token }, headers: ip });
+    assert.equal(g.status, 200); assert.ok(Array.isArray(g.body.iceServers));
+    // the per-IP limit: 10 a minute (3 used above), then 429; another IP still gets in
+    for (let i = 0; i < 7; i++) assert.equal((await api("GET", "ice", { as: P, headers: ip })).status, 200, "request " + (i + 4));
+    const over = await api("GET", "ice", { as: P, headers: ip });
+    assert.equal(over.status, 429); assert.ok(!JSON.stringify(over.body).includes("fixed-credential"));
+    assert.equal((await api("GET", "ice", { as: P, headers: { "x-real-ip": "10.78.0.2" } })).status, 200);
+  } finally {
+    for (const k of ["TURN_URLS", "TURN_USERNAME", "TURN_CREDENTIAL"]) delete process.env[k];
   }
 });
 
@@ -660,9 +758,121 @@ test("R2: operations are counted per month, and above the limit saving is refuse
   const r = await save(A, p.id, 0, [["map.osu", bytes(10, 1)]]);
   assert.equal(r.begin.status, 503); assert.equal(r.begin.body.error, "storage_limit");
   const after = (await emu.db.query("select class_a::int a, refused_a::int ra from obv.r2_usage")).rows[0];
-  assert.equal(after.a, before.a, "nothing counted when refused"); assert.ok(after.ra >= 1);
+  assert.equal(after.a, before.a, "nothing counted when refused");
   await emu.db.query("delete from obv.settings where key = 'r2_class_a_month'");
   assert.equal((await save(A, p.id, 0, [["map.osu", bytes(10, 1)]])).commit.status, 200, "under the limit again: saves");
+  // each PUT is counted when it happens: a link made under the limit is refused once the limit is reached (fail closed)
+  const data = bytes(30, 2), b = await api("POST", `projects/${p.id}/saves`, { as: A, body: { baseRevision: 1, files: [{ path: "map.osu", size: 30, sha256: await sha(data) }] } });
+  assert.equal(b.status, 200);
+  const now = (await emu.db.query("select class_a::int a, refused_a::int ra from obv.r2_usage")).rows[0];
+  await emu.db.query("insert into obv.settings (key, value) values ('r2_class_a_month', $1::jsonb) on conflict (key) do update set value = excluded.value", [String(now.a)]);
+  const over = await uploadTo(b.body.uploads[0].url, data);
+  assert.equal(over.status, 503); assert.equal((await over.json()).error, "storage_limit");
+  const after2 = (await emu.db.query("select class_a::int a, refused_a::int ra from obv.r2_usage")).rows[0];
+  assert.equal(after2.a, now.a, "the refused PUT isn't counted"); assert.ok(after2.ra > now.ra, "and is recorded as refused");
+  assert.equal(stored().filter(k => k.includes(p.id)).length, 1, "nothing written above the limit");
+  await emu.db.query("delete from obv.settings where key = 'r2_class_a_month'");
+  assert.equal((await uploadTo(b.body.uploads[0].url, data)).status, 200, "under the limit again: the same link works");
+  assert.equal((await emu.db.query("select class_a::int a from obv.r2_usage")).rows[0].a, now.a + 1, "one write counted");
+  assert.equal((await api("POST", `saves/${b.body.saveId}/commit`, { as: A, body: {} })).status, 200);
   const o = await api("GET", "admin/overview", { as: OWNER });
   assert.equal(o.body.backend, "r2"); assert.ok(o.body.r2.months[0].a > 0); assert.equal(o.body.r2.max_a, 900000);
+});
+
+test("R2 upload links: one write per file, only while its save is open and the project exists; R2 checks the sha256", { skip: !(process.env.OBV_R2 || process.env.OBV_D1) }, async () => {
+  const p = await newProject(A), data = bytes(50, 3), other = bytes(50, 4);
+  const begin = async (path, d) => (await api("POST", `projects/${p.id}/saves`, { as: A, body: { baseRevision: (await api("GET", `projects/${p.id}`, { as: A })).body.project.revision, files: [{ path, size: d.length, sha256: await sha(d) }] } })).body;
+  const keysNow = () => stored().filter(k => k.includes(p.id));
+  const b = await begin("map.osu", data), url = b.uploads[0].url;
+  // same size, other bytes: R2 compares them with the sha256 declared when saving began
+  const bad = await uploadTo(url, other);
+  assert.equal(bad.status, 400); assert.equal((await bad.json()).error, "hash_mismatch"); assert.equal(keysNow().length, 0);
+  assert.equal((await uploadTo(url, data)).status, 200);
+  const key = keysNow()[0];
+  // a second PUT with the same link is refused (same bytes or not), and the file stays as it was
+  const again = await uploadTo(url, data); assert.equal(again.status, 409); assert.equal((await again.json()).error, "already_uploaded");
+  assert.equal((await uploadTo(url, other)).status, 409);
+  assert.deepEqual(Buffer.from(r2.m.get(key)), Buffer.from(data));
+  assert.equal((await api("POST", `saves/${b.saveId}/commit`, { as: A, body: {} })).status, 200);
+  // after the commit the database refuses it too, even if the object were gone
+  r2.m.delete(key);
+  assert.equal((await uploadTo(url, data)).status, 409, "committed: refused"); assert.ok(!r2.m.has(key));
+  r2.m.set(key, data);
+  // after the project is deleted: a link from a save that was still open can't put a file back
+  const b2 = await begin("song.mp3", bytes(40, 5));
+  assert.equal((await api("DELETE", `projects/${p.id}`, { as: A, body: {} })).status, 200);
+  assert.equal(keysNow().length, 0, "files removed");
+  const late = await uploadTo(b2.uploads[0].url, bytes(40, 5));
+  assert.equal(late.status, 410); assert.equal((await late.json()).error, "upload_closed");
+  assert.equal(keysNow().length, 0, "nothing re-created after the delete");
+});
+
+// Worker Previews (api/_lib/preview.js): a branch's preview gets no backend unless PREVIEW_BACKEND=1. Calls worker.js
+// directly (every mode), with static files read from the repo, then puts process.env back (the Worker scrubs it).
+test("previews fail closed: 503 preview_backend_disabled on /api/*, the static site still works, no API code runs", async () => {
+  const { readFileSync } = await import("node:fs");
+  const worker = (await import(join(root, "worker.js"))).default, db = require(join(root, "api/_lib/db.js"));
+  const assets = { fetch: req => { const p = new URL(req.url).pathname; try { return new Response(readFileSync(join(root, p === "/" ? "index.html" : p.slice(1)))); } catch { return new Response("not found", { status: 404 }); } } };
+  const snap = { ...process.env };
+  const envFor = extra => ({ ...snap, ASSETS: assets, ...(r2 ? { FILES: r2 } : {}), ...(d1 ? { DB: d1, DB_BACKEND: "d1" } : {}), ...extra });
+  const call = async (host, path, extra = {}) => {
+    const r = await worker.fetch(new Request("https://" + host + path, { redirect: "manual" }), envFor(extra), { waitUntil: () => {} });
+    const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch {}
+    return { status: r.status, body: j, text: t, headers: r.headers };
+  };
+  const SECRETS = ["SUPABASE_SECRET_KEY", "SUPABASE_URL", "OSU_CLIENT_SECRET", "CRON_SECRET", "OWNER_OSU_ID", "SESSION_SECRET", "TURN_KEY_ID", "TURN_KEY_API_TOKEN", "TURN_SECRET", "CF_ANALYTICS_TOKEN", "CF_ACCOUNT_ID", "GOOGLE_CLIENT_SECRET", "DB_BACKEND"];
+  const extraSecrets = { SESSION_SECRET: "s".repeat(40), TURN_KEY_ID: "tk", TURN_KEY_API_TOKEN: "tt", TURN_SECRET: "ts", CF_ANALYTICS_TOKEN: "at", CF_ACCOUNT_ID: "acc", GOOGLE_CLIENT_SECRET: "gs" };
+  const locked = async (host, extra = {}) => {
+    // a locked request runs no api/** code and touches nothing the instance shares: process.env (still holding production's
+    // secrets, even though this request's env carries other values), db.js's database and bucket, the database itself
+    const envBefore = { ...process.env }, dbBefore = [db.D1.db, db.D1.target, db.R2.bucket], callsBefore = emu.calls.length;
+    for (const path of ["/api/v1/me", "/api/auth/login", "/api/auth/me", "/api/auth/callback?code=x&state=y", "/api/auth/google", "/api/cron", "/api/v1/files?d=x", "/api/v1/admin/settings", "/api/nope"]) {
+      const r = await call(host, path, { ...extraSecrets, ...extra });
+      assert.equal(r.status, 503, host + path); assert.equal(r.body && r.body.error, "preview_backend_disabled", host + path);
+      assert.equal(r.headers.get("x-robots-tag"), "noindex");
+    }
+    // the static site: the plain page (not indexed) and the files
+    const home = await call(host, "/?s=1", { ...extraSecrets, ...extra });
+    assert.equal(home.status, 200); assert.match(home.text, /<html/i); assert.match(home.headers.get("content-type"), /text\/html/);
+    assert.equal(home.headers.get("x-robots-tag"), "noindex"); assert.ok(home.headers.get("content-security-policy"), "site headers");
+    const js = await call(host, "/js/core.js", { ...extraSecrets, ...extra }); assert.equal(js.status, 200); assert.match(js.text, /use strict/);
+    assert.deepEqual({ ...process.env }, envBefore, "process.env unchanged"); assert.equal(process.env.SUPABASE_SECRET_KEY, snap.SUPABASE_SECRET_KEY);
+    assert.deepEqual([db.D1.db, db.D1.target, db.R2.bucket], dbBefore, "db.js untouched"); assert.equal(emu.calls.length, callsBefore, "no database calls");
+  };
+  const normal = async (host, extra = {}) => {
+    const me = await call(host, "/api/v1/me", extra);
+    assert.equal(me.status, 200, host); assert.equal(me.body.cloud, true); assert.equal(me.body.osu, true);
+    const login = await call(host, "/api/auth/login", extra);
+    assert.equal(login.status, 302, host); assert.match(login.headers.get("location"), /^https:\/\/osu\.ppy\.sh\/oauth\/authorize/);
+    assert.equal((await call(host, "/api/cron", extra)).status, 401, "cron: the secret is still checked");
+    assert.equal(process.env.SUPABASE_SECRET_KEY, snap.SUPABASE_SECRET_KEY); assert.equal(db.configured(), true);
+    assert.equal(db.r2on(), !!r2); assert.equal(db.d1on(), !!d1);
+    assert.equal((await call(host, "/js/core.js", extra)).status, 200);
+  };
+  try {
+    await locked("my-branch-kiki-beatmap-viewer.lacrymira.workers.dev");
+    await locked("0a1b2c3d-osu-beatmap-viewer.lacrymira.workers.dev"); // (a version's preview URL)
+    await locked("evil-osu-beatmap-viewer.attacker.workers.dev"); // look-alikes fail closed too
+    await locked("something-else.lacrymira.workers.dev");
+    await locked("my-branch-kiki-beatmap-viewer.lacrymira.workers.dev", { PREVIEW_BACKEND: "true" }); // only exactly "1" opts in
+    await locked("viewer.example.com", { OBV_PREVIEW: "1" }); // the variable wrangler.jsonc gives previews, on any host
+    await normal("osu-beatmap-viewer.lacrymira.workers.dev"); // production (after a preview request in the same instance)
+    await normal("viewer.example.com"); // a custom domain
+    await normal("my-branch-kiki-beatmap-viewer.lacrymira.workers.dev", { PREVIEW_BACKEND: "1" }); // opted in
+    await normal("viewer.example.com", { OBV_PREVIEW: "1", PREVIEW_BACKEND: "1" });
+    // the same rules as a function (Vercel: VERCEL_ENV=preview)
+    const pv = require(join(root, "api/_lib/preview.js"));
+    assert.equal(pv.isPreview("x.vercel.app", { VERCEL_ENV: "preview" }), true);
+    assert.equal(pv.isPreview("x.vercel.app", { VERCEL_ENV: "production" }), false);
+    assert.equal(pv.isPreview("osu-beatmap-viewer.lacrymira.workers.dev.", {}), false);
+    assert.equal(pv.isPreview("OSU-BEATMAP-VIEWER.lacrymira.workers.dev:443", {}), false);
+    assert.equal(pv.isPreview("osu-beatmap-viewer-x.lacrymira.workers.dev", {}), true);
+    // what the Vercel scrub (VERCEL_ENV=preview only) removes
+    const red = pv.scrub({ ...snap, ...extraSecrets, SITE_URL: "https://x.example", PREVIEW_BACKEND: "0" });
+    for (const k of SECRETS) assert.ok(!(k in red), k); assert.equal(red.SITE_URL, "https://x.example"); assert.equal(red.PREVIEW_BACKEND, "0");
+  } finally {
+    for (const k of Object.keys(process.env)) if (!(k in snap)) delete process.env[k];
+    Object.assign(process.env, snap);
+    db.useR2(r2); db.useD1(d1); // (as tests/lib/server.mjs left them)
+  }
 });

@@ -327,10 +327,10 @@ function playHUD(t, B) {
   const sum = playSummary();
   ctx.textBaseline = "top"; ctx.globalAlpha = 1; ctx.textAlign = "right";
   if (tpOpt("score")) {
-    ctx.font = `600 ${34 * u}px "Varela Round",sans-serif`; sText(String(Math.round(PLAY.disp)).padStart(8, "0"), right, top, u, "#fff");
-    ctx.font = `600 ${18 * u}px "Varela Round",sans-serif`; sText((sum.acc * 100).toFixed(2) + "%", right, top + 40 * u, u, "#fff");
+    ctx.font = `600 ${34 * u}px Inter,sans-serif`; sText(String(Math.round(PLAY.disp)).padStart(8, "0"), right, top, u, "#fff");
+    ctx.font = `600 ${18 * u}px Inter,sans-serif`; sText((sum.acc * 100).toFixed(2) + "%", right, top + 40 * u, u, "#fff");
   }
-  ctx.font = `600 ${14 * u}px "Varela Round",sans-serif`; sText(tr("Test") + (A.rate !== 1 ? ` ${A.rate}x` : "") + " · " + keyName(tpKey("stop")), right, top + (tpOpt("score") ? 64 : 0) * u, u, "#66ccff");
+  ctx.font = `600 ${14 * u}px Inter,sans-serif`; sText(tr("Test") + (A.rate !== 1 ? ` ${A.rate}x` : "") + " · " + keyName(tpKey("stop")), right, top + (tpOpt("score") ? 64 : 0) * u, u, "#66ccff");
   const hbW = Math.min(W * .34, 320 * u), hbY = top + 6 * u; // HP
   if (tpOpt("hp")) {
     ctx.fillStyle = "rgba(0,0,0,.45)"; ctx.fillRect(left, hbY, hbW, 9 * u);
@@ -338,7 +338,7 @@ function playHUD(t, B) {
   }
   if (PLAY.combo > 0 && tpOpt("combo")) {
     ctx.save(); ctx.translate(left, B.bottom - pad); ctx.textAlign = "left"; ctx.textBaseline = "bottom";
-    ctx.font = `600 ${46 * u}px "Varela Round",sans-serif`; sText(PLAY.combo + "x", 0, 0, u, "#fff"); ctx.restore();
+    ctx.font = `600 ${46 * u}px Inter,sans-serif`; sText(PLAY.combo + "x", 0, 0, u, "#fff"); ctx.restore();
   }
   // hit error bar: 300 / 100 / 50 zones, a tick per hit (fading), the average as an arrow
   if (!tpOpt("errBar")) return;

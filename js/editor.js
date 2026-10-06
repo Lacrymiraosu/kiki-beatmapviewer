@@ -12,7 +12,34 @@ for (const d of DIVS) $("snapSel").add(new Option("1/" + d, d));
 $("snapSel").value = S.snap;
 $("snapSel").onchange = e => { S.snap = +e.target.value; save(); dirty = true; };
 
-const ED_ONLY = ["edTabs", "edTest", "edAuto", "edTop", "edLeft", "edRight", "edInfo", "rateSel", "edRowBtn"], PREVIEW_ONLY = ["modeSw", "toolsBtn", "playBtn"];
+const ED_ONLY = ["edTabs", "edTest", "edAuto", "edAdv", "edTop", "edLeft", "edRight", "edInfo", "rateSel", "edRowBtn", "edTime", "edBm", "edSong"], PREVIEW_ONLY = ["modeSw", "toolsBtn", "playBtn"];
+// Simple / Advanced tools (the switch in the top bar, saved, off by default). Both keep osu!'s layout: the sample set
+// and additions over the four object tools on the left, new combo, the hitsounds and grid / distance snap on the
+// right, and the Compose, Timing, Hitsounds, Verify, Setup and Compare tabs (Compare, its ghost and its dock are in both).
+// Advanced only adds the modding and mapping tools, after the basic ones so nothing moves: Mod notes, stream / polygon / transform, the hitsound options,
+// guides, the metronome, timing points, slider ends, bookmarks, copy timing, notes, annotations and their lists.
+// The advanced elements carry the class "adv" (index.html, sidelists.js) and app.css hides them in Simple; the mod
+// note bubble, annotations and note flags aren't drawn there, and the hotkeys keep working in both.
+const ED_ADV_TABS = new Set(["notes"]);
+const edAdv = () => S.edAdv === true;
+function applyEdAdv() {
+  const on = edAdv(); UI.player.classList.toggle("edadv", on);
+  const b = $("edAdv"); if (b) b.setAttribute("aria-pressed", String(on));
+  if (!on && typeof ANN !== "undefined" && ANN.tool) annSetTool(""); // (its button is gone with Advanced)
+  applyEdTray(); if (EDIT.on) requestAnimationFrame(() => edTabsReveal(false)); // (upright phones: the tray, and Mod notes added to the tab strip)
+  if (!on && EDIT.on && ED_ADV_TABS.has(EDIT.tab)) edTab("compose");
+  else if (typeof sideRender === "function") sideRender();
+  if (typeof cmpDockSync === "function") cmpDockSync();
+  if (map) drawTimeline();
+  if (typeof measureIns === "function") requestAnimationFrame(() => { measureIns(); dirty = true; });
+}
+function setEdAdv(on, quiet) {
+  S.edAdv = !!on; if (on && S.edTray === undefined) S.edTray = true; // (the first time: the upright phone's tray of new tools starts open)
+  save(); applyEdAdv();
+  if (!quiet) toast(on ? tr("Advanced tools on: the modding and mapping tools are shown") : tr("Advanced tools off: osu!'s own tools only"));
+  if (on && typeof edTourAdvMaybe === "function") edTourAdvMaybe(); // (the first time: a look at the new tools, edtour.js)
+}
+if ($("edAdv")) $("edAdv").onclick = () => setEdAdv(!edAdv());
 function setMode(on, force) {
   if (on === EDIT.on) return;
   const watching = typeof LIVE !== "undefined" && LIVE.watch && (LIVE.on || LIVE.opening); // a guest watching a live session: Compose only
@@ -22,19 +49,23 @@ function setMode(on, force) {
   if (map && map.mode !== 3 && S.edStack === false) rebuildHits(map); // (stacking is only turned off in the editor)
   for (const [id, v] of [["modePrev", !on], ["modeEdit", on]]) { $(id).classList.toggle("on", v); $(id).setAttribute("aria-pressed", v); }
   UI.player.classList.toggle("editing", on);
+  if (typeof cmpDockSync === "function") cmpDockSync();
   // (an element can be missing when an older copy of the page runs newer scripts, e.g. a saved home-screen app)
   ED_ONLY.forEach(id => { const e = $(id); if (e) e.hidden = !on; }); PREVIEW_ONLY.forEach(id => { const e = $(id); if (e) e.hidden = on; });
   if (typeof tpApply === "function") tpApply(); // (the test play buttons only show with Settings → Test play on)
   UI.spd.hidden = on || A.rate === 1;
   if (on) {
+    edSongSync();
     pausePlayback(); closeTools(); UI.tapStart.hidden = true; needTapResume = false; if (!UI.player.hidden) startAt = 0; cardStart = -1e9; ensureAudioCtx(); // (a link's ?t= still applies while the map opens)
     edTab("compose");
-    if (!setMode.hinted) { setMode.hinted = true; toast(tr("Modding: tap an object to select it and see its timing • drag to move • drag the timeline to scrub"), 4500); }
-  } else { EDIT.sliderPts = null; EDIT.box = null; $("edPanel").hidden = true; closeDlg(); if (typeof sideRender === "function") sideRender(); }
+    if (!setMode.hinted && typeof edTourWill === "function" && edTourWill()) setMode.hinted = true; // (the editor tour starts instead: edtour.js)
+    if (!setMode.hinted) { setMode.hinted = true; toast(tr("Modding: tap an object to select it and see its timing • drag to move • drag the timeline to scrub"), 4500); } else edHint();
+  } else { edHint(true); EDIT.sliderPts = null; EDIT.box = null; $("edPanel").hidden = true; closeDlg(); if (typeof sideRender === "function") sideRender(); }
   setModeParam(on);
   if (!UI.sheet.hidden) { buildSetTabs(); showSetTab(on ? S.setTabEd || "editor" : S.setTab || "audio"); }
   showUI(); measureIns(); updateEdUI(); dirty = true;
-  requestAnimationFrame(() => { measureIns(); drawTimeline(); dirty = true; });
+  requestAnimationFrame(() => { measureIns(); drawTimeline(); dirty = true; if (on) edTabsReveal(false); });
+  if (typeof edTourMaybe === "function") { if (on) edTourMaybe(); else edTourClose(false); } // (the tour: first time on this device; leaving ends it)
 }
 $("modePrev").onclick = () => setMode(false);
 $("modeEdit").onclick = () => setMode(true);
@@ -44,12 +75,17 @@ function edTab(tab) {
   if (typeof hssPopClose === "function") hssPopClose(); // (Hitsound Studio's drop-down)
   if (tab !== "compose" && typeof LIVE !== "undefined" && LIVE.on && LIVE.watch) return; // watchers see Compose only
   if (tab === "verify" && EDIT.tab !== "verify" && typeof VFY_RUN !== "undefined") VFY_RUN.hold = false; // (opening Verify checks again)
-  EDIT.tab = tab;
+  if (ED_ADV_TABS.has(tab) && !edAdv()) setEdAdv(true); // (a hotkey or a link that opens a modding tab turns Advanced on)
+  EDIT.tab = tab; UI.player.dataset.etab = tab; // (upright phones: the compose toolbox in the dock is for Compose only, app.css)
   $("edTabs").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.etab === tab));
+  if (ONE_ROW.matches) edTabsReveal(true); // (upright phones: the open tab is centred in the strip)
+  else { const r = $("edTabs"), b = r.querySelector("button.on"); if (b && r.scrollWidth > r.clientWidth) { const R = r.getBoundingClientRect(), B = b.getBoundingClientRect(); if (B.left < R.left || B.right > R.right) r.scrollLeft += B.left < R.left ? B.left - R.left - 8 : B.right - R.right + 8; } } // (phones: the row scrolls; the open tab stays in view)
   const p = $("edPanel");
   if (typeof sideRender === "function") sideRender(); // the notes / annotations lists belong to Compose
+  if (typeof cmpDockSync === "function") cmpDockSync();
   if (tab === "compose") { p.hidden = true; dirty = true; return; }
-  pausePlayback();
+  // (no pause here: the song keeps playing across tabs, like osu!'s editor; frame() keeps the time, the seek bar,
+  // the timeline and the hitsounds going while a panel is open, and the panels' tools work while it plays)
   p.hidden = false; p.innerHTML = "";
   const wrap = h("div", "wrap"); p.append(wrap);
   renderPanel(tab, wrap);
@@ -57,7 +93,48 @@ function edTab(tab) {
 }
 $("edTabs").querySelectorAll("button").forEach(b => b.onclick = () => edTab(b.dataset.etab));
 $("edPanel").addEventListener("click", panelClick);
-$("edTime").onclick = async () => { const s = tsAt(A.cur()); toast(await copyText(s) ? tr("Copied {s}", { s }) : s); };
+$("edTime").onclick = async () => { if (edTimeIn.held) return edTimeIn.held = false; const s = tsAt(A.cur()); toast(await copyText(s) ? tr("Copied {s}", { s }) : s); };
+// the bottom bar's song line (the editor's top bar has no title, like osu!'s): "Artist - Title [Difficulty]"
+function edSongSync() { if (!map) return; const M = map.meta, a = M.ArtistUnicode || M.Artist || "", t = M.TitleUnicode || M.Title || ""; $("edSong").textContent = `${a ? a + " - " : ""}${t} [${M.Version || "?"}]`; }
+// ---------- modding timestamps: "00:20:783 (1,2) - " (a mod, a discussion, an osu://edit/ link) goes there ----------
+// (Ctrl+V with one on the clipboard, or pasted / typed into the time box: right-click or hold it)
+function parseStamp(s) {
+  s = String(s || "").trim().replace(/^osu:\/\/edit\//i, ""); try { s = decodeURIComponent(s); } catch {}
+  if (s.length > 300) return null;
+  const t = parseOsuTime(s); if (!isFinite(t) || t < 0) return null;
+  const m = s.match(/^[^(]*\(([^)]*)\)/), toks = m ? m[1].split(",").map(x => x.trim().toLowerCase()).filter(x => /^\d+$|^spinner$/.test(x)) : [];
+  return { t, toks, osu: /^\d+:\d{2}:\d{3}/.test(s) }; // osu: written the way osu! copies it (not a bare number)
+}
+function goStamp(s) {
+  const st = parseStamp(s); if (!st || !map) return false;
+  if (EDIT.tab !== "compose") edTab("compose");
+  seekTo(st.t); showUI();
+  const ids = []; let i = map.hit.findIndex(o => o.t >= st.t - 2); // (the combo numbers from that time on, in order, like osu!)
+  if (i >= 0) for (const k of st.toks) for (let j = i; j < Math.min(map.hit.length, i + 64); j++) { const o = map.hit[j]; if (k === "spinner" ? o.kind === "spinner" : o.num === +k) { ids.push(o.lid); i = j + 1; break; } }
+  edSelectIds(ids);
+  toast(tr("Went to {s}", { s: fmtMs(st.t) + (st.toks.length ? ` (${st.toks.join(",")})` : "") }), 1800);
+  return true;
+}
+// the time box as a field: right-click (or hold on a touch screen) it, then paste or type a time; Enter goes there
+function edTimeIn() {
+  const b = $("edTime"); if ($("edTimeIn") || b.hidden) return;
+  const inp = h("input", "edtime edtimein"); inp.id = "edTimeIn"; inp.type = "text"; inp.value = fmtMs(A.cur()); inp.placeholder = "00:00:000 (1,2)";
+  inp.setAttribute("aria-label", tr("Go to a timestamp")); inp.autocomplete = "off"; inp.spellcheck = false; inp.setAttribute("enterkeyhint", "go");
+  let done = false;
+  const close = () => { if (done) return; done = true; inp.remove(); b.style.display = ""; };
+  const go = () => { const ok = goStamp(inp.value); if (ok) close(); else { toast(tr("Not a timestamp: use 00:20:783 or 00:20:783 (1,2)")); inp.select(); } };
+  inp.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); go(); } else if (e.key === "Escape") { e.preventDefault(); close(); } };
+  inp.onpaste = () => setTimeout(() => { if (!done && parseStamp(inp.value)) go(); }); // (pasting a timestamp goes there at once)
+  inp.onblur = () => setTimeout(close, 150);
+  b.style.display = "none"; b.after(inp); inp.focus(); inp.select();
+}
+$("edTime").addEventListener("contextmenu", e => { e.preventDefault(); edTimeIn(); });
+$("edTime").addEventListener("pointerdown", e => {
+  if (e.pointerType === "mouse") return; clearTimeout(edTimeIn.t); edTimeIn.held = false;
+  edTimeIn.t = setTimeout(() => { edTimeIn.held = true; $("edTime").classList.add("held"); }, 450);
+});
+$("edTime").addEventListener("pointerup", () => { clearTimeout(edTimeIn.t); $("edTime").classList.remove("held"); if (edTimeIn.held) edTimeIn(); }); // (opened on the release: a phone shows its keyboard for a field focused then)
+for (const ev of ["pointerleave", "pointercancel"]) $("edTime").addEventListener(ev, () => { clearTimeout(edTimeIn.t); $("edTime").classList.remove("held"); });
 function edReset() { EDIT.sel.clear(); EDIT.undo = []; EDIT.redo = []; EDIT.changed = false; EDIT.sliderPts = null; EDIT.drag = false; EDIT.box = null; wave = null; updateEdUI(); }
 const anyEdits = () => EDIT.changed || osuFiles.some(o => o.edited || o.created);
 async function edConfirmDiscard() {
@@ -408,7 +485,8 @@ function deleteSel() {
 }
 function toggleBookmark() {
   const t = snapTime(A.cur()), i = map.bookmarks.findIndex(b => Math.abs(b - t) < 20);
-  edCommit(i >= 0 ? "Remove bookmark" : "Add bookmark", () => { if (i >= 0) map.bookmarks.splice(i, 1); else { map.bookmarks.push(t); map.bookmarks.sort((a, b) => a - b); } });
+  // (edCommit refuses a live guest / collab viewer and says why itself: no "added" toast then)
+  if (!edCommit(i >= 0 ? "Remove bookmark" : "Add bookmark", () => { if (i >= 0) map.bookmarks.splice(i, 1); else { map.bookmarks.push(t); map.bookmarks.sort((a, b) => a - b); } })) return;
   toast(tr(i >= 0 ? "Bookmark removed" : "Bookmark added at {t}", { t: fmtMs(t) }), 1500);
 }
 function freeAt(t, end = t) { return !map.hit.some(o => t <= o.end + 1 && end >= o.t - 1); }
@@ -603,7 +681,7 @@ cv.addEventListener("pointerdown", e => {
     pdown = { x, y, anchor: o, moved: false, dbl };
     if (o.kind === "slider" && !multi) { const pe = pointAt(o, 1), nearEnd = Math.hypot(x - pe[0], y - pe[1]) <= map.radius && Math.hypot(x - o.x, y - o.y) > map.radius * .5;
       EDIT.edgeFor = o.lid; EDIT.edge = nearEnd ? (o.slides % 2 ? o.slides : o.slides - 1) : null; }
-    if (o.kind === "slider" && EDIT.sel.size === 1 && !setTool.sliderHint) { setTool.sliderHint = true; toast(tr(TOUCH ? "Slider: drag the white points to reshape • long-press the body or a point for more (add / remove a point, red anchor)" : "Slider: drag the white points to reshape • Ctrl+click the body to add a point • right-click a point to remove it • Ctrl+click a point for a red anchor"), 5000); }
+    if (o.kind === "slider" && EDIT.sel.size === 1 && !setTool.sliderHint) { setTool.sliderHint = true; toast(kbdMod(tr(TOUCH ? "Slider: drag the white points to reshape • long-press the body or a point for more (add / remove a point, red anchor)" : "Slider: drag the white points to reshape • Ctrl+click the body to add a point • right-click a point to remove it • Ctrl+click a point for a red anchor")), 5000); } // (on a Mac Ctrl+click is a right-click: ⌘+click there)
     if (!isPlaying()) { const u = hsUnits()[0], tt = u && u.o.lid === o.lid ? unitTime(u) : o.t; playEvent(map.sounds.find(s => !s.tick && Math.abs(s.t - tt) < 1.5) || { t: tt, hs: o.hs, n: 0, a: 0, i: 0, v: 0, f: "" }, 0); }
   } else {
     if (!multi) EDIT.sel.clear();
@@ -830,16 +908,22 @@ buildQuickNote();
 // ---------- toolbars ----------
 function setTool(tool) {
   if (typeof inkAway === "function") inkAway(); // a live-session drawing tool that is out would take the playfield's clicks (liveink.js)
+  const changed = tool !== EDIT.tool;
   EDIT.tool = tool; EDIT.hoverPt = null; if (tool !== "slider") { EDIT.sliderPts = null; EDIT.drawing = null; $("edSliderDone").hidden = true; }
   document.querySelectorAll("#edLeft [data-tool]").forEach(b => b.classList.toggle("on", b.dataset.tool === tool));
-  updateEdUI(); dirty = true;
+  updateEdUI(); dirty = true; if (changed) edHint();
 }
-document.querySelectorAll("#edLeft [data-tool]").forEach(b => b.onclick = () => setTool(b.dataset.tool));
+document.querySelectorAll("#edLeft [data-tool]").forEach(b => b.onclick = () => { const same = EDIT.tool === b.dataset.tool; setTool(b.dataset.tool); if (same) edHint(); }); // (tapping the tool that is on shows its hint again)
 $("edNC").onclick = toggleNC;
 $("edW").onclick = () => toggleHS(2);
 $("edF").onclick = () => toggleHS(4);
+// its label is the hitsound's name: "Finish" alone is the "done" key in the language files, so the key here is
+// "Finish (hitsound)", and English (which shows keys as they are) keeps plain "Finish"
+const edFinishLabel = () => { const l = $("edF").querySelector("small"); if (l) l.textContent = LANG === "en" ? "Finish" : tr("Finish (hitsound)"); };
+edFinishLabel(); addEventListener("langchange", edFinishLabel);
 $("edC").onclick = () => toggleHS(8);
-document.querySelectorAll("#edRight [data-bank]").forEach(b => b.onclick = e => setBankOf(e.altKey ? 1 : 0, +b.dataset.bank));
+document.querySelectorAll("#edBanks [data-bank]").forEach(b => b.onclick = e => setBankOf(e.altKey ? 1 : 0, +b.dataset.bank));
+document.querySelectorAll("#edBanks [data-add]").forEach(b => b.onclick = () => setBankOf(1, +b.dataset.add)); // (Additions, as in osu!; Alt+sample set does the same)
 $("edHS").onclick = () => EDIT.dlg === "hitsound" ? closeDlg() : openDlg("hitsound");
 $("edDel").onclick = deleteSel;
 $("edUndo").onclick = () => undoRedo(true);
@@ -849,6 +933,8 @@ function setGuides(on) { S.guides = on; save(); updateEdUI(); dirty = true; toas
 $("edGuide").onclick = () => setGuides(!S.guides);
 $("edDS").onclick = () => { S.ds = !S.ds; save(); updateEdUI(); dirty = true; toast(S.ds ? tr("Distance snap on ({x}x) • Alt+scroll changes it", { x: S.dsMul.toFixed(1) }) : tr("Distance snap off"), 1600); };
 $("edBook").onclick = toggleBookmark;
+$("edBm").onclick = toggleBookmark; // (the bottom bar's, next to play: Simple and Advanced)
+function edBmSync(t) { const on = !!map && map.bookmarks.some(b => Math.abs(b - snapTime(t)) < 20), b = $("edBm"); if (b.classList.contains("on") !== on) { b.classList.toggle("on", on); b.setAttribute("aria-pressed", on); } } // (lit on a bookmark: Ctrl+B there removes it)
 $("edMetro").onclick = () => setToggle("metro", !S.metro);
 $("edStream").onclick = () => openDlg("stream");
 $("edPoly").onclick = () => openDlg("polygon");
@@ -907,7 +993,7 @@ function drawGuides(t, px) {
   const p = live ? prevObjBefore(at) : map.hit[objs[0].idx - 1];
   if (!p || p.kind === "spinner" || (!live && p.end + 700 < t)) return;
   const pe = endPos(p), d = Math.hypot(pos[0] - pe[0], pos[1] - pe[1]);
-  ctx.font = `600 ${13 * px}px "Varela Round",sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+  ctx.font = `600 ${13 * px}px Inter,sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
   if (live || S.gLine) {
     ctx.globalAlpha = .8; ctx.strokeStyle = "#ffd84a"; ctx.lineWidth = 2 * px; ctx.setLineDash([8 * px, 6 * px]);
     ctx.beginPath(); ctx.moveTo(pe[0], pe[1]); ctx.lineTo(pos[0], pos[1]); ctx.stroke(); ctx.setLineDash([]);
@@ -930,6 +1016,7 @@ function drawGuides(t, px) {
 function updateEdUI() {
   if (!map) return;
   const objs = selObjs(), el = $("edSel"), ssel = selSlider();
+  edTrayDot();
   $("edSliderCtl").hidden = !ssel; if (ssel) $("edCurve").textContent = ssel.curve || "B";
   $("edCopy").disabled = !objs.length;
   $("edUndo").disabled = !(COLLAB.on ? COLLAB.undo : EDIT.undo).length; $("edRedo").disabled = !(COLLAB.on ? COLLAB.redo : EDIT.redo).length; $("edDel").disabled = !objs.length;
@@ -941,6 +1028,7 @@ function updateEdUI() {
   lit("edNC", o => o.type & 4);
   for (const [id, bit] of [["edW", 2], ["edF", 4], ["edC", 8]]) hsState(id, u => unitHs(u) & bit, () => EDIT.place.hs & bit);
   for (const [id, v] of [["edBankN", 1], ["edBankS", 2], ["edBankD", 3]]) hsState(id, u => unitBank(u, 0) === v, () => EDIT.place.n === v);
+  for (const [id, v] of [["edAddN", 1], ["edAddS", 2], ["edAddD", 3]]) hsState(id, u => unitBank(u, 1) === v, () => EDIT.place.a === v);
   $("edHS").classList.toggle("lit", EDIT.dlg === "hitsound");
   renderHsDlg();
   $("edGrid").querySelector("small").textContent = S.grid ? `${S.grid}px` : "Grid";
@@ -948,14 +1036,27 @@ function updateEdUI() {
   $("edDS").querySelector("small").textContent = S.dsMul.toFixed(1) + "x";
   $("edDS").classList.toggle("lit", S.ds);
   $("edGuide").classList.toggle("lit", S.guides);
-  if (!objs.length) {
-    el.textContent = tr({ select: "Tap an object to select • drag empty space to select several • double-tap to copy its timing", circle: "Tap to place a circle at the current time (snap 1/{d})", slider: "Tap to place slider points (or drag from the head to draw it) • tap the last point again for a red anchor • right-click or \"Finish\" to end", spinner: "Tap to place a 4-beat spinner" }[EDIT.tool], { d: S.snap });
-    return;
-  }
+  // (#edSel is hidden now: the selection shows in the timing pill on the playfield (EDIT.selTxt, drawOverlay) and the tool's hint as a tip (edHint))
+  if (!objs.length) { el.textContent = edToolHint(); EDIT.selTxt = ""; dirty = true; return; }
   if (objs.length === 1) {
     const o = objs[0], sn = snapOf(o.t);
     el.textContent = `${tsFor(objs)}${o.kind} • ${sn.div ? "1/" + sn.div : tr("unsnapped ({ms} ms)", { ms: Math.round(sn.err) })} • (${Math.round(o.rx)}, ${Math.round(o.ry)})${spacingInfo(o)}`;
   } else el.textContent = `${tr("{n} objects", { n: objs.length })} • ${tsFor(objs)}`;
+  EDIT.selTxt = el.textContent; dirty = true;
+}
+function edToolHint() {
+  return tr({ select: "Tap an object to select • drag empty space to select several • double-tap to copy its timing", circle: "Tap to place a circle at the current time (snap 1/{d})", slider: "Tap to place slider points (or drag from the head to draw it) • tap the last point again for a red anchor • right-click or \"Finish\" to end", spinner: "Tap to place a 4-beat spinner" }[EDIT.tool], { d: S.snap });
+}
+// the tool's hint as a small tip for a few seconds (when the tool changes and when the editor opens), not a line of text
+// that is always there; it sits where toasts do (above the bottom bar) and steps aside while a toast shows (app.css)
+function edHint(off) {
+  let el = $("edTip");
+  if (!el) { el = h("div", "edtip"); el.id = "edTip"; el.setAttribute("role", "status"); $("toast").after(el); } // (after #toast: `.toast.on ~ .edtip` hides it)
+  clearTimeout(edHint.h);
+  if (off || !EDIT.on || UI.player.hidden) { el.classList.remove("on"); return; }
+  el.textContent = edToolHint(); el.style.bottom = toastLift(); el.classList.add("on");
+  requestAnimationFrame(() => el.style.bottom = toastLift());
+  edHint.h = setTimeout(() => el.classList.remove("on"), 4000);
 }
 addEventListener("langchange", () => { if (EDIT.on) { updateEdUI(); if (EDIT.tab !== "compose") edTab(EDIT.tab); } });
 
@@ -1044,8 +1145,7 @@ function reverseSel() { // mirror the selection in time (sliders run the other w
 function copySel() {
   const objs = selObjs(); if (!objs.length) return false;
   const lines = objs.map(o => lineById(o.lid)).filter(Boolean); if (!lines.length) return false;
-  EDIT.clip = { t0: objs[0].t, lines: lines.map(L => L.s) };
-  const s = tsFor(objs); copyText(s); toast(tr("Copied {n} objects • Ctrl+V pastes them at the current time", { n: objs.length }), 1800);
+  const s = tsFor(objs); EDIT.clip = { t0: objs[0].t, lines: lines.map(L => L.s), ts: s.trim() }; copyText(s); /* (ts: that timestamp on the clipboard means these objects, not a place to go) */ toast(tr("Copied {n} objects • Ctrl+V pastes them at the current time", { n: objs.length }), 1800);
   return true;
 }
 function pasteClip() {
@@ -1056,6 +1156,14 @@ function pasteClip() {
   if (!freeAt(+lines[0].s.split(",")[2], Math.max(...ends))) toast(tr("Pasted objects overlap others in time"));
   if (edCommit("Paste", () => map.lines.push(...lines))) edSelectIds(lines.map(x => x.id));
 }
+// Ctrl+V: a modding timestamp on the clipboard (copied from a mod or a discussion) goes there, like osu!; anything else
+// (or no paste event within 80 ms: a browser that doesn't send one) pastes the copied objects
+function edPaste(e) {
+  if (!edPaste.t) return; clearTimeout(edPaste.t); edPaste.t = 0;
+  const s = (e.clipboardData && e.clipboardData.getData("text/plain") || "").trim(), st = parseStamp(s);
+  if (st && st.osu && !(EDIT.clip && s === EDIT.clip.ts) && EDIT.on) { e.preventDefault(); goStamp(s); } else pasteClip();
+}
+document.addEventListener("paste", edPaste);
 
 // ---------- tool dialog (floating, like osu!'s small tool windows) ----------
 const DLG = $("edDlg");
@@ -1133,7 +1241,7 @@ function drawGhost() {
     const q = G.pts[i];
     if (q.path) { ctx.globalAlpha = .5; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2 * px; ctx.beginPath(); q.path.forEach((p, j) => j ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.stroke(); }
     blit(T("hitcircle", col), q.x, q.y, s, .5); blit(T("hitcircleoverlay"), q.x, q.y, s, .5);
-    ctx.globalAlpha = .95; ctx.fillStyle = "#fff"; ctx.font = `600 ${Math.round(map.radius * .7)}px "Varela Round",sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(i + 1, q.x, q.y);
+    ctx.globalAlpha = .95; ctx.fillStyle = "#fff"; ctx.font = `600 ${Math.round(map.radius * .7)}px Inter,sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(i + 1, q.x, q.y);
   }
   ctx.globalAlpha = 1;
 }
@@ -1318,7 +1426,7 @@ function edKey(e) {
   }
   if (mod && k === "KeyS") { e.preventDefault(); exportOsu(); return true; }
   if (mod && k === "KeyC") { if (EDIT.sel.size) { e.preventDefault(); copySel(); return true; } return false; }
-  if (mod && k === "KeyV") { e.preventDefault(); pasteClip(); return true; }
+  if (mod && k === "KeyV") { clearTimeout(edPaste.t); edPaste.t = setTimeout(() => { edPaste.t = 0; pasteClip(); }, 80); return true; } // (not prevented: the paste event that follows brings the clipboard's text, edPaste)
   if (mod && k === "KeyX") { if (EDIT.sel.size) { e.preventDefault(); cutSel(); return true; } return false; }
   if (mod && k === "KeyD") { e.preventDefault(); cloneSel(); return true; }
   if (mod && k === "KeyH") { e.preventDefault(); flipSel(true); return true; }
@@ -1327,6 +1435,7 @@ function edKey(e) {
   if (mod && (k === "Comma" || k === "Period")) { e.preventDefault(); if (EDIT.sel.size) rotateSel(k === "Period" ? 90 : -90); return true; } // osu!stable: Ctrl+< / Ctrl+>
   if (mod && k === "KeyP") { e.preventDefault(); openTiming(true); return true; }
   if (mod) return false;
+  if (e.key === "?" && typeof edTourStart === "function") { e.preventDefault(); edTourStart("simple", { skipWelcome: true }); return true; } // (the editor tour again)
   const tabKey = { F1: "compose", F3: "timing", F4: "setup", F2: "hitsounds" }[k]; // osu!stable: F1 Compose, F3 Timing, F4 Song setup
   if (tabKey) { e.preventDefault(); edTab(tabKey); return true; }
   if (k === "KeyL" && e.shiftKey) { e.preventDefault(); tlLock(!S.tlLock); return true; }
@@ -1391,29 +1500,101 @@ function edDrawUnder(t) {
     }
   }
   ctx.globalAlpha = 1;
-  if (typeof cmpDrawGhost === "function" && CMP.ghost && EDIT.tab === "compose") cmpDrawGhost(t, px); // (Compare: the other version)
+  if (typeof cmpGhostFrame === "function") cmpGhostFrame(t, px); // (Compare: the other version, faint, and its panel)
 }
 // Settings → Editor → Compact top bar (off by default): the .edcompact styles in app.css
-// phones held upright: the object tools and the hitsound buttons share one row that scrolls sideways, and the ⚒ button
-// in the top bar hides that row (S.edRowHidden), so the playfield gets the room. The buttons keep their ids and handlers.
-const ONE_ROW = matchMedia("(orientation: portrait) and (max-width: 760px)");
-let edRowSep = null;
+// desktop: the sample set and additions sit at the top of the left column, over the object tools (as in osu!); on
+// smaller screens they stay with the hitsound buttons.
+// phones held upright: the object tools get a row of their own under the timeline (no sideways scrolling), the
+// hitsound and snapping buttons a grid above the bottom bar, and undo / redo / delete move next to "+ Note" in the
+// bottom bar, where the thumb is. The ⚒ button in the top bar hides both tool rows (S.edRowHidden), so the playfield
+// gets the room. The buttons keep their ids and handlers.
+const ONE_ROW = matchMedia("(orientation: portrait) and (max-width: 760px)"), ED_DESK = matchMedia("(min-width: 1100px) and (min-height: 560px)"), ED_HIST = ["edUndo", "edRedo", "edDel"];
+// Settings → Editor → Playfield size in effect: the user's choice, else Auto (the default; "auto" or unset): "fit" on upright
+// phones (ONE_ROW) and "game" elsewhere (the frame re-reads it, so rotating re-lays out through edToolRow below)
+const edSizeAuto = () => ONE_ROW.matches ? "fit" : "game";
+const edSizeNow = () => S.edSize === "fit" || S.edSize === "game" ? S.edSize : edSizeAuto();
+// the Auto option's label says what it gives on this screen (kept up to date when the phone turns)
+const edSizeAutoLabel = () => edSizeAuto() === "fit" ? tr("Auto (Fit)") : tr("Auto (Gameplay)");
+ONE_ROW.addEventListener("change", () => { const o = document.querySelector('#edSetBox option[value="auto"]'); if (o) o.text = edSizeAutoLabel(); });
+// upright phones (the "dock", app.css): every editing control sits in the bottom bar, in both Simple and Advanced. Row 1
+// the object tools with Grid and DS (#edLeft), row 2 new combo, the hitsounds and the sample set (#edRight), row 3
+// undo / redo / delete, a slot for the contextual buttons, Tools (Advanced) and ⋯ (#edInfo). Advanced's tools go in a
+// tray over the rows (#edTray, Tools opens it, S.edTray), so it grows the bar upward and no basic button moves. The
+// containers move (they keep their ids, the code and the tour query inside them); a comment marks each one's home, so
+// turning the phone puts every element back exactly where it was.
+const DOCK_HOME = new Map(); // el -> the comment at its home
+let dockReady = false; // (after DOMContentLoaded: sidelists.js adds its buttons after this script)
+function dockTo(el, parent, before = null) {
+  if (!el || !parent) return;
+  if (!DOCK_HOME.has(el)) { const c = document.createComment("home:" + (el.id || el.className)); el.before(c); DOCK_HOME.set(el, c); }
+  if (el.parentNode !== parent) parent.insertBefore(el, before); // (only when it isn't there yet: a moved node loses a press in progress)
+}
+function dockBack() { for (const [el, c] of DOCK_HOME) if (c.parentNode && el.previousSibling !== c) c.parentNode.insertBefore(el, c.nextSibling); }
+const dockHome = el => (el && DOCK_HOME.get(el)) || el; // (where an element lives off the dock: sidelists.js inserts its buttons there)
+function edDock() {
+  const bot = document.querySelector(".bar.bottom"), info = $("edInfo"), tray = $("edTray"), ctx = info.querySelector(".edctx");
+  if (!tray || !ctx) return; // (an older copy of the page)
+  const map = tray.querySelector("[data-grp=map]"), mod = tray.querySelector("[data-grp=mod]");
+  dockTo($("edLeft"), bot, info); dockTo($("edRight"), bot, info);
+  dockTo($("edGrid"), $("edLeft")); dockTo($("edDS"), $("edLeft"));
+  for (const id of ["edStream", "edPoly", "edXform", "edHS", "edGuide", "edEnd", "edMetro", "edTimingQ"]) dockTo($(id), map);
+  for (const el of [$("edNote"), $("edCopy"), document.querySelector(".annbtns"), $("edSideNotes"), $("edSideAnns"), $("edSideVfy")]) dockTo(el, mod);
+  for (const id of ["edSliderDone", "edSliderCtl", "edHl"]) dockTo($(id), ctx);
+}
 function edToolRow() {
-  const L = $("edLeft"), R = $("edRight");
-  if (ONE_ROW.matches && R.children.length) { edRowSep = edRowSep || h("span", "sep rowsep"); L.append(edRowSep, ...R.children); R.classList.add("merged"); }
-  else if (!ONE_ROW.matches && edRowSep && edRowSep.parentNode === L) {
-    const moved = []; for (let n = edRowSep.nextSibling; n; n = n.nextSibling) moved.push(n);
-    R.append(...moved); edRowSep.remove(); R.classList.remove("merged");
-  }
+  const L = $("edLeft"), R = $("edRight"), info = $("edInfo"), banks = $("edBanks");
+  if (!ONE_ROW.matches) dockBack();
+  if (ONE_ROW.matches) { if (info.firstElementChild !== $("edSel") || $("edSel").nextElementSibling !== $(ED_HIST[0])) $("edSel").after(...ED_HIST.map($)); } // (row 3 starts with them)
+  else if ($("edUndo").parentNode !== L) for (const id of ED_HIST) L.insertBefore($(id), L.querySelector(".advsep"));
+  if (ED_DESK.matches) { if (banks.parentNode !== L) L.prepend(banks); }
+  else if (banks.parentNode !== R) R.insertBefore(banks, R.querySelector(".banksep"));
+  if (ONE_ROW.matches && dockReady) edDock();
   UI.player.classList.toggle("edrowhid", S.edRowHidden === true);
   const b = $("edRowBtn"); if (b) b.setAttribute("aria-pressed", String(S.edRowHidden !== true));
-  if (typeof measureIns === "function") requestAnimationFrame(() => { measureIns(); dirty = true; });
+  if (typeof measureIns === "function") requestAnimationFrame(() => { measureIns(); edTabsReveal(false); dirty = true; });
 }
-ONE_ROW.addEventListener("change", edToolRow);
+ONE_ROW.addEventListener("change", edToolRow); ED_DESK.addEventListener("change", edToolRow);
 if ($("edRowBtn")) $("edRowBtn").onclick = () => { S.edRowHidden = S.edRowHidden !== true; save(); edToolRow(); };
 edToolRow();
+{ const ready = () => { dockReady = true; edToolRow(); edTrayDot(); }; if (document.readyState === "complete") ready(); else addEventListener("DOMContentLoaded", ready); }
+// the Tools tray (Advanced, upright phones): opened and closed only by its button (or Advanced off), remembered (S.edTray,
+// per device); force: open for the moment without saving it (the Advanced tour)
+function applyEdTray(force) {
+  const on = force === true || S.edTray === true, b = $("edTrayBtn");
+  UI.player.classList.toggle("edtray", on);
+  if (b) b.setAttribute("aria-expanded", String(on));
+  edTrayDot();
+  if (typeof measureIns === "function" && EDIT.on) requestAnimationFrame(() => { measureIns(); dirty = true; });
+}
+if ($("edTrayBtn")) $("edTrayBtn").onclick = () => {
+  S.edTray = S.edTray !== true; save();
+  if (!S.edTray && typeof ANN !== "undefined" && ANN.tool) annSetTool(""); // (no armed annotation tool whose button is hidden)
+  applyEdTray();
+};
+// a dot on Tools while the tray is closed and something in it is on (it changes the playfield, so it never goes unseen)
+function edTrayDot() {
+  const b = $("edTrayBtn"); if (!b) return;
+  b.classList.toggle("has-on", !UI.player.classList.contains("edtray") && !!(S.guides || S.sliderEnd || S.metro || S.sideNotes || S.sideAnns || S.sideVfy));
+}
+// the tab strip on upright phones: one line that scrolls, the open tab kept in the middle (also after the user scrolls it
+// to peek: 1.5 s after they let go); its ends fade where there is more (core.js sfade). scrollTo, never scrollIntoView
+// (iOS would scroll the page).
+function edTabsReveal(smooth) {
+  const s = $("edTabs"), b = s && s.querySelector("button.on");
+  if (s && b && b.offsetWidth && ONE_ROW.matches) s.scrollTo({ left: b.offsetLeft - (s.clientWidth - b.offsetWidth) / 2, behavior: smooth ? "smooth" : "instant" });
+}
+{
+  const s = $("edTabs"), T = { h: 0, down: false };
+  const later = () => { clearTimeout(T.h); if (!T.down) T.h = setTimeout(() => { if (!(typeof ETOUR !== "undefined" && ETOUR.on)) edTabsReveal(true); }, 1500); }; // (the tour scrolls it to show a tab: left alone then)
+  s.addEventListener("scroll", () => { if (ONE_ROW.matches) later(); }, { passive: true });
+  s.addEventListener("pointerdown", () => { T.down = true; clearTimeout(T.h); }, { passive: true });
+  for (const ev of ["pointerup", "pointercancel"]) s.addEventListener(ev, () => { T.down = false; if (ONE_ROW.matches) later(); }, { passive: true });
+  addEventListener("langchange", () => { if (EDIT.on) requestAnimationFrame(() => edTabsReveal(false)); });
+}
 function applyEdCompact() { UI.player.classList.toggle("edcompact", S.edCompact === true); if (typeof measureIns === "function") requestAnimationFrame(() => { measureIns(); dirty = true; }); }
 applyEdCompact();
+applyEdAdv();
 // Settings → Editor → Timeline height: the timeline bar at the top (CSS --tlh; the playfield fits itself under it)
 const TLH = [44, 160];
 function applyTlHeight() { document.documentElement.style.setProperty("--tlh", S.tlH ? Math.max(TLH[0], Math.min(TLH[1], S.tlH)) + "px" : ""); dirty = true; }
@@ -1462,7 +1643,7 @@ function edDrawOver(t) {
     if (plan && plan.endPt) { // where it really ends (the length snaps down to the beat divisor) and how long it is
       const [ex, ey] = plan.endPt, col = plan.free ? "#6be38a" : "#ff4d5e";
       ctx.globalAlpha = .9; ctx.strokeStyle = col; ctx.lineWidth = 3 * px; ctx.beginPath(); ctx.arc(ex, ey, map.radius * .9, 0, 7); ctx.stroke();
-      ctx.font = `600 ${13 * px}px "Varela Round",sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+      ctx.font = `600 ${13 * px}px Inter,sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
       guideText(tr("{f} beat", { f: beatFrac(plan.end - plan.t, plan.beat) }) + (plan.free ? "" : " • " + tr("overlaps")), ex, ey - map.radius - 4 * px, col, px);
     }
     ctx.globalAlpha = 1;
@@ -1485,7 +1666,7 @@ function edDrawOver(t) {
       if (plan && plan.endPt) {
         const ex = plan.endPt[0] + d, ey = plan.endPt[1] + d, col = plan.free ? "#6be38a" : "#ff4d5e";
         ctx.globalAlpha = .9; ctx.strokeStyle = col; ctx.lineWidth = 3 * px; ctx.beginPath(); ctx.arc(ex, ey, map.radius * .9, 0, 7); ctx.stroke();
-        ctx.font = `600 ${13 * px}px "Varela Round",sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+        ctx.font = `600 ${13 * px}px Inter,sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
         guideText(tr("{f} beat", { f: beatFrac(plan.end - plan.t, plan.beat) }) + (plan.free ? "" : " • " + tr("overlaps")), ex, ey - map.radius - 4 * px, col, px);
       }
     }
@@ -1499,18 +1680,18 @@ function edDrawOver(t) {
       ctx.fillRect(q[0] + d - sz / 2, q[1] + d - sz / 2, sz, sz); ctx.strokeRect(q[0] + d - sz / 2, q[1] + d - sz / 2, sz, sz);
     });
   }
-  // the mod note at the current time, as a bubble on top of the playfield
-  const nn = notesNear(t);
+  // the mod note at the current time, as a bubble on top of the playfield (Advanced)
+  const nn = edAdv() ? notesNear(t) : null;
   if (nn) {
     const txt = `${nn.ts} - ${nn.text}`.slice(0, 90);
-    ctx.font = `600 ${13 * px}px "Varela Round","IBM Plex Sans Thai",sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.font = `600 ${13 * px}px Inter,"IBM Plex Sans Thai",sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "middle";
     const w = Math.min(500, ctx.measureText(txt).width + 26 * px), hh = 26 * px, x0 = 256 - w / 2, y0 = -30 * px + 4;
     ctx.globalAlpha = .92; ctx.fillStyle = "#1c1726"; ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x0, y0, w, hh, 8 * px); else ctx.rect(x0, y0, w, hh); ctx.fill();
     ctx.fillStyle = NOTE_COL[nn.type] || "#66ccff"; ctx.fillRect(x0, y0, 4 * px, hh);
     ctx.globalAlpha = 1; ctx.fillStyle = "#fff"; ctx.fillText(txt, x0 + 12 * px, y0 + hh / 2, w - 18 * px);
   }
   drawGhost();
-  annDrawOver(t, px);
+  if (edAdv()) annDrawOver(t, px);
   if (COLLAB.on) collabDrawOver(t, px);
   if (LIVE.on) liveDrawOver(t, px);
   drawGuides(t, px);
@@ -1571,14 +1752,14 @@ function edDrawTimeline(t) {
     g.fillStyle = tp.uninherited ? "#ff4d5e" : "#57d68d"; g.fillRect(X(tp.time) - 1, 0, 2, tp.uninherited ? hh : 8);
   }
   g.fillStyle = "#4d9bff"; for (const b of map.bookmarks) if (b >= t0 && b <= t1) { g.fillRect(X(b) - 1, 0, 2, hh); g.beginPath(); g.moveTo(X(b) - 4, 0); g.lineTo(X(b) + 4, 0); g.lineTo(X(b), 6); g.fill(); }
-  for (const n of notesCached()) if (n.t >= t0 && n.t <= t1) { // mod note flags
+  if (edAdv()) for (const n of notesCached()) if (n.t >= t0 && n.t <= t1) { // mod note flags (Advanced)
     const x = X(n.t); g.fillStyle = NOTE_COL[n.type] || "#66ccff";
     g.fillRect(x - 1, 0, 2, hh); g.beginPath(); g.moveTo(x, 0); g.lineTo(x + 9, 4); g.lineTo(x, 8); g.fill();
   }
   // objects
   const tk = Math.max(1, hh / 58), H = map.hit, cy = hh * .45, r = Math.min(11 * tk, hh * .2); // (tk: a taller timeline, Settings → Editor, draws bigger)
   const hi = lastBefore(H, t1, "t"); let lo = hi; while (lo > 0 && H[lo - 1].t > t0 - 30000) lo--;
-  g.textAlign = "center"; g.textBaseline = "middle"; g.font = `600 ${Math.round(r * 1.05)}px "Varela Round",sans-serif`;
+  g.textAlign = "center"; g.textBaseline = "middle"; g.font = `600 ${Math.round(r * 1.05)}px Inter,sans-serif`;
   for (let i = hi; i >= Math.max(0, lo); i--) {
     const o = H[i]; if (o.end < t0) continue;
     const ns = o.kind === "slider" && EDIT.tlRep && EDIT.tlRep.lid === o.lid ? EDIT.tlRep.n : o.slides; // (its tail being dragged: the new repeat count)
@@ -1594,12 +1775,12 @@ function edDrawTimeline(t) {
     g.lineWidth = (sel ? 3 : 1.5) * tk; g.strokeStyle = sel ? "#66ccff" : "#fff"; g.stroke();
     if (o.num) { g.fillStyle = "#fff"; g.fillText(o.num, x0, cy + .5); }
     const marks = (x, hs, n) => { let yy = cy + r + 4 * tk; for (const [bit, c] of [[2, "#66ccff"], [4, "#ffd84a"], [8, "#6be38a"]]) if (hs & bit) { g.fillStyle = c; g.fillRect(x - 3 * tk, yy, 6 * tk, 3 * tk); yy += 4 * tk; }
-      if (n) { g.fillStyle = "#cfc6de"; g.font = `600 ${Math.round(8 * tk)}px sans-serif`; g.fillText("NSD"[n - 1], x, cy - r - 5 * tk); g.font = `600 ${Math.round(r * 1.05)}px "Varela Round",sans-serif`; } };
+      if (n) { g.fillStyle = "#cfc6de"; g.font = `600 ${Math.round(8 * tk)}px sans-serif`; g.fillText("NSD"[n - 1], x, cy - r - 5 * tk); g.font = `600 ${Math.round(r * 1.05)}px Inter,sans-serif`; } };
     if (o.kind === "slider") { let lx = -1e9; for (let k = 0; k <= o.slides; k++) { const xe = X(o.t + o.span * k + off); if (Math.abs(xe - lx) < 2 && k < o.slides) continue; lx = xe; marks(xe, edgeHs(o, k), (o.edgeSets[k] || [])[0] || (o.samp || {}).n);
       if (sel && EDIT.edgeFor === o.lid && EDIT.edge === k) { g.strokeStyle = "#ffd84a"; g.lineWidth = 2; g.beginPath(); g.arc(xe, cy, r + 3, 0, 7); g.stroke(); } } }
     else marks(x0, o.hs, (o.samp || {}).n);
     if (ns !== o.slides || EDIT.tlRep && EDIT.tlRep.lid === o.lid) { // dragging the tail: how many times it goes back and forth
-      g.fillStyle = "#ffd84a"; g.font = `700 ${Math.round(10 * tk)}px sans-serif`; g.fillText(ns - 1 ? tr("{n} reverse", { n: ns - 1 }) : tr("no reverse"), x1, cy - r - 6 * tk); g.font = `600 ${Math.round(r * 1.05)}px "Varela Round",sans-serif`;
+      g.fillStyle = "#ffd84a"; g.font = `700 ${Math.round(10 * tk)}px sans-serif`; g.fillText(ns - 1 ? tr("{n} reverse", { n: ns - 1 }) : tr("no reverse"), x1, cy - r - 6 * tk); g.font = `600 ${Math.round(r * 1.05)}px Inter,sans-serif`;
     }
   }
   if (EDIT.anchor && EDIT.anchor.moved) { // a placed slider being reshaped: its new end, next to the old one
@@ -1609,7 +1790,7 @@ function edDrawTimeline(t) {
       g.globalAlpha = .45; g.fillStyle = col; g.beginPath(); if (g.roundRect) g.roundRect(xs, cy - r, Math.max(0, xe - xs), r * 2, r); else g.rect(xs, cy - r, xe - xs, r * 2); g.fill();
       g.globalAlpha = 1; g.strokeStyle = col; g.lineWidth = 2; g.setLineDash([4, 3]); g.beginPath(); g.arc(xe, cy, r, 0, 7); g.stroke(); g.setLineDash([]);
       g.fillStyle = col; g.fillRect(xe - 1, 0, 2, hh);
-      g.font = "600 10px sans-serif"; g.fillText(beatFrac(plan.end - plan.t, plan.beat), (xs + xe) / 2, cy - r - 6); g.font = `600 ${Math.round(r * 1.05)}px "Varela Round",sans-serif`;
+      g.font = "600 10px sans-serif"; g.fillText(beatFrac(plan.end - plan.t, plan.beat), (xs + xe) / 2, cy - r - 6); g.font = `600 ${Math.round(r * 1.05)}px Inter,sans-serif`;
     }
   }
   if (EDIT.sliderPts) { // the slider being placed: from its start to where it would end right now
@@ -1620,11 +1801,11 @@ function edDrawTimeline(t) {
       g.globalAlpha = .45; g.fillStyle = col; g.beginPath(); if (g.roundRect) g.roundRect(xs, cy - r, Math.max(0, xe - xs), r * 2, r); else g.rect(xs, cy - r, xe - xs, r * 2); g.fill();
       g.globalAlpha = 1; g.strokeStyle = col; g.lineWidth = 2; g.setLineDash([4, 3]); g.beginPath(); g.arc(xe, cy, r, 0, 7); g.stroke(); g.setLineDash([]);
       g.fillStyle = col; g.fillRect(xe - 1, 0, 2, hh);
-      g.font = "600 10px sans-serif"; g.fillText(beatFrac(plan.end - plan.t, plan.beat), (xs + xe) / 2, cy - r - 6); g.font = `600 ${Math.round(r * 1.05)}px "Varela Round",sans-serif`;
+      g.font = "600 10px sans-serif"; g.fillText(beatFrac(plan.end - plan.t, plan.beat), (xs + xe) / 2, cy - r - 6); g.font = `600 ${Math.round(r * 1.05)}px Inter,sans-serif`;
     }
     g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); g.arc(xs, cy, r, 0, 7); g.stroke();
   }
-  annDrawTimeline(g, X, t0, t1, hh);
+  if (edAdv()) annDrawTimeline(g, X, t0, t1, hh);
   if (COLLAB.on) collabDrawTimeline(g, X, t0, t1, hh);
   if (LIVE.on) liveDrawTimeline(g, X, t0, t1, hh);
   // playhead
@@ -1657,7 +1838,7 @@ TL.addEventListener("pointerdown", e => {
   TL.setPointerCapture(e.pointerId); tlPtrs.set(e.pointerId, e.clientX);
   if (tlPtrs.size === 2) { const [a, b] = [...tlPtrs.values()]; tlAct = { pinch: Math.abs(a - b) || 1, scale: EDIT.tlScale }; return; }
   const xr = e.clientX - TL.getBoundingClientRect().left, yr = e.clientY - TL.getBoundingClientRect().top, multi = e.shiftKey || e.ctrlKey || e.metaKey;
-  if (yr < 14) { const t0 = A.cur(), w = TL.clientWidth, nt = notesCached().find(n => Math.abs(w / 2 + (n.t - t0) * EDIT.tlScaleV - xr) < 9); if (nt) { seekTo(nt.t); openQuick(nt.t, [], nt); tlPtrs.delete(e.pointerId); return; } }
+  if (yr < 14 && edAdv()) { const t0 = A.cur(), w = TL.clientWidth, nt = notesCached().find(n => Math.abs(w / 2 + (n.t - t0) * EDIT.tlScaleV - xr) < 9); if (nt) { seekTo(nt.t); openQuick(nt.t, [], nt); tlPtrs.delete(e.pointerId); return; } }
   // a selected slider's tail comes first (the next object often starts right where it ends)
   const tailOf = !multi && can("editor") && map.hit.find(q => q.kind === "slider" && EDIT.sel.has(q.lid) && Math.abs(TL.clientWidth / 2 + (q.end - A.cur()) * EDIT.tlScaleV - xr) < 9);
   if (tailOf) { EDIT.edgeFor = tailOf.lid; EDIT.edge = tailOf.slides; tlAct = { tail: tailOf, x: e.clientX }; EDIT.tlRep = { lid: tailOf.lid, n: tailOf.slides }; updateEdUI(); dirty = true; return; }
@@ -1813,7 +1994,7 @@ function ctxMenu(x, y, items, level = 0, anchor = null) {
     if (it.head) { m.append(h("div", "ctxhead", it.head)); continue; }
     const b = h("button", "ctxitem" + (it.danger ? " danger" : "")); b.setAttribute("role", "menuitem"); b.disabled = !!it.disabled;
     const mark = h("span", "ctxmark", it.checked === true ? "✓" : it.checked === "mixed" ? "–" : "");
-    b.append(mark, h("span", "ctxlabel", it.label), h("span", "ctxkey", it.sub ? "▸" : it.key || ""));
+    b.append(mark, h("span", "ctxlabel", it.label), h("span", "ctxkey", it.sub ? "▸" : DEV.touchOnly ? "" : kbdMod(it.key || ""))); // (no key chips without a keyboard; ⌘ on a Mac / iPad)
     if (it.sub) {
       const open = () => { const r = b.getBoundingClientRect(); ctxMenu(r.right - 4, r.top - 5, it.sub(), level + 1, r); b.classList.add("open"); m.querySelectorAll(".ctxitem.open").forEach(x => x !== b && x.classList.remove("open")); };
       b.onmouseenter = () => { clearTimeout(m.hov); m.hov = setTimeout(open, 120); };
@@ -1893,6 +2074,7 @@ function selectionMenu() { // everything the current selection can do
       { label: "💬 " + tr("Comment"), action: () => annCreate("comment", one, {}) },
       { label: "◎ " + tr("Highlight"), action: () => annCreate("highlight", one, {}) },
       { label: "➚ " + tr("Arrow (drag it)"), action: () => annSetTool("arrow") }] } : null,
+    edRowsItem(),
     { sep: 1 },
     { label: tr("Delete"), key: "Del", danger: true, action: deleteSel });
   return items;
@@ -1905,6 +2087,8 @@ function pointMenu(ss, ai) {
     { sep: 1 },
     { label: tr("Delete control point"), key: tr("right-click"), danger: true, disabled: pts.length <= 2, action: () => anchorRemove(ss, ai) }];
 }
+// upright phones: the ✎ button's "hide / show the tool rows" is a ⋯ menu item (the same handler)
+const edRowsItem = () => ONE_ROW.matches ? { label: tr(S.edRowHidden ? "Show tool rows" : "Hide tool rows"), action: () => $("edRowBtn").click() } : null;
 function emptyMenu() {
   const t = snapTime(A.cur());
   return [{ head: fmtMs(t) },
@@ -1919,7 +2103,9 @@ function emptyMenu() {
     annCanCreate() ? { label: tr("Annotate…"), sub: () => ["comment", "arrow", "highlight"].map(k => ({ label: `${ANN_ICON[k]} ${tr({ comment: "Comment", arrow: "Arrow", highlight: "Highlight" }[k])}`, action: () => annSetTool(k) })) } : null,
     { sep: 1 },
     { label: tr("Hitsounds for new objects…"), key: "H", action: () => openDlg("hitsound") },
-    { label: tr("Polygon circles…"), key: "Ctrl+Shift+D", action: () => openDlg("polygon") }];
+    { label: tr("Polygon circles…"), key: "Ctrl+Shift+D", action: () => openDlg("polygon") },
+    ...(ONE_ROW.matches ? [{ sep: 1 }, edRowsItem()] : []),
+    ...(typeof edTourStart === "function" && !document.body.classList.contains("live-watch") ? [{ sep: 1 }, { label: tr("Editor tour"), key: "?", action: () => edTourStart("simple", { skipWelcome: true }) }] : [])];
 }
 function cutSel() { if (!copySel()) return; edCommit("Cut", () => { map.lines = map.lines.filter(L => !EDIT.sel.has(L.id)); }); EDIT.sel.clear(); updateEdUI(); }
 function cloneSel() { // lazer's Clone: a copy of the selection right after it (one beat snap later)
@@ -2020,10 +2206,13 @@ function renderEdSettings() {
     sw("Flash hitsounds while playing", "The hitsound buttons and the columns in Hitsound Studio light up with each hitsound", () => S.hsFlash !== false, v => { S.hsFlash = v; save(); }),
     sw("Show sample names", "Like osu!'s editor: the name of each sample that plays shows above its object (e.g. soft-hitclap)", () => !!S.edSampleName, v => { S.edSampleName = v; save(); }),
     sw("Stacking", "Objects at the same place are drawn stacked, like in gameplay. Off: each one shows where it really is", () => S.edStack !== false, v => { S.edStack = v; save(); if (map && map.mode !== 3) rebuildHits(map); dirty = true; }),
+    sw("Advanced tools", "Mod notes, annotations, stream / polygon / transform and the other mapping tools, added under osu!'s own tools (the switch in the top bar does the same)", () => S.edAdv === true, v => setEdAdv(v, true)),
     sw("Compact top bar", "Modding's menu bar as one thin row (small buttons and tabs), so the timeline and the playfield get more room. Off: the bigger bar", () => S.edCompact === true, v => { S.edCompact = v; save(); applyEdCompact(); }),
-    ...row("Playfield size", sel([["game", tr("Same as gameplay")], ["fit", tr("Fit between the bars")]], S.edSize === "fit" ? "fit" : "game", v => { S.edSize = v; save(); bodyCache.clear(); dirty = true; }), "Same as gameplay: objects are the size they are when you play the map on this screen, smaller only when the whole field wouldn't fit between the bars (it never goes off the screen). Fit: the whole field with a margin for circles between the bars."),
+    ...row("Playfield size", sel([["auto", edSizeAutoLabel()], ["game", tr("Same as gameplay")], ["fit", tr("Fit between the bars")]], S.edSize === "fit" || S.edSize === "game" ? S.edSize : "auto", v => { S.edSize = v; save(); bodyCache.clear(); dirty = true; }), "Auto: fit on upright phones, same as gameplay everywhere else. Same as gameplay: objects are the size they are when you play the map on this screen, smaller only when the whole field wouldn't fit between the bars (it never goes off the screen). Fit: the whole field with a margin for circles between the bars."),
     ...row("Background dim", edDimCtl(), "How dark the background is while editing (the preview has its own, under Display)."),
-    ...row("Compare ghost opacity", cmpGhostOpacity(), "How strong the other version's outlines are in Compose when Compare's ghost is on."));
+    ...row("Compare: before", cmpPctSlider("cmpBefore", 40), "How faint the other version's objects are in Compose when Compare's ghost is on."),
+    ...row("Compare: before colour", cmpColorCtl(), "The colour of the other version's objects in Compose (they all take this one instead of the combo colours)."),
+    ...row("Compare: after", cmpPctSlider("cmpAfter", 100), "How strong this version's objects are while Compare's ghost shows (100%: as always)."));
   const cv = card(), wait = sw("Wait until I stop editing", "Checks again a moment after your last change instead of after every one, so dragging objects stays smooth", () => S.vfyWait !== false, v => { S.vfyWait = v; save(); });
   const setWait = () => { const i = wait.querySelector("input"); i.disabled = S.vfyAuto === false; wait.classList.toggle("off", i.disabled); };
   cv.append(sw("Check again after edits", "While Verify or the quick verify list is open, the checks run again when you change the map. Off: they only run again when you press ↻ (saves battery on big mapsets)", () => S.vfyAuto !== false, v => { S.vfyAuto = v; save(); setWait(); }), wait);
@@ -2038,7 +2227,7 @@ function renderEdSettings() {
   const go = (t, l) => { const b = h("button", "mlink", tr(l)); b.onclick = () => showSetTab(t); return b; };
   const elsewhere = h("p", "hint setwhere"); elsewhere.append(tr("Also:") + " ", go("audio", "Audio"), " " + tr("(volume, hitsounds, speed, metronome, sync)") + " · ", go("display", "Display"),
     " " + tr("(snaking sliders, slider ends, timing overlay, storyboard)") + " · ", go("skin", "Skin"), " · ", go("general", "General"), " " + tr("(language)"));
-  box.append(sub("Placing objects"), c1, sub("Timeline"), c2, sub("Mapping guides"), cg, sub("While editing"), c3, sub("Verify"), cv, sub("Mod notes"), c4, more, elsewhere);
+  box.append(...(typeof edTourSettings === "function" ? edTourSettings(sub, card, sw) : []), sub("Placing objects"), c1, sub("Timeline"), c2, sub("Mapping guides"), cg, sub("While editing"), c3, sub("Verify"), cv, sub("Mod notes"), c4, more, elsewhere);
 }
 
 // Wireless / Bluetooth headphones (Settings → Audio → Sync): hitsounds and the song stay together (audio.js); a nudge if

@@ -25,5 +25,15 @@
   "d1_databases": [{ "binding": "DB", "database_name": "kiki-beatmap-viewer-db", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "d1/migrations" }],
   "observability": { "enabled": true },
   // keep variables added in the dashboard: without this every deploy removes the plain-text ones (secrets stay)
-  "keep_vars": true
+  "keep_vars": true,
+  // Worker Previews (one per Git branch, "<branch>-kiki-beatmap-viewer.<account>.workers.dev"): the production D1 database
+  // and R2 bucket are left out on purpose, and OBV_PREVIEW marks them as previews. They fail closed: every /api/* answers
+  // 503 preview_backend_disabled and the plain page is served (worker.js, api/_lib/preview.js), unless PREVIEW_BACKEND=1
+  // is set for them together with a separate, non-production backend. Previews get no cron trigger. The code can't stop
+  // a malicious branch: in the Cloudflare dashboard, make sure previews don't receive production's secrets, and keep
+  // preview URLs behind Cloudflare Access.
+  "previews": {
+    "placement": { "mode": "smart" },
+    "vars": { "OBV_PREVIEW": "1" }
+  }
 }

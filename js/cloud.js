@@ -216,6 +216,7 @@ async function cloudOpenProject(id, opts = {}) {
     for (const f of p.files) {
       const r = await fetch(f.url); if (!r.ok) throw Object.assign(new Error("download"), { code: "download" });
       const blob = await r.blob(); if (blob.size !== f.size) throw Object.assign(new Error("download"), { code: "download" });
+      if (/^[0-9a-f]{64}$/.test(f.sha256 || "") && await sha256hex(await blob.arrayBuffer()) !== f.sha256) throw Object.assign(new Error("download"), { code: "download" }); // not the bytes that were saved
       got += f.size; showLoading(tr("Downloading the project… {p}%", { p: Math.round(got / total * 100) }), got / total);
       if (f.path === ".obv/ids.json") { try { idsDoc = JSON.parse(await blob.text()); } catch {} }
       else entries[f.path] = blobEntry(f.path, blob);
@@ -349,6 +350,13 @@ async function renderProjects() {
 
 $("cloudBtn").onclick = () => CLOUD.project && CLOUD.status !== "unsaved" && CLOUD.status !== "error" ? cloudInfo() : cloudSave();
 $("cloudChip").onclick = cloudInfo;
+// Save (the top bar, like osu!'s File → Save; shown while Save online isn't, app.css): the map's files themselves
+if ($("edSave")) $("edSave").onclick = async () => {
+  if (cloudEnabled()) return cloudSave();
+  const v = await modal({ title: tr("Save"), body: h("p", "hint", tr("Your edits also stay on this device as a draft. To keep the map, download it: the .osu replaces the difficulty in your Songs folder, the .osz is the whole set.")), dismiss: null,
+    buttons: [{ label: tr("Close"), value: null, cls: "ghost" }, { label: tr("Export .osz"), value: "osz", cls: "ghost" }, { label: tr("Export .osu"), value: "osu", cls: "main" }] });
+  if (v === "osu") exportOsu(); else if (v === "osz") exportOsz();
+};
 addEventListener("keydown", e => { // Ctrl+S = save online (when the site has it)
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "s" && EDIT.on && map && cloudEnabled() && !e.target.closest("input,textarea")) { e.preventDefault(); cloudSave(); }
 });

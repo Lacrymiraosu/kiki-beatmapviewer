@@ -24,6 +24,29 @@ test("_headers has vercel.json's site-wide headers and cache rules", () => {
   assert.equal(blocks["/"]["Cache-Control"], "public, max-age=0, must-revalidate");
 });
 
+test("CSP script-src allows only the exact cdnjs library paths, and those loads carry SRI", () => {
+  const csp = vercel.routes.find(r => r.src === "/(.*)" && r.headers).headers["Content-Security-Policy"];
+  const src = (csp.split(";").map(s => s.trim()).find(s => s.startsWith("script-src ")) || "").split(/\s+/).slice(1);
+  assert.ok(!/unsafe-(inline|eval)/.test(src.join(" ")), "no unsafe-inline/unsafe-eval");
+  const cdn = src.filter(s => /cdnjs\.cloudflare\.com/.test(s));
+  // the bare host would allow every library on cdnjs, including known CSP-bypass gadgets (old AngularJS etc.)
+  for (const s of cdn) assert.match(s, /^https:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/[\w.-]+\/[\w.-]+\/$/, s);
+  assert.ok(!src.some(s => /^(https:\/\/)?cdnjs\.cloudflare\.com\/?$/.test(s)), "bare cdnjs host in script-src");
+  const loads = [];
+  for (const f of ["js/core.js", "js/live.js"]) {
+    const code = read(f);
+    for (const m of code.matchAll(/"(https:\/\/cdnjs\.cloudflare\.com\/[^"]+\.js)"/g)) {
+      loads.push(m[1]);
+      const after = code.slice(m.index, m.index + 600);
+      assert.match(after, /\.integrity = "sha(384|512)-[A-Za-z0-9+/]+={0,2}"/, m[1] + " has integrity");
+      assert.match(after, /\.crossOrigin = "anonymous"/, m[1] + " has crossOrigin");
+    }
+  }
+  assert.equal(loads.length, 2);
+  for (const u of loads) assert.ok(cdn.some(p => u.startsWith(p)), u + " is allowed by script-src");
+  assert.equal(cdn.length, loads.length, "no unused cdnjs paths in script-src");
+});
+
 test("server code, tests and the database aren't served as static files", () => {
   const ignored = read(".assetsignore").split("\n").map(s => s.trim()).filter(s => s && !s.startsWith("#"));
   for (const x of ["api", "tests", "scripts", "supabase", "worker.js", "wrangler.jsonc", ".env*", ".git", "*.md"]) assert.ok(ignored.includes(x), x);

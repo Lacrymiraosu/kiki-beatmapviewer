@@ -81,6 +81,7 @@ async function gateBoot() {
   else if (early === "locked") { GATE.me = { gate: true }; gateLock(); }
   const me = await meP;
   GATE.me = me;
+  if (me && me.user && me.merge_pending) gateMergeAsk(me.merge_pending);
   const changed = permSet(me);
   const locked = isGuest(me) && (!GATE.guest || special); // guests who can browse get the app (an invite, login or request link shows this page)
   if (me && me.gate != null) gateHintSet(locked ? "locked" : "open");
@@ -98,8 +99,7 @@ async function gateLock() {
   document.body.classList.add("gated"); $("gate").hidden = false;
   const login = p.get("login"), ask = p.get("access") === "request";
   if (login || ask) { p.delete("login"); p.delete("access"); history.replaceState(history.state, "", location.pathname + (p.toString() ? "?" + p : "")); }
-  if (login && login !== "ok" && !/^linked_/.test(login) && !(login === "google_new" && GATE.me && GATE.me.google_pending)) toast(tr("Login failed: {err}", { err: loginWhy(login) }), 7000);
-  if (login === "google_new" && !p.has("invite")) setTimeout(() => { const a = $("gateAsk"); if (a) a.scrollIntoView({ behavior: "smooth", block: "center" }); }, 400);
+  if (login && login !== "ok" && !/^linked_/.test(login)) toast(tr("Login failed: {err}", { err: loginWhy(login) }), 7000);
   await gateInviteLoad();
   const acceptNow = () => { if (GATE.me.user && gateInviteOk()) gateAccept(); else { const q = new URLSearchParams(location.search); q.delete("accept"); history.replaceState(history.state, "", location.pathname + "?" + q); } };
   // an invite link: the invitation scene first (invscene.js), unless the inviter turned it off; the regular page only if they look around
@@ -136,21 +136,24 @@ function gateLoginURL(kind, via = "osu") { // after logging in: send the access 
   const next = encodeURIComponent(location.pathname + "?" + p);
   return via === "google" ? "/api/auth/google?mode=login&next=" + next : "/api/auth/login?next=" + next;
 }
-// Request access with Google: signed in with a Google account that isn't linked yet, they type their osu! name
-async function gateGoogleRequest(osu, message) {
-  if (GATE.sending) return; GATE.sending = true; gateRender();
+// ---------- just logged in with osu! in a browser that was logged in with Google only: move that account here? ----------
+// The server reports merge_pending for 10 minutes after such an osu! login and moves nothing until asked (api/v1.js
+// POST me/merge-google): that Google-only login may not be this person's (a shared computer).
+async function gateMergeAsk(m) {
+  const n = +m.projects || 0, u = GATE.me && GATE.me.user ? GATE.me.user.username : "";
+  let text = tr("Move the Google-only account ({n} projects) into your osu! account {u} and let that Google account log in to it?", { n, u });
+  if (m.since) text += "\n\n" + tr("This browser was logged in with it before your osu! login. It was created {d}.", { d: new Date(m.since).toLocaleDateString() });
+  text += "\n\n" + tr("Only say yes if that Google account is yours. If you don't recognise it (a shared computer, for example), keep them separate.");
+  const v = await modal({ title: tr("Move your Google-only account here?"), body: text, icon: "ask", dismiss: "later",
+    buttons: [{ label: tr("Keep separate"), value: "skip", cls: "ghost" }, { label: tr("Merge"), value: "merge", cls: "main" }] });
+  if (v === "skip") { try { await capi("POST", "me/merge-google/skip", {}); } catch {} toast(tr("Kept separate"), 2500); return; }
+  if (v !== "merge") return; // (Esc: asked again on the next page load, for 10 minutes)
   try {
-    await capi("POST", "access/request-google", { osu, message });
-    toast(tr("Request sent. You'll get in as soon as an admin approves it."), 3500);
-    setTimeout(() => location.replace(location.pathname + location.search), 600); // (now logged in: the page shows the pending request)
+    const r = await capi("POST", "me/merge-google", {});
+    toast(r.merged ? tr("Done: that Google account now logs in to your osu! account.") : tr("Nothing to move: that Google-only account is gone."), 4000);
+    if (r.merged) setTimeout(() => location.replace(location.pathname + location.search), 900); // (access and projects may have changed)
   } catch (e) {
-    const r = e.detail && e.detail.reason;
-    toast(e.code === "conflict" && r === "osu_in_use" ? tr("This osu! account already uses the site: log in with osu! instead, or ask an admin.")
-      : e.code === "conflict" && r === "linked_elsewhere" ? tr("This Google account is already linked to another osu! account here.")
-      : e.code === "user_not_found" ? tr("No osu! user with that name") : e.code === "osu_lookup_failed" ? tr("Couldn't look up that osu! name right now; try again in a few minutes.")
-      : e.code === "google_expired" ? tr("Your Google sign-in expired; sign in with Google again.") : e.code === "too_soon" ? tr("You can ask again a day after the last answer.")
-      : tr("Couldn't send the request: {err}", { err: e.message }), 5000);
-    GATE.sending = false; gateRender();
+    toast(e.detail && e.detail.reason === "source_denied" ? tr("That Google-only account can't be moved: an admin declined or suspended it.") : tr("Couldn't move the account: {err}", { err: e.message }), 5000);
   }
 }
 // ---------- invite links (?invite=CODE): someone with access lets this person in at once (limits: Admin) ----------
@@ -229,16 +232,6 @@ function gateAskBox() {
   const me = GATE.me || {}, u = me.user, a = me.access || "none", box = h("div", "gask");
   box.id = "gateAsk";
   box.append(h("h3", null, tr("Get access")));
-  if (!u && me.google_pending) { // back from Google with an account that isn't linked: which osu! account is it for?
-    box.append(h("p", null, tr("You signed in with Google. Which osu! account is this request for?")));
-    const osu = h("input", "gosu"); osu.type = "text"; osu.maxLength = 40; osu.autocomplete = "off"; osu.placeholder = tr("osu! username or profile link"); osu.setAttribute("aria-label", tr("osu! username"));
-    const note = h("textarea", "gnote"); note.maxLength = 300; note.rows = 2; note.placeholder = tr("Anything the admins should know? (optional, e.g. who invited you)");
-    for (const el of [osu, note]) el.addEventListener("keydown", e => e.stopPropagation());
-    const b = h("button", "btn main gbig", GATE.sending ? tr("Sending…") : tr("Request access")); b.disabled = GATE.sending;
-    b.onclick = () => { const v = osu.value.trim(); if (!v) { osu.focus(); return; } gateGoogleRequest(v, note.value.trim()); };
-    box.append(osu, note, b, h("small", "hint", tr("The admins see that this request came with Google and that the osu! name isn't verified yet. Log in with osu! once later (in this browser) to confirm it.")));
-    return box;
-  }
   if (!u) {
     box.append(h("p", null, tr("KIKI BEATMAP VIEWER is invite-only for now. Log in to ask for access: an admin looks at every request.")));
     const b = h("a", "btn main gbig"); b.href = gateLoginURL(); b.append(osuMark(), h("span", null, tr("Request access with osu!")));
@@ -249,7 +242,7 @@ function gateAskBox() {
   }
   const who = h("div", "gwho"); who.append(avatarEl(u.id, u.username, "mav"));
   const nm = h("div"); nm.append(h("b", null, u.username), h("small", null, u.google_only || u.id >= 1e12 ? tr("logged in with Google") : "#" + u.id)); who.append(nm);
-  const out = h("a", "mlink", tr("Not you? Log out")); out.href = "/api/auth/logout?next=" + encodeURIComponent(location.pathname + location.search); who.append(out);
+  const out = h("a", "mlink", tr("Not you? Log out")); out.href = "#"; out.onclick = e => { e.preventDefault(); authLogout(); }; who.append(out); // (a POST: live.js)
   box.append(who);
   if (me.status === "suspended") { box.append(h("p", "gstate bad", tr("This account is suspended on this site."))); return box; }
   const note = h("textarea", "gnote"); note.maxLength = 300; note.rows = 2; note.placeholder = tr("Anything the admins should know? (optional, e.g. who invited you)");

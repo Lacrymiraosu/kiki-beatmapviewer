@@ -77,6 +77,11 @@ F.obv_admin_user_update = async (q, { p_actor, p_actor_is_owner, p_owner_id, p_u
   if (!isObj(p_patch)) err("bad_request");
   const u = await D.userRow(q, p_user); if (!u) err("not_found");
   const pt = p_patch, changed = {};
+  // only the owner changes their own account or an admin's own: no field at all, limits and notes included
+  if (!p_actor_is_owner) {
+    if (p_user === p_actor) err("forbidden", { reason: "own account" });
+    if (p_user === p_owner_id) err("forbidden", { reason: "site owner" });
+  }
   if (has(pt, "status") || has(pt, "role")) {
     if (p_user === p_actor) err("forbidden", { reason: "own account" });
     if (p_user === p_owner_id) err("forbidden", { reason: "site owner" });

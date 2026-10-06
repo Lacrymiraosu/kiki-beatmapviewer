@@ -9,10 +9,11 @@ function sideBox() {
   if (!box) { box = h("div", "edside"); box.id = "edSide"; $("ui").append(box); }
   return box;
 }
-function sideOpen() { return !!(EDIT.on && EDIT.tab === "compose" && (S.sideNotes || S.sideAnns || S.sideVfy)); }
+function sideOpen() { return !!(EDIT.on && EDIT.tab === "compose" && S.edAdv === true && (S.sideNotes || S.sideAnns || S.sideVfy)); } // (the lists are Advanced tools, editor.js edAdv)
 function sideToggle(k) { S[k] = !S[k]; save(); sideRender(); sideButtons(); }
 function sideButtons() {
   for (const [id, k] of [["edSideNotes", "sideNotes"], ["edSideAnns", "sideAnns"], ["edSideVfy", "sideVfy"]]) { const b = $(id); if (b) { b.classList.toggle("lit", !!S[k]); b.setAttribute("aria-pressed", !!S[k]); } }
+  if (typeof edTrayDot === "function") edTrayDot(); // (the dot on the closed Tools tray, editor.js)
 }
 function sideRow(t, color, label, text, onGo, extra) {
   const r = h("div", "siderow"); r.style.setProperty("--c", color); r.dataset.t = String(Math.round(t));
@@ -98,12 +99,21 @@ async function annDeleteAll() {
   ANN.sel = ""; dirty = true; drawTimeline(); annRerender(); draftSchedule(); cloudTouch();
   toast(tr("Deleted {n} annotations (undo isn't possible)", { n: mine.length }), 2500);
 }
-// the two buttons in the bottom bar, after "+ Note"
+// the three list buttons in the bottom bar, before the annotation tools: an icon and a name (the name hides on phones)
 (() => {
-  const mk = (id, label, title, k) => { const b = h("button", "btn ghost sm sidebtn", label); b.id = id; b.dataset.i18nTitle = title; b.title = tr(title); b.setAttribute("aria-pressed", "false"); b.onclick = () => sideToggle(k); return b; };
-  const a = $("edNote").nextSibling;
-  $("edInfo").insertBefore(mk("edSideNotes", "☰ 📝", "List of mod notes (follow them through the map)", "sideNotes"), a);
-  $("edInfo").insertBefore(mk("edSideAnns", "☰ 💬", "List of annotations (delete all is here)", "sideAnns"), a);
-  $("edInfo").insertBefore(mk("edSideVfy", "☰ ✓", "Quick verify: this difficulty's issues, tap one to go there", "sideVfy"), a);
+  const ICON = {
+    sideNotes: '<path d="M5 4h14v10l-6 6H5z"/><path d="M13 20v-6h6M8.5 9h7M8.5 12.5h3"/>',
+    sideAnns: '<path d="M10 6h10M10 12h10M10 18h10"/><circle cx="5" cy="6" r="1.2"/><circle cx="5" cy="12" r="1.2"/><circle cx="5" cy="18" r="1.2"/>',
+    sideVfy: '<circle cx="12" cy="12" r="8.5"/><path d="M8 12.4l2.8 2.8L16.2 9.8"/>',
+  };
+  const mk = (id, label, title, k) => {
+    const b = h("button", "btn ghost sm sidebtn adv"); b.id = id; b.dataset.i18nTitle = title; b.title = tr(title); b.setAttribute("aria-pressed", "false"); b.onclick = () => sideToggle(k);
+    b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
+    const n = h("span", "sbname", tr(label)); n.dataset.i18n = label; b.append(n); return b;
+  };
+  const a0 = document.querySelector(".annbtns"), a = typeof dockHome === "function" ? dockHome(a0) : a0; // (its home in #edInfo, also when an upright phone docked it in the tray: editor.js)
+  a.parentNode.insertBefore(mk("edSideNotes", "Notes", "List of mod notes (follow them through the map)", "sideNotes"), a);
+  a.parentNode.insertBefore(mk("edSideAnns", "Annotations", "List of annotations (delete all is here)", "sideAnns"), a);
+  a.parentNode.insertBefore(mk("edSideVfy", "Verify", "Quick verify: this difficulty's issues, tap one to go there", "sideVfy"), a);
   sideButtons();
 })();

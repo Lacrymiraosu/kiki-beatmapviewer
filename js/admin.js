@@ -184,6 +184,7 @@ async function admOverview(body) {
   try { // the TURN relay's monthly limit (only when the usage can be read)
     const tu = await aapi("GET", "turn"), lim = tu.month_gb * 1e9, used = tu.usage && tu.usage.bytes;
     if (tu.capped) alert(tr("The TURN relay reached this month's limit: live sessions are peer-to-peer only until next month."), "bad", () => admGo("turn"));
+    else if (tu.blocked) alert(tr("The TURN relay is off: its monthly limit can't be checked."), "bad", () => admGo("turn"));
     else if (lim && used >= lim * .8) alert(tr("The TURN relay has used {p}% of this month's limit.", { p: Math.round(used / lim * 100) }), "warn", () => admGo("turn"));
   } catch {}
   if (!alerts.children.length) alert(tr("Everything looks fine."), "ok");
@@ -487,15 +488,18 @@ async function admTurn(body, fresh) {
   const alerts = h("div", "aalerts"), alert = (x, cls, go) => { const a = h(go ? "button" : "div", "aalert " + cls, x); if (go) { a.type = "button"; a.onclick = go; } alerts.append(a); };
   if (!t.key) alert(tr("The TURN key isn't set up on the server yet: add the secrets TURN_KEY_ID and TURN_KEY_API_TOKEN (Cloudflare → Realtime → TURN). Until then live sessions stay peer-to-peer only."), "warn");
   else if (t.capped) alert(tr("This month's limit is reached: nobody gets the relay until next month (live sessions stay peer-to-peer). Raise the limit in Settings to turn it back on."), "bad", () => admGo("settings"));
+  else if (t.blocked === "no_limit") alert(tr("The monthly limit is 0, so nobody gets the relay. Set a limit in Settings (0 means no limit only when the server sets TURN_CAP_DISABLED=1)."), "bad", () => admGo("settings"));
+  else if (t.blocked === "usage_error") alert(tr("Cloudflare's usage can't be read, so the monthly limit can't be checked: nobody gets the relay until it can."), "bad");
   else if (!t.on) alert(tr("The TURN relay is turned off in Settings."), "warn", () => admGo("settings"));
-  if (!t.analytics) alert(tr("Usage can't be read yet: add the secrets CF_ANALYTICS_TOKEN (a Cloudflare API token with Account Analytics: Read) and CF_ACCOUNT_ID. Without them the monthly limit isn't checked."), "warn");
+  if (!t.analytics && t.cap_disabled) alert(tr("Usage can't be read yet: add the secrets CF_ANALYTICS_TOKEN (a Cloudflare API token with Account Analytics: Read) and CF_ACCOUNT_ID. Without them the monthly limit isn't checked."), "warn");
+  else if (!t.analytics) alert(tr("Usage can't be read yet: add the secrets CF_ANALYTICS_TOKEN (a Cloudflare API token with Account Analytics: Read) and CF_ACCOUNT_ID. Until then the monthly limit can't be checked, so nobody gets the relay (unless the server sets TURN_CAP_DISABLED=1)."), t.key ? "bad" : "warn");
   if (t.error) alert(tr("Couldn't read the usage from Cloudflare: {err}", { err: t.error }), "bad");
   body.append(alerts);
   const u = t.usage; if (!u) return admTurnFoot(body, t);
   const used = u.bytes, limit = t.month_gb * 1e9, free = TURN_FREE_GB * 1e9, over = Math.max(0, used - free);
   const k = h("div", "akpis");
   k.append(admKv(tr("Used this month"), admBytes(used), { sub: new Date(u.from).toLocaleDateString(undefined, { month: "long", year: "numeric" }) }),
-    admKv(tr("Monthly limit"), t.month_gb ? fmtInt(t.month_gb) + " GB" : tr("No limit"), { cls: limit && used >= limit * .8 ? "warn" : "", onclick: () => admGo("settings") }),
+    admKv(tr("Monthly limit"), t.month_gb ? fmtInt(t.month_gb) + " GB" : t.cap_disabled ? tr("No limit") : tr("No relay"), { cls: limit && used >= limit * .8 ? "warn" : "", onclick: () => admGo("settings") }),
     admKv(tr("Free allowance"), fmtInt(TURN_FREE_GB) + " GB", { sub: tr("{p}% used", { p: +(used / free * 100).toFixed(used < free * .01 ? 2 : 1) }) }),
     admKv(tr("Estimated cost"), "$" + (over / 1e9 * TURN_USD_GB).toFixed(2), { sub: tr("$0.05 per GB above the free allowance") }));
   body.append(k);
@@ -618,7 +622,7 @@ async function admSettings(body) {
       tmonth = h("input"); tmonth.type = "number"; tmonth.step = "1"; tmonth.min = mspec.min; tmonth.max = mspec.max; tmonth.value = mspec.value; tmonth.disabled = !owner; tmonth.addEventListener("keydown", e => e.stopPropagation());
       const row = h("div", "aset"), top = h("div", "asettop"), inw = h("div", "aliminp"); inw.append(tmonth, h("span", "adim", "GB"));
       top.append(h("b", null, tr("Monthly limit")), inw);
-      row.append(top, h("small", "hint", tr("Relay traffic per month (Cloudflare's numbers). Over it, nobody gets the relay until the next month. 0 = no limit. The first 1,000 GB each month are free, then $0.05 per GB.")),
+      row.append(top, h("small", "hint", tr("Relay traffic per month (Cloudflare's numbers). Over it, nobody gets the relay until the next month; when it can't be checked, nobody gets it at all. 0 = no relay (no limit only when the server sets TURN_CAP_DISABLED=1). The first 1,000 GB each month are free, then $0.05 per GB.")),
         h("small", "adim", tr("Default {d} {u} · allowed {a} to {b}", { d: mspec.default, u: "GB", a: mspec.min, b: fmtInt(mspec.max) })));
       extra.push(row);
     }

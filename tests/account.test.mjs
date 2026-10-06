@@ -26,7 +26,7 @@ before(async () => {
 });
 after(async () => { srv.close(); osuSrv.close(); await emu.close(); });
 
-const cookieFor = (id, iat) => "obv_s=" + encodeURIComponent(auth.sign({ id, username: "user" + id, avatar: "", country: "TH", kind: "session", iat, exp: Date.now() + 36e5 }, auth.cfg({ headers: { host: "x" } })));
+const cookieFor = (id, iat) => "__Host-obv_s=" + encodeURIComponent(auth.sign({ id, username: "user" + id, avatar: "", country: "TH", kind: "session", iat, exp: Date.now() + 36e5 }, auth.cfg({ headers: { host: "x" } })));
 async function api(method, route, { as, iat, body } = {}) {
   const h = {}; if (as) h.cookie = cookieFor(as, iat);
   if (body !== undefined) { h["content-type"] = "application/json"; h["sec-fetch-site"] = "same-origin"; }
@@ -99,7 +99,7 @@ test("delete account: projects and files gone, shares and links removed, every o
 
   const d = await api("POST", "me/delete", { as: C, iat: before, body: { confirm: "Confirm" } });
   assert.equal(d.status, 200); assert.equal(d.body.deleted, true); assert.equal(d.body.projects, 1); assert.equal(d.body.pending, 0);
-  assert.match(d.headers.get("set-cookie"), /obv_s=;.*Max-Age=0/);
+  assert.match(d.headers.get("set-cookie"), /__Host-obv_s=;.*Max-Age=0/);
   assert.equal(blobsOf(p.id), 0, "files deleted");
   const q = s => emu.db.query(s, [C]).then(r => r.rows);
   assert.equal((await q("select 1 from obv.users where osu_id = $1")).length, 0, "account row removed");
@@ -110,7 +110,7 @@ test("delete account: projects and files gone, shares and links removed, every o
 
   // an older login (another device) is logged out and doesn't bring the account back
   const old = await api("GET", "me", { as: C, iat: before });
-  assert.equal(old.body.user, null); assert.equal(old.body.deleted, true); assert.match(old.headers.get("set-cookie") || "", /obv_s=;/);
+  assert.equal(old.body.user, null); assert.equal(old.body.deleted, true); assert.match(old.headers.get("set-cookie") || "", /__Host-obv_s=;/);
   assert.equal((await api("GET", "projects", { as: C, iat: before })).status, 401);
   assert.equal((await q("select 1 from obv.users where osu_id = $1")).length, 0);
   // a login made after the deletion: a new, empty account
@@ -136,4 +136,135 @@ test("delete account while files can't be removed yet: emptied now, the row goes
   assert.equal(r.accounts_removed, 1);
   assert.equal((await emu.db.query("select 1 from obv.users where osu_id = $1", [D])).rows.length, 0);
   assert.equal(blobsOf(p.id), 0);
+});
+
+// ---------- session keys (SESSION_SECRET) and ending logins (sessions_valid_after) ----------
+const nodeCrypto = require("node:crypto");
+const sess = (id, extra = {}) => ({ id, username: "user" + id, avatar: "", country: "TH", kind: "session", iat: Date.now(), exp: Date.now() + 36e5, ...extra });
+const signed = o => auth.sign(o, auth.cfg({ headers: { host: "x" } }));
+async function raw(method, route, sessionTok, body) { // like api(), with a given obv_s value (or none)
+  const h = sessionTok ? { cookie: "__Host-obv_s=" + encodeURIComponent(sessionTok) } : {};
+  if (body !== undefined) { h["content-type"] = "application/json"; h["sec-fetch-site"] = "same-origin"; }
+  const r = await fetch(base + "/api/v1/" + route, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) });
+  const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch {}
+  const sc = r.headers.get("set-cookie") || "", m = /__Host-obv_s=([^;]*)/.exec(sc);
+  return { status: r.status, body: j, setCookie: sc, newSession: m && m[1] ? decodeURIComponent(m[1]) : m ? "" : null };
+}
+const withEnv = async (vars, fn) => {
+  const was = Object.fromEntries(Object.keys(vars).map(k => [k, process.env[k]]));
+  for (const [k, v] of Object.entries(vars)) { if (v == null) delete process.env[k]; else process.env[k] = v; }
+  try { return await fn(); } finally { for (const [k, v] of Object.entries(was)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
+};
+const SS = "test-only-session-secret-0123456789abcdef";
+const legacyKey = d => nodeCrypto.createHash("sha256").update((d === "files" ? "obv-files:" : "obv-session:") + "test-only-secret").digest();
+const newKey = d => nodeCrypto.createHmac("sha256", SS).update("obv-" + d).digest();
+const b64u = b => Buffer.from(b).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const linkWith = (key, o) => { const body = b64u(JSON.stringify(o)); return body + "." + b64u(nodeCrypto.createHmac("sha256", key).update(body).digest()); };
+
+test("session keys: without SESSION_SECRET exactly as before; with it new logins use the new key, old ones work during the grace period and are signed again", async () => {
+  const U = 2101;
+  // unset: the OSU_CLIENT_SECRET-derived keys, as before
+  const legacyTok = await withEnv({ SESSION_SECRET: null }, async () => {
+    assert.deepEqual(auth.keys("session").key, legacyKey("session")); assert.deepEqual(auth.keys("files").key, legacyKey("files"));
+    assert.deepEqual(auth.keys("live").key, legacyKey("session"), "live tokens used the session key");
+    assert.equal(auth.cfg({ headers: {} }).oldKey, null);
+    const t = signed(sess(U));
+    const me = await raw("GET", "me", t); assert.equal(me.body.user.id, U); assert.equal(me.newSession, null, "nothing to sign again");
+    return t;
+  });
+  await withEnv({ SESSION_SECRET: SS, SESSION_LEGACY_OK: null }, async () => {
+    assert.deepEqual(auth.keys("session").key, newKey("session")); assert.deepEqual(auth.keys("files").key, newKey("files")); assert.deepEqual(auth.keys("live").key, newKey("live"));
+    // new logins: signed with the new key only
+    const fresh = signed(sess(U));
+    assert.equal(auth.unsign(fresh, { key: legacyKey("session") }), null);
+    assert.equal(auth.unsign(fresh, { key: newKey("session") }).id, U);
+    assert.equal((await raw("GET", "me/account", fresh)).status, 200);
+    // an old login still works during the grace period, and /me signs it again with the new key (same iat and exp)
+    const me = await raw("GET", "me", legacyTok);
+    assert.equal(me.body.user.id, U); assert.ok(me.newSession, "signed again");
+    const again = auth.unsign(me.newSession, { key: newKey("session") }), orig = auth.unsign(legacyTok, { key: legacyKey("session") });
+    assert.equal(again.id, U); assert.equal(again.iat, orig.iat); assert.equal(again.exp, orig.exp); assert.equal(again.legacyKey, undefined);
+    assert.equal((await raw("GET", "me", me.newSession)).newSession, null);
+    // grace period over: old logins stop working, new ones don't
+    await withEnv({ SESSION_LEGACY_OK: "0" }, async () => {
+      assert.equal((await raw("GET", "me", legacyTok)).body.user, null);
+      assert.equal((await raw("GET", "me/account", legacyTok)).status, 401);
+      assert.equal((await raw("GET", "me/account", fresh)).status, 200);
+      assert.equal((await raw("GET", "me/account", me.newSession)).status, 200);
+    });
+  });
+});
+
+test("session keys: file links and live-session tokens work with and without SESSION_SECRET", async () => {
+  const U = 2102, db = require(join(root, "api/_lib/db.js")), e = Date.now() + 6e4;
+  for (const ss of [null, SS]) await withEnv({ SESSION_SECRET: ss }, async () => {
+    const tok = signed(sess(U));
+    // file links (R2): signed and checked with the "files" key
+    assert.equal(db.readFileLink(linkWith(auth.keys("files").key, { t: "d", k: "p/x/y", e }), "d").k, "p/x/y");
+    assert.equal(db.readFileLink(linkWith(auth.keys("session").key, { t: "d", k: "p/x/y", e }), "d"), null, "not with another key");
+    if (ss) assert.equal(db.readFileLink(linkWith(legacyKey("files"), { t: "d", k: "p/x/y", e }), "d"), null, "old links just expire");
+    // live sessions: the host's token gets anyone in the session relay settings; a wrong one doesn't
+    const st = await raw("POST", "live/start", tok, { code: "abcdef12" });
+    assert.equal(st.status, 200); assert.ok(st.body.token);
+    assert.equal((await raw("POST", "live/ice", null, { code: "abcdef12", token: st.body.token })).status, 200);
+    assert.equal((await raw("POST", "live/ice", null, { code: "zzzzzz12", token: st.body.token })).status, 403);
+  });
+  // a token from before SESSION_SECRET was set isn't accepted after (they last 3 hours at most)
+  const old = await withEnv({ SESSION_SECRET: null }, async () => (await raw("POST", "live/start", signed(sess(U)), { code: "abcdef13" })).body.token);
+  await withEnv({ SESSION_SECRET: SS }, async () => assert.equal((await raw("POST", "live/ice", null, { code: "abcdef13", token: old })).status, 403));
+});
+
+test("log out everywhere: older logins end (cookie cleared), newer ones don't", async () => {
+  const U = 2103, older = signed(sess(U, { iat: Date.now() - 5000 })), here = signed(sess(U, { iat: Date.now() - 2000 }));
+  assert.equal((await raw("GET", "me/account", older)).status, 200);
+  assert.equal((await raw("POST", "me/logout-all", null, {})).status, 401, "needs a login");
+  const r = await raw("POST", "me/logout-all", here, {});
+  assert.equal(r.status, 200); assert.match(r.setCookie, /__Host-obv_s=;.*Max-Age=0/);
+  assert.ok((await emu.db.query("select sessions_valid_after from obv.users where osu_id = $1", [U])).rows[0].sessions_valid_after);
+  for (const t of [older, here]) {
+    assert.equal((await raw("GET", "me/account", t)).status, 401);
+    assert.equal((await raw("GET", "me", t)).body.user, null);
+  }
+  const newer = signed(sess(U, { iat: Date.now() + 1000 }));
+  assert.equal((await raw("GET", "me/account", newer)).status, 200, "a login made after it works");
+  assert.equal((await raw("GET", "me", newer)).body.user.id, U);
+});
+
+test("ended logins are found with the user row (as on another server instance): /me says so and clears the cookie", async () => {
+  const U = 2104, older = signed(sess(U, { iat: Date.now() - 5000 }));
+  assert.equal((await raw("GET", "me", older)).body.user.id, U);
+  await emu.db.query("update obv.users set sessions_valid_after = now() where osu_id = $1", [U]); // (set elsewhere)
+  const me = await raw("GET", "me", older);
+  assert.equal(me.body.user, null); assert.equal(me.body.revoked, true); assert.equal(me.body.deleted, undefined); assert.match(me.setCookie, /__Host-obv_s=;.*Max-Age=0/);
+  const a = await raw("GET", "me/account", older); assert.equal(a.status, 401); assert.equal(a.body.error, "login_required");
+  assert.equal((await raw("GET", "me/account", signed(sess(U, { iat: Date.now() + 1000 })))).status, 200);
+});
+
+test("unlinking Google ends the logins made before (Google ones too); this osu! login stays, signed again", async () => {
+  const U = 2105, cur = signed(sess(U, { iat: Date.now() - 4000 }));
+  assert.equal((await raw("GET", "me", cur)).body.user.id, U);
+  await emu.db.query("insert into obv.user_logins (provider, subject, osu_id) values ('google', 'g-2105', $1)", [U]);
+  const viaGoogle = signed(sess(U, { iat: Date.now() - 3000, via: "google" })), otherDevice = signed(sess(U, { iat: Date.now() - 3000 }));
+  assert.equal((await raw("GET", "me/account", viaGoogle)).status, 200);
+  const r = await raw("DELETE", "me/logins/google", cur, {});
+  assert.equal(r.status, 200); assert.equal(r.body.linked.google, null); assert.ok(r.newSession, "this login, signed again");
+  assert.equal(auth.unsign(r.newSession, auth.cfg({ headers: {} })).via, undefined);
+  for (const t of [viaGoogle, otherDevice, cur]) assert.equal((await raw("GET", "me/account", t)).status, 401);
+  assert.equal((await raw("GET", "me/account", r.newSession)).status, 200);
+  // unlinking from a Google login logs that one out
+  await emu.db.query("insert into obv.user_logins (provider, subject, osu_id) values ('google', 'g-2105b', $1)", [U]);
+  const g = signed(sess(U, { iat: Date.now() + 1000, via: "google" }));
+  const r2 = await raw("DELETE", "me/logins/google", g, {});
+  assert.equal(r2.status, 200); assert.equal(r2.body.logged_out, true); assert.match(r2.setCookie, /__Host-obv_s=;.*Max-Age=0/);
+});
+
+test("an admin suspending an account ends its logins", async () => {
+  const U = 2106, older = signed(sess(U, { iat: Date.now() - 5000 }));
+  assert.equal((await raw("GET", "me/account", older)).status, 200);
+  assert.equal((await api("POST", `admin/users/${U}/status`, { as: OWNER, body: { status: "suspended", reason: "test" } })).status, 200);
+  assert.equal((await raw("GET", "me/account", older)).status, 401);
+  assert.equal((await raw("GET", "me", signed(sess(U, { iat: Date.now() + 1000 })))).body.status, "suspended", "a new login is still suspended");
+  await api("POST", `admin/users/${U}/status`, { as: OWNER, body: { status: "active" } });
+  assert.equal((await raw("GET", "me/account", older)).status, 401, "and stays ended after reactivation");
+  assert.equal((await raw("GET", "me/account", signed(sess(U, { iat: Date.now() + 1000 })))).status, 200);
 });

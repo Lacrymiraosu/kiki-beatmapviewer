@@ -133,7 +133,7 @@ function annRerender() { if (EDIT.on && EDIT.tab === "notes") edTab("notes"); el
 // ---------- tools on the playfield ----------
 function annSetTool(k) {
   ANN.tool = k || ""; ANN.drag = null;
-  document.querySelectorAll("#edInfo [data-ann]").forEach(b => { b.classList.toggle("on", b.dataset.ann === ANN.tool); b.setAttribute("aria-pressed", b.dataset.ann === ANN.tool); });
+  document.querySelectorAll(".annbtns [data-ann]").forEach(b => { b.classList.toggle("on", b.dataset.ann === ANN.tool); b.setAttribute("aria-pressed", b.dataset.ann === ANN.tool); });
   if (ANN.tool) { if (EDIT.tool !== "select") setTool("select"); toast(tr({ comment: "Tap an object (or empty space) to comment on it • Esc to stop", arrow: "Drag an arrow toward the object it's about • Esc to stop", highlight: "Tap an object to highlight it • Esc to stop" }[ANN.tool]), 3000); }
   dirty = true;
 }
@@ -198,7 +198,7 @@ function annEndDrag(e) {
 }
 $("player").addEventListener("pointerup", annEndDrag, true);
 $("player").addEventListener("pointercancel", annEndDrag, true);
-document.querySelectorAll("#edInfo [data-ann]").forEach(b => b.onclick = e => { e.stopPropagation(); annButton(b.dataset.ann); });
+document.querySelectorAll(".annbtns [data-ann]").forEach(b => b.onclick = e => { e.stopPropagation(); annButton(b.dataset.ann); });
 addEventListener("keydown", e => { if (e.key === "Escape" && ANN.tool && EDIT.on && !e.target.closest("input,textarea,select")) { e.preventDefault(); e.stopPropagation(); annSetTool(""); } }, true);
 
 // ---------- drawing ----------
@@ -229,13 +229,13 @@ function annDrawOver(t, px) {
     {
       ctx.fillStyle = "#1c1726"; ctx.strokeStyle = col; ctx.lineWidth = 2 * px;
       ctx.beginPath(); ctx.arc(ix, iy, 9 * px, 0, 7); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = col; ctx.font = `600 ${10 * px}px "Varela Round",sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillStyle = col; ctx.font = `600 ${10 * px}px Inter,sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText(a.kind === "comment" ? "…" : a.kind === "arrow" ? "!" : "✦", ix, iy + .5 * px);
     }
     const near = sel || Math.abs(t - annTime(a)) < 450;
     if (near && (a.body || a.object_missing)) {
       const txt = ((a.object_missing ? "⚠ " + tr("object deleted") + (a.body ? " · " : "") : "") + (a.body || "")).slice(0, 80) + ((a.body || "").length > 80 ? "…" : "");
-      ctx.font = `600 ${12 * px}px "Varela Round","IBM Plex Sans Thai",sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      ctx.font = `600 ${12 * px}px Inter,"IBM Plex Sans Thai",sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "middle";
       const w = Math.min(320 * px, ctx.measureText(txt).width + 16 * px), hh = 22 * px, x0 = Math.min(ix + 12 * px, 512 + 60 * px - w), y0 = iy - hh / 2;
       ctx.globalAlpha = vis * .94; ctx.fillStyle = "#1c1726"; ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x0, y0, w, hh, 7 * px); else ctx.rect(x0, y0, w, hh); ctx.fill();
       ctx.fillStyle = col; ctx.fillRect(x0, y0, 3 * px, hh);

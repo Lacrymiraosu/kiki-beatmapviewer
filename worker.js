@@ -14,6 +14,8 @@ import google from "./api/auth/google.js";
 import cron from "./api/cron.js";
 import { runCleanup } from "./api/_lib/cleanup.js";
 import db from "./api/_lib/db.js";
+import rate from "./api/_lib/rate.js";
+import preview from "./api/_lib/preview.js";
 import vercel from "./vercel.json" with { type: "json" };
 
 const SITE_HEADERS = (vercel.routes.find(r => r.src === "/(.*)" && r.headers) || {}).headers || {};
@@ -29,12 +31,8 @@ function useEnv(env) {
   db.useD1(env.DB_BACKEND === "d1" && env.DB && env.FILES ? env.DB : null, env.DB);
 }
 // ---------- project files on R2: uploads and downloads stream through here with the links db.js signs ----------
-const FILE_RATE = { up: 120, down: 600 }, fileHits = new Map(); // per IP per minute (per Worker instance, best effort)
-function fileLimited(kind, ip) {
-  const k = kind + ":" + ip, now = Date.now(), e = fileHits.get(k);
-  if (!e || now - e.at > 60000) { fileHits.set(k, { at: now, n: 1 }); if (fileHits.size > 20000) fileHits.clear(); return false; }
-  return ++e.n > FILE_RATE[kind];
-}
+const FILE_RATE = { up: 120, down: 600 }, fileOver = rate.limiter(); // per IP per minute (per Worker instance, best effort: api/_lib/rate.js)
+function fileLimited(kind, ip) { return fileOver(kind + ":" + ip, FILE_RATE[kind]); }
 async function files(request, url, ctx) {
   const q = url.searchParams, ip = request.headers.get("cf-connecting-ip") || "?";
   const err = (status, error) => new Response(JSON.stringify({ error }), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
@@ -44,7 +42,21 @@ async function files(request, url, ctx) {
     if (fileLimited("up", ip)) return err(429, "too_many_requests");
     const len = Number(request.headers.get("content-length"));
     if (!(len === o.s) || len > db.UPLOAD_MAX || !request.body) return err(400, "size_mismatch"); // exactly the size given when saving began
-    await db.R2.bucket.put(o.k, request.body, { httpMetadata: { contentType: "application/octet-stream" } }); // (counted when the link was made)
+    // the link lives 2 hours: only while the file is still wanted (pending, its save open, the project active)
+    const g = await db.rpc("obv_r2_put_guard", { p_key: o.k });
+    if (!g || !g.ok) return err(g && g.reason === "not_pending" ? 409 : 410, g && g.reason === "not_pending" ? "already_uploaded" : "upload_closed");
+    if (g.size !== o.s || !/^[0-9a-f]{64}$/.test(g.sha256 || "")) return err(409, "size_mismatch");
+    // every accepted PUT is counted (one write, one check), refused above the month's limit
+    try { await db.r2Use(1, 1); } catch (e) { if (e && e.code === "storage_limit") return err(503, "storage_limit"); throw e; }
+    if (await db.R2.bucket.head(o.k)) return err(409, "already_uploaded"); // never overwrite (also refused by onlyIf below)
+    let put;
+    try { // R2 checks the bytes against the sha256 declared when saving began, and writes only if nothing is there yet
+      put = await db.R2.bucket.put(o.k, request.body, { httpMetadata: { contentType: "application/octet-stream" }, sha256: g.sha256, onlyIf: { etagDoesNotMatch: "*" } });
+    } catch (e) {
+      if (/sha-?256|checksum|digest|10037/i.test(String(e && e.message))) return err(400, "hash_mismatch");
+      throw e;
+    }
+    if (!put) return err(409, "already_uploaded"); // (the condition failed: someone else's write landed first)
     return new Response(null, { status: 200, headers: { "Cache-Control": "no-store" } });
   }
   if ((request.method === "GET" || request.method === "HEAD") && q.has("d")) {
@@ -82,8 +94,22 @@ function withSiteHeaders(resp) {
 
 export default {
   async fetch(request, env, ctx) {
-    useEnv(env);
     const url = new URL(request.url), p = url.pathname;
+    // a Worker Preview (any workers.dev host but production's, or OBV_PREVIEW from wrangler.jsonc "previews"): no backend
+    // unless PREVIEW_BACKEND=1. Decided before any env handling: a locked request runs no api/** code and leaves
+    // process.env and db.js alone (shared by the whole instance, which may also serve production: a version's URL), so it
+    // can't disturb other requests. See api/_lib/preview.js
+    if (preview.isPreview(url.hostname, env) && !preview.backendAllowed(env)) {
+      try {
+        if (p.startsWith("/api/")) { const r = withSiteHeaders(new Response(JSON.stringify({ error: preview.ERROR }), { status: 503, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } })); r.headers.set("X-Robots-Tag", "noindex"); return r; }
+        if (p === "/") { // the plain page (no api/og.js), never indexed
+          const r = withSiteHeaders(new Response((await env.ASSETS.fetch(new Request(new URL("/index.html", url)))).body, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" } }));
+          r.headers.set("X-Robots-Tag", "noindex"); return r;
+        }
+        return withSiteHeaders(await env.ASSETS.fetch(request)); // static files, as below
+      } catch (e) { console.error("worker", p, e && e.message); return new Response("server error", { status: 500 }); }
+    }
+    useEnv(env);
     try {
       if (p === "/api/v1/files") return withSiteHeaders(await files(request, url, ctx));
       if (p === "/api/v1" || p.startsWith("/api/v1/")) return withSiteHeaders(await run(v1, request, url));
@@ -106,6 +132,7 @@ export default {
   // the daily cleanup (Cron Trigger in wrangler.jsonc). The free plan allows 50 outgoing requests per run, so it takes
   // a few projects at a time; anything left is picked up the next day.
   async scheduled(event, env, ctx) {
+    if (preview.isPreview("", env) && !preview.backendAllowed(env)) return; // (previews get no cron trigger; just in case)
     useEnv(env);
     ctx.waitUntil(runCleanup(25000, 8).catch(e => console.error("cron", e && e.code)));
   },

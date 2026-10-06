@@ -2,6 +2,7 @@
 // Env: SUPABASE_URL (https://<ref>.supabase.co) and SUPABASE_SECRET_KEY (a secret key "sb_secret_…", or the legacy
 // service_role key). Server only: the key never reaches the browser, which only ever gets short-lived signed URLs.
 const crypto = require("crypto");
+require("./preview"); // (first: on a Vercel preview deployment it removes the secrets from process.env, see preview.js)
 const BUCKET = "obv-projects";
 
 function conf() {
@@ -69,7 +70,7 @@ const useR2 = b => { R2.bucket = b || null; };
 const r2on = () => !!R2.bucket;
 const R2_FREE = { a: 1000000, b: 10000000 }; // R2 free tier per month (Class A: writes and lists, Class B: reads)
 const UPLOAD_MAX = 95e6; // the Worker accepts request bodies up to 100 MB (free plan)
-const linkKey = () => crypto.createHash("sha256").update("obv-files:" + String(process.env.OSU_CLIENT_SECRET || "").trim()).digest();
+const linkKey = () => require("./auth").keys("files").key; // (OSU_CLIENT_SECRET-derived as before, or from SESSION_SECRET: auth.js keys)
 const b64u = b => Buffer.from(b).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 function fileLink(o) { const body = b64u(JSON.stringify(o)); return body + "." + b64u(crypto.createHmac("sha256", linkKey()).update(body).digest()); }
 function readFileLink(tok, kind) {

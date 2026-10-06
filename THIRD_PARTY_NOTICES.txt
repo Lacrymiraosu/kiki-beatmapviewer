@@ -76,7 +76,7 @@ THE SOFTWARE.
 
 4. Loaded from their own CDN, each with its licence in the file:
    JSZip (MIT or GPL-3.0, used under MIT), PeerJS (MIT).
-   Fonts from Google Fonts: Varela Round and IBM Plex Sans Thai (SIL Open Font
+   Fonts from Google Fonts: Inter and IBM Plex Sans Thai (SIL Open Font
    Licence 1.1).
 
 

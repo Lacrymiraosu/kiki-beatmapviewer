@@ -7,7 +7,7 @@ const liveUser = () => AUTH.user && !AUTH.user.google_only ? AUTH.user : null; /
 async function authCheck() {
   try {
     const r = await fetch("/api/auth/me", { credentials: "same-origin", cache: "no-store" });
-    if ((r.headers.get("content-type") || "").includes("json")) { AUTH.api = true; const j = await r.json(); AUTH.user = j.user || null; AUTH.ticket = j.ticket || null; }
+    if ((r.headers.get("content-type") || "").includes("json")) { AUTH.api = true; const j = await r.json(); AUTH.user = j.user || null; AUTH.ticket = j.ticket || null; AUTH.preview = j.error === "preview_backend_disabled"; } // (a preview build: 503, logged out, no login)
   } catch {}
   AUTH.checked = true; renderAccount();
   if (typeof R !== "undefined" && R.view === "account" && typeof renderAccountPage === "function") renderAccountPage(); // (opened before the login check)
@@ -25,7 +25,7 @@ function adminWaitingText() {
 function renderAccount() {
   const b = $("acctBtn"); b.innerHTML = "";
   if (AUTH.user) { const av = h("i", "av"); if (AUTH.user.avatar) av.style.backgroundImage = `url("${AUTH.user.avatar}")`; b.append(av, h("span", null, AUTH.user.username)); b.setAttribute("aria-label", tr("Account")); }
-  else { b.append(osuMark(), h("span", "acctl", tr("Log in"))); b.setAttribute("aria-label", tr("Log in with osu!")); }
+  else { b.append(osuMark(), h("span", "acctl", tr("Log in with osu!"))); b.setAttribute("aria-label", tr("Log in with osu!")); }
   b.classList.toggle("out", !AUTH.user);
   const n = adminWaiting(); if (AUTH.user && n) { const d = h("span", "acctdot", n > 99 ? "99+" : String(n)); d.title = adminWaitingText(); b.append(d); }
   const p = $("acctPop"); if (!p.hidden) fillAcct();
@@ -39,7 +39,7 @@ function fillAcct() {
     top.append(av, nm); p.append(top);
     if (go) { // no osu! account yet: logging in with osu! moves everything there (and is needed for live sessions)
       const li = h("button", "btn main sm wide", tr("Log in with osu!")); li.prepend(osuMark()); li.onclick = authLogin;
-      p.append(li, h("small", "hint", tr("For live sessions. Your access and projects move to your osu! account, and Google keeps working as a way in.")));
+      p.append(li, h("small", "hint", tr("For live sessions. You can then move your access and projects to your osu! account (you're asked first), and Google keeps working as a way in.")));
     }
     // your mapper page on this site (profile, maps, groups, recent activity)
     const me = h("a", "btn " + (go ? "ghost" : "main") + " sm wide", tr("My profile")); me.dataset.perm = "mappers"; me.href = listURL({ u: AUTH.user.username, q: "", st: "" });
@@ -112,12 +112,15 @@ $("acctBtn").onclick = e => { e.stopPropagation(); const p = $("acctPop"); if (p
 document.addEventListener("pointerdown", e => { const p = $("acctPop"); if (!p.hidden && !p.contains(e.target) && !$("acctBtn").contains(e.target)) p.hidden = true; });
 async function authLogin() {
   if (!AUTH.api && AUTH.dev) { const n = (await askText("localhost: osu! login needs the deployed site. Name to test with:", "tester")); if (n) { AUTH.user = { id: -1, username: n.slice(0, 32), avatar: "", dev: true }; renderAccount(); } return; }
+  if (AUTH.preview) { toast(tr("Login is off on preview builds"), 3000); return; }
   location.href = "/api/auth/login?next=" + enc(location.pathname + location.search);
 }
-function authLogout() {
+async function authLogout() {
   try { localStorage.removeItem("obv-gate"); } catch {} // the next page waits for the real answer (gate.js)
   if (AUTH.user && AUTH.user.dev) { AUTH.user = null; renderAccount(); return; }
-  location.href = "/api/auth/logout?next=" + enc(location.pathname + location.search);
+  // a POST from this page (a GET doesn't log out, so other sites can't), then reload this page logged out
+  try { await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}" }); } catch {}
+  location.replace(location.pathname + location.search);
 }
 // Proving who you are to someone in a session: a 10-minute ticket made for that audience only ("live:<code>" to show
 // the host, "live:<code>:<their peer>" for the host to show one guest; "collab:" the same), so a ticket passed on can't
@@ -156,6 +159,8 @@ function loadPeerJS() {
   if (window.Peer) return Promise.resolve(window.Peer);
   return peerjsP || (peerjsP = new Promise((res, rej) => {
     const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.5/peerjs.min.js";
+    // SRI: cdnjs's published hash for this exact file (the CSP also only allows this library's path)
+    s.integrity = "sha512-XEKeWX+mI3Ov+tg2evDlVQFzVOIp4T8J3cNcCEPaEUGpxJV3eZaN8rHuvnFPvQpGJBHPmrozJDMpm2xcDvtmyQ=="; s.crossOrigin = "anonymous";
     s.onload = () => res(window.Peer); s.onerror = () => { peerjsP = null; rej(new Error(tr("Couldn't load the live-session library, check your connection"))); };
     document.head.append(s);
   }));
@@ -193,7 +198,7 @@ const liveSendAll = msg => LIVE.host ? broadcast(msg) : toHost(msg);
 async function liveStart() {
   if (!map) return;
   if (LIVE.on) return openLive();
-  if (AUTH.user && AUTH.user.google_only) { toast(tr("Live sessions need an osu! login: log in with osu! (what you have moves to that account)."), 4500); authLogin(); return; }
+  if (AUTH.user && AUTH.user.google_only) { toast(tr("Live sessions need an osu! login: log in with osu! (you can then move what you have to that account)."), 4500); authLogin(); return; }
   if (!AUTH.user) { toast(tr("Log in with osu! to host a live session"), 3000); openAcct(); return; }
   if (!(await ask(tr("Start a live session? People with the link can watch and comment; you choose who may edit. It closes automatically after 3 hours. Participants connect directly to your browser (they can see your IP address)."), { title: tr("Live session"), ok: tr("Start") }))) return;
   let Peer; try { Peer = await loadPeerJS(); } catch (e) { return toast(e.message); }
@@ -603,7 +608,7 @@ function liveDrawOver(t, px) {
     const k = (now - hl.at) / 20000, pulse = .5 + .5 * Math.sin(now / 160);
     let first = null;
     for (const id of hl.ids) { const o = byLid(id); if (!visible(o)) continue; first = first || o; ring(o, hl.color, 5, (1 - k) * (.55 + .45 * pulse), 1 + .08 * pulse); }
-    if (first) { ctx.globalAlpha = 1 - k; ctx.font = `600 ${12 * px}px "Varela Round",sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillStyle = hl.color; ctx.fillText("✦ " + hl.name, first.x + r * .9, first.y - r * .9); }
+    if (first) { ctx.globalAlpha = 1 - k; ctx.font = `600 ${12 * px}px Inter,sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillStyle = hl.color; ctx.fillText("✦ " + hl.name, first.x + r * .9, first.y - r * .9); }
   }
   if (LIVE.flash) { const k = (now - LIVE.flash.at) / 900; if (k >= 1) LIVE.flash = null; else for (const id of LIVE.flash.ids) { const o = byLid(id); if (visible(o)) ring(o, LIVE.flash.color, 4, 1 - k, 1 + .3 * k); } }
   // other people: their selection and pointer
@@ -614,7 +619,7 @@ function liveDrawOver(t, px) {
     if (p.x > -100 && p.x < 612 && p.y > -100 && p.y < 484) {
       ctx.globalAlpha = 1; ctx.fillStyle = m.color; ctx.strokeStyle = "#000"; ctx.lineWidth = 1.2 * px;
       ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 11 * px, p.y + 12 * px); ctx.lineTo(p.x + 4.5 * px, p.y + 12 * px); ctx.lineTo(p.x, p.y + 17 * px); ctx.closePath(); ctx.fill(); ctx.stroke();
-      ctx.font = `600 ${11 * px}px "Varela Round",sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "top";
+      ctx.font = `600 ${11 * px}px Inter,sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "top";
       const w = ctx.measureText(m.name).width + 10 * px;
       ctx.fillRect(p.x + 12 * px, p.y + 14 * px, w, 16 * px); ctx.fillStyle = "#1c1726"; ctx.fillText(m.name, p.x + 17 * px, p.y + 16 * px);
     }
@@ -641,7 +646,7 @@ function liveDrawOver(t, px) {
       for (const p of g.pts) { ctx.beginPath(); ctx.arc(p[0] + d, p[1] + d, 4 * px, 0, 7); ctx.fill(); }
       lab = [g.pts[0][0] + d + 8 * px, g.pts[0][1] + d - 8 * px];
     }
-    if (lab) { ctx.globalAlpha = 1; ctx.font = `600 ${11 * px}px "Varela Round",sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillText("✥ " + m.name, lab[0], lab[1]); }
+    if (lab) { ctx.globalAlpha = 1; ctx.font = `600 ${11 * px}px Inter,sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillText("✥ " + m.name, lab[0], lab[1]); }
     dirty = true;
   }
   inkDraw(px);

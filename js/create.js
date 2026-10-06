@@ -185,7 +185,7 @@ function renderSetup(box) {
     const g = fix(st.gen, map.general), mm = fix(st.meta, map.meta), dd = fix(st.diff, map.diff);
     if (JSON.stringify([g, mm, dd]) === JSON.stringify([map.general, map.meta, map.diff])) return toast(tr("Nothing changed"), 1200);
     if (edCommit("Setup", () => { map.general = g; map.meta = mm; map.diff = dd; }, { keepPanel: true })) {
-      bodyCache.clear(); $("mSub").textContent = `[${map.meta.Version || "?"}] · mapped by ${map.meta.Creator || "?"}`;
+      bodyCache.clear(); $("mSub").textContent = `[${map.meta.Version || "?"}] · mapped by ${map.meta.Creator || "?"}`; edSongSync();
       const lab = diffLabel({ ...osuFiles[curDiff], meta: { ...osuFiles[curDiff].meta, version: map.meta.Version } }); const o = $("diffQuick").options[curDiff]; if (o) o.text = lab; const o2 = $("diff").options[curDiff]; if (o2) o2.text = lab;
       toast(tr("Setup applied (undo with Ctrl+Z)"), 1600); edTab("setup");
     }

@@ -160,7 +160,18 @@ F.obv_save_begin = async (q, { p_actor, p_project, p_base_revision, p_files }) =
 };
 F.obv_save_pending = async (q, { p_actor, p_save }) =>
   q.all("select b.key, b.size from blobs b join saves s on s.id = b.save_id where b.save_id = ? and b.state = 'pending' and s.user_id = ?", uuid(p_save), p_actor);
-F.obv_save_commit = async (q, { p_actor, p_save, p_annotations, p_stored }) => {
+// before each R2 upload (worker.js): is this file still wanted? (pending blob, open save, active project) + its sha256
+F.obv_r2_put_guard = async (q, { p_key }) => {
+  const b = typeof p_key === "string" && await q.one("select key, project_id, size, sha256, state, save_id from blobs where key = ?", p_key);
+  if (!b) return { ok: false, reason: "gone" };
+  if (b.state !== "pending") return { ok: false, reason: "not_pending" };
+  const s = b.save_id && await q.one("select state, created_at from saves where id = ? and project_id = ?", b.save_id, b.project_id);
+  if (!s || s.state !== "open" || s.created_at < q.ago(3 * HOUR)) return { ok: false, reason: "save_closed" };
+  const p = await q.one("select status, expires_at from projects where id = ?", b.project_id);
+  if (!p || p.status !== "active" || p.expires_at <= q.now) return { ok: false, reason: "project_gone" };
+  return { ok: true, size: b.size, sha256: b.sha256 };
+};
+F.obv_save_commit =async (q, { p_actor, p_save, p_annotations, p_stored }) => {
   const sid = uuid(p_save), sv = sid && await q.one("select * from saves where id = ?", sid);
   if (!sv || sv.user_id !== p_actor) err("not_found");
   if (sv.state === "committed") { const p = await q.one("select * from projects where id = ?", sv.project_id); return { revision: sv.revision, already: true, size_bytes: p.size_bytes, expires_at: p.expires_at, updated_at: p.updated_at }; }

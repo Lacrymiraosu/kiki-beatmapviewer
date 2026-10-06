@@ -1,22 +1,24 @@
 "use strict";
 // ============ mirrors & API ============
-// search(o) gets { q, creator, st, page } and returns a URL (or null when the mirror can't do that query)
+// search(o) gets { q, creator, st, page } and returns a URL (or null when the mirror can't do that query); kw: the search
+// keywords (osudata.js) it understands in q (searchSets sends the rest as words and filters the results for them)
 const PS = 30;
 // the site plays and edits osu!standard only (mode 0): lists and mirrors ask for it, other modes are left out
 const MODE_OF = b => { const m = b.mode_int ?? b.Mode ?? b.mode; return m === "osu" ? 0 : m === "mania" ? 3 : m === "taiko" ? 1 : m === "fruits" ? 2 : +m; };
 const enc = encodeURIComponent;
 const CB_ST = { ranked: 1, qualified: 3, loved: 4, pending: 0, graveyard: -2 };
+const cbSt = st => Object.prototype.hasOwnProperty.call(CB_ST, st) ? "&status=" + CB_ST[st] : ""; // own keys only (not "__proto__")
 const cbCreator = n => "creator=" + (/\s/.test(n) ? `"${n}"` : n);
 const MIRRORS = [
   { id: "osudirect", name: "osu.direct",
-    search: o => o.creator ? null : `https://osu.direct/api/v2/search?q=${enc(o.q)}&query=${enc(o.q)}&amount=${PS}&offset=${o.page * PS}&mode=0${o.st in CB_ST ? "&status=" + CB_ST[o.st] : ""}`,
+    search: o => o.creator ? null : `https://osu.direct/api/v2/search?q=${enc(o.q)}&query=${enc(o.q)}&amount=${PS}&offset=${o.page * PS}&mode=0${cbSt(o.st)}`,
     set: id => `https://osu.direct/api/v2/s/${id}`, bm: id => `https://osu.direct/api/v2/b/${id}`,
     dl: id => `https://osu.direct/api/d/${id}?noVideo=1` },
   { id: "nerinyan", name: "Nerinyan",
-    search: o => `https://api.nerinyan.moe/search?q=${enc(o.creator || o.q)}&ps=${PS}&p=${o.page}&m=0${o.creator ? "&option=creator" : ""}${o.st && o.st !== "leaderboard" ? "&s=" + o.st : o.creator || o.st ? "&s=all" : ""}`,
+    search: o => `https://api.nerinyan.moe/search?q=${enc(o.creator || o.kwc || o.q)}&ps=${PS}&p=${o.page}&m=0${o.creator || o.kwc ? "&option=creator" : ""}${o.st && o.st !== "leaderboard" ? "&s=" + enc(o.st) : o.creator || o.st ? "&s=all" : ""}`,
     dl: id => `https://api.nerinyan.moe/d/${id}?noVideo=true` },
-  { id: "catboy", name: "catboy.best",
-    search: o => `https://catboy.best/api/v2/search?q=${enc(o.creator ? cbCreator(o.creator) : o.q)}&limit=${PS}&offset=${o.page * PS}&mode=0${o.st in CB_ST ? "&status=" + CB_ST[o.st] : ""}`,
+  { id: "catboy", name: "catboy.best", kw: ["creator", "stars", "ar", "cs", "od", "hp", "bpm", "length"], // (Mino reads osu!'s keywords in q, as the mapper pages' creator="…")
+    search: o => `https://catboy.best/api/v2/search?q=${enc(o.creator ? cbCreator(o.creator) : o.q)}&limit=${PS}&offset=${o.page * PS}&mode=0${cbSt(o.st)}`,
     set: id => `https://catboy.best/api/v2/s/${id}`, bm: id => `https://catboy.best/api/v2/b/${id}`,
     dl: id => `https://catboy.best/d/${id}n` },
   { id: "sayobot", name: "Sayobot", search: null, dl: id => `https://dl.sayobot.cn/beatmaps/download/novideo/${id}` },
@@ -61,7 +63,7 @@ function normSet(s) {
   }).sort((a, b) => a.stars - b.stars);
   let st = s.status ?? s.RankedStatus ?? s.ranked ?? "";
   if (STATUS[st] !== undefined) st = STATUS[st];
-  return { id, title: s.title ?? s.Title ?? "", artist: s.artist ?? s.Artist ?? "", creator, uid: s.user_id ?? (s.user && s.user.id) ?? null,
+  return { id, title: s.title ?? s.Title ?? "", artist: s.artist ?? s.Artist ?? "", titleU: s.title_unicode ?? s.TitleUnicode ?? "", artistU: s.artist_unicode ?? s.ArtistUnicode ?? "", creator, uid: s.user_id ?? (s.user && s.user.id) ?? null,
     status: String(st).toLowerCase(), stars, diffs, source: s.source || "", tags: s.tags || "", video: !!s.video, storyboard: !!s.storyboard,
     bpm: +(s.bpm ?? s.BPM ?? diffs[0]?.bpm ?? 0), len: Math.max(0, ...diffs.map(d => d.len)), plays: s.play_count ?? s.playcount, favs: s.favourite_count,
     submitted: s.submitted_date || "", ranked: s.ranked_date || "", updated: s.last_updated || s.LastUpdate || "",
@@ -119,16 +121,23 @@ function avatarEl(uid, name, cls = "cav") {
   return el;
 }
 
+// o.kw (kwParse of the search box): each mirror gets the keywords it knows, words for the rest, and the results are
+// filtered here by all of them; status=… replaces the status picked in the chips
 async function searchSets(o, signal, prefer) {
   let lastErr = null;
+  const kw = o.kw && o.kw.terms.length ? o.kw : null, st = (kw && kwStatus(kw)) || o.st;
+  const kwc = kw && !kw.text && kw.terms.filter(t => t.kind === "text").map(t => t.key).join() === "creator" ? kw.terms.find(t => t.key === "creator").v : "";
+  const fetchArr = async u => { const d = await fetchJSON(u, signal); return Array.isArray(d) ? d : (d.beatmapsets || d.data || d.results || []); };
   for (const mi of orderedMirrors(prefer)) {
-    const url = mi.search && mi.search(o); if (!url) continue;
+    const q = kw ? kwMirrorQ(kw, mi.kw) : o.q, plain = kw ? kwMirrorQ(kw) : o.q;
+    const url = mi.search && mi.search({ ...o, q, st, kwc }); if (!url) continue;
     try {
-      const data = await fetchJSON(url, signal);
-      const arr = Array.isArray(data) ? data : (data.beatmapsets || data.data || data.results || []);
+      let arr = await fetchArr(url);
+      if (!arr.length && !o.page && q !== plain) arr = await fetchArr(mi.search({ ...o, q: plain, st, kwc })); // (a mirror that didn't take the keywords: its words-only results, filtered here)
       let list = arr.map(normSet).filter(Boolean);
       if (o.creator) { const c = o.creator.toLowerCase(); list = list.filter(s => s.creator.toLowerCase() === c); }
-      if (o.st) list = list.filter(s => stMatch(s.status, o.st));
+      if (st) list = list.filter(s => stMatch(s.status, st));
+      if (kw) list = list.filter(s => kwMatch(s, kw.terms));
       return { list, src: mi, more: arr.length >= PS };
     } catch (e) { if (signal && signal.aborted) throw e; lastErr = e; }
   }

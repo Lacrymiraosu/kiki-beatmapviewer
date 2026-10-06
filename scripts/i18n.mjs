@@ -27,7 +27,7 @@ if (cmd === "add") {
   const en = read("en");
   for (const l of langs.slice(1)) { const d = read(l); console.log(`${l}: ${Object.keys(en).filter(k => !d[k]).length} untranslated of ${Object.keys(en).length}`); }
   const used = new Set(), html = readFileSync(join(root, "index.html"), "utf8");
-  for (const m of html.matchAll(/data-i18n(?:-ph|-aria|-title)?="([^"]+)"/g)) used.add(m[1].replace(/&amp;/g, "&"));
+  for (const m of html.matchAll(/data-i18n(?:-ph|-aria|-title)?="([^"]+)"/g)) used.add(m[1].replace(/&amp;/g, "&").replace(/&quot;/g, '"'));
   for (const f of readdirSync(join(root, "js"))) for (const m of readFileSync(join(root, "js", f), "utf8").matchAll(/\btr\("((?:[^"\\]|\\.)*)"/g)) used.add(JSON.parse('"' + m[1] + '"'));
   const missing = [...used].filter(k => !(k in en));
   console.log(missing.length ? "missing from en.json:\n" + missing.join("\n") : "every UI string has an entry");

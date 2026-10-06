@@ -1,7 +1,8 @@
 // Public osu! data through osu!api v2 with the app's own client-credentials token (scope "public").
 // Env: OSU_CLIENT_ID, OSU_CLIENT_SECRET (the same app as the login). Only public profile/beatmap data is read.
 // osu! asks for at most ~60 requests per minute: results are cached here (per server instance) and by the CDN
-// (Cache-Control on the responses), so the same user page doesn't hit osu! again for 10 minutes.
+// (Cache-Control on the responses), so the same user page doesn't hit osu! again for 10 minutes, and what isn't cached
+// comes out of a budget (BUDGET below) that keeps us under that.
 const BASE = () => (process.env.OSU_API_BASE || "https://osu.ppy.sh").replace(/\/+$/, ""); // override only for local tests
 const tok = { value: "", exp: 0, pending: null };
 // After osu! refuses the app token (wrong key) or says "too many requests", don't ask again for a while: every page
@@ -13,10 +14,31 @@ function coolDown(r, why, defMs) {
   cool.until = Date.now() + Math.min(15 * 60000, Math.max(ra * 1000, defMs)); cool.why = why;
   console.error("osu! " + why + ": pausing osu! requests for " + Math.round((cool.until - Date.now()) / 1000) + " s");
 }
-const checkCool = () => { if (Date.now() < cool.until) throw new OsuError(cool.why === "rate_limited" ? "osu_rate_limited" : "osu_unavailable", 503); };
+const checkCool = () => { if (Date.now() < cool.until) throw new OsuError(cool.why === "rate_limited" ? "osu_rate_limited" : "osu_unavailable", 503, Math.ceil((cool.until - Date.now()) / 1000)); };
 const cache = new Map();
 
-class OsuError extends Error { constructor(code, status) { super(code); this.code = code; this.status = status; } }
+class OsuError extends Error { constructor(code, status, retryAfter) { super(code); this.code = code; this.status = status; if (retryAfter) this.retryAfter = retryAfter; } }
+
+// Our own budget for requests to osu!, so we stay under osu!'s ~60 a minute for the app (and the login, the same app,
+// keeps some room) whoever is asking: token buckets per server instance. The site's own pages ("v1": the listing,
+// mapper pages, the map panel) draw from the main one; link-preview cards ("og", api/og.js, anyone can make up links)
+// also need one from their own smaller bucket and only get one while the main bucket keeps a reserve, so cards are
+// the first to go without, and they can't use up what the pages need (nor push osu! into answering 429).
+// Out of budget: a v1 request gets 429 + Retry-After (osu_busy) instead of asking osu!; a card shows the plain page.
+const BUDGET = { perMin: 50, burst: 20, ogPerMin: 12, ogBurst: 5, ogReserve: 10 };
+const buckets = { main: { t: BUDGET.burst, at: Date.now() }, og: { t: BUDGET.ogBurst, at: Date.now() } };
+function refill(b, perMin, burst) { const now = Date.now(); b.t = Math.min(burst, b.t + (now - b.at) * perMin / 60000); b.at = now; }
+function take(cls) {
+  const m = buckets.main, o = buckets.og;
+  refill(m, BUDGET.perMin, BUDGET.burst); refill(o, BUDGET.ogPerMin, BUDGET.ogBurst);
+  const wait = (t, perMin) => Math.max(1, Math.ceil((1 - t) * 60 / perMin));
+  if (cls === "og") {
+    if (o.t < 1 || m.t < 1 + BUDGET.ogReserve) throw new OsuError("osu_busy", 429, o.t < 1 ? wait(o.t, BUDGET.ogPerMin) : wait(m.t - BUDGET.ogReserve, BUDGET.perMin));
+    o.t--; m.t--; return;
+  }
+  if (m.t < 1) throw new OsuError("osu_busy", 429, wait(m.t, BUDGET.perMin));
+  m.t--;
+}
 
 async function fetchT(url, opts, ms = 8000) {
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
@@ -44,10 +66,12 @@ async function token() {
   })().finally(() => { tok.pending = null; });
   return tok.pending;
 }
-async function osuGet(path, ttlMs = 600000) {
+// cls: whose request it is ("v1" the site's pages, "og" link-preview cards): which budget it comes out of (above)
+async function osuGet(path, ttlMs = 600000, cls = "v1") {
   const hit = cache.get(path);
   if (hit && Date.now() - hit.at < ttlMs) return hit.data;
   checkCool();
+  take(cls);
   let r = await fetchT(BASE() + "/api/v2" + path, { headers: { Authorization: "Bearer " + await token(), Accept: "application/json" } });
   if (r.status === 401) { tok.value = ""; r = await fetchT(BASE() + "/api/v2" + path, { headers: { Authorization: "Bearer " + await token(), Accept: "application/json" } }); }
   if (r.status === 404) { cache.set(path, { at: Date.now(), data: null }); return null; }
@@ -95,9 +119,9 @@ function publicSet(s) {
       owners: b.owners })),
   };
 }
-async function getUser(u) {
+async function getUser(u, cls) {
   const key = /^\d{1,10}$/.test(u) ? u : "@" + u;
-  return publicUser(await osuGet(`/users/${encodeURIComponent(key)}/osu`));
+  return publicUser(await osuGet(`/users/${encodeURIComponent(key)}/osu`, undefined, cls));
 }
 // osu! only lists the first 100 of each type
 async function getUserSets(id, type, offset, limit) {
@@ -140,8 +164,8 @@ async function getTags() {
   return (data && Array.isArray(data.tags) ? data.tags : []).map(t => ({ id: t.id, name: str(t.name, 80), ruleset_id: t.ruleset_id ?? null, description: str(t.description, 400) }));
 }
 // one beatmapset with what search results don't have: genre, language, user tags (with votes), nominators, description
-async function getSet(id) {
-  const s = await osuGet(`/beatmapsets/${id}`, 600000); if (!s) return null;
+async function getSet(id, cls) {
+  const s = await osuGet(`/beatmapsets/${id}`, 600000, cls); if (!s) return null;
   const users = new Map((s.related_users || []).map(u => [u.id, u]));
   const tagName = new Map((s.related_tags || []).map(t => [t.id, t]));
   const out = publicSet(s);
@@ -157,6 +181,6 @@ async function getSet(id) {
 }
 
 // which set a difficulty belongs to
-async function getBeatmapSetId(id) { const b = await osuGet(`/beatmaps/${id}`, 86400000); return b && b.beatmapset_id ? b.beatmapset_id : null; }
+async function getBeatmapSetId(id, cls) { const b = await osuGet(`/beatmaps/${id}`, 86400000, cls); return b && b.beatmapset_id ? b.beatmapset_id : null; }
 
-module.exports = { OsuError, getBeatmapSetId, getUser, getUserSets, getUserActivity, search, getTags, getSet, USER_TYPES, configured: () => !!(process.env.OSU_CLIENT_ID && process.env.OSU_CLIENT_SECRET) };
+module.exports = { OsuError, getBeatmapSetId, getUser, getUserSets, getUserActivity, search, getTags, getSet, USER_TYPES, BUDGET, _buckets: buckets, configured: () => !!(process.env.OSU_CLIENT_ID && process.env.OSU_CLIENT_SECRET) };

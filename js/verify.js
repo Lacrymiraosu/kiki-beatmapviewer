@@ -905,7 +905,7 @@ function drawRhythm(c, dt = 0) {
     const y = top + li * laneH, cy = y + laneH / 2, cur = x.i === curDiff, H = x.m.hit;
     g.fillStyle = cur ? "rgba(255,102,170,.12)" : li % 2 ? "rgba(255,255,255,.03)" : "rgba(255,255,255,.06)"; g.fillRect(0, y, w, laneH - 2);
     g.fillStyle = x.stars != null ? starColor(x.stars) : "#8a7fa3"; g.fillRect(0, y, 4, laneH - 2);
-    g.fillStyle = cur ? "#fff" : "#cfc6de"; g.font = (cur ? "600 " : "") + "12px 'Varela Round',sans-serif"; g.textBaseline = "middle";
+    g.fillStyle = cur ? "#fff" : "#cfc6de"; g.font = (cur ? "600 " : "") + "12px Inter,sans-serif"; g.textBaseline = "middle";
     g.fillText((x.m.meta.Version || "?").slice(0, 18), 9, cy, labelW - 14);
     g.save(); g.beginPath(); g.rect(labelW, y, pw, laneH); g.clip();
     for (let i = range(H, t0); i < H.length; i++) {
