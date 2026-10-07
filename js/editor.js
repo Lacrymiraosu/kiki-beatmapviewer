@@ -1279,7 +1279,7 @@ function tpFields(box, tp, onChange) { // the osu! timing point options
   const now = h("button", "btn ghost sm", tr("Now")); now.title = tr("Use where the song is now");
   now.onclick = e => { e.preventDefault(); tp.time = Math.round(A.cur()); tIn.value = msText(tp.time); showTs(); tIn.classList.remove("bad"); onChange(); };
   showTs();
-  const tw = h("span", "dlin"); tw.append(tIn, ts, now); row("Offset", tw);
+  const tw = h("span", "dlin dloff"); tw.append(tIn, ts, now); row("Offset", tw);
   if (tp.uninherited) {
     row("BPM", num(isFinite(60000 / tp.beat) ? Math.round(60000 / tp.beat * 1000) / 1000 : "", .001, v => { if (v > 0) tp.beat = 60000 / v; }, 1, 10000));
     const m = h("select"); for (let i = 1; i <= 8; i++) m.add(new Option(i + "/4", i)); m.value = tp.meter || 4; m.onchange = () => { tp.meter = +m.value; onChange(); };
