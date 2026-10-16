@@ -355,7 +355,7 @@ The full list is on the site's **Credits** page (`?view=credits`) and in `skins/
 - Beatmap data, covers, previews and avatars come from osu! (ppy Pty Ltd). Beatmaps belong to their mappers, music to its artists.
 - Mirrors: Nerinyan, catboy.best, osu.direct, Sayobot (used through their public APIs/links)
 - osu! default / retro skins (stored in `skins/`) and the default hitsounds (loaded at run time, not stored): ppy/osu-resources, **[CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)** (non-commercial use with credit only; if you fork this for commercial use, remove them)
-- Translated from ppy/osu and ppy/osu-framework (MIT, © ppy Pty Ltd): stacking, slider paths and curves, Auto. Their notice and the other licences: [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)
+- Translated from or following ppy/osu and ppy/osu-framework (MIT, © ppy Pty Ltd): stacking, slider paths and curves, Auto, reading .osr replays, the replay analysis (lazer's judgement and tracking rules), ScoreV1 in Verify, and the slider body border. Their notice and the other licences: [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)
 - Referenced for ideas (no code copied): osucad (MIT), osu! wiki (CC BY-NC 4.0)
 - Verify follows MapsetVerifier's (GPL-3.0) check rules, thresholds and ways of measuring, and `tests/verify.test.mjs` rebuilds the cases from its check tests; to respect its licence, this project is released under GPL-3.0.
 - Libraries: JSZip (MIT), PeerJS (MIT) · Fonts: Inter, IBM Plex Sans Thai (SIL OFL 1.1) · Twemoji flags (CC BY 4.0) · all loaded from CDNs, not stored here
