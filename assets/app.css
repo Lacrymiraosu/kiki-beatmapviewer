@@ -115,48 +115,6 @@ select{height:40px;border-radius:var(--r-ctl);border:1px solid var(--bd);backgro
 .macts{display:flex;gap:8px;flex-wrap:wrap;width:100%}
 
 /* ---------- beatmap detail ---------- */
-.detail{position:fixed;inset:0;z-index:8;background:rgba(10,8,16,.72);display:grid;place-items:center;padding:16px;animation:fadeIn .2s}
-.dpanel{position:relative;width:min(580px,100%);max-height:min(90dvh,820px);display:flex;flex-direction:column;background:var(--bg2);border:1px solid var(--line);border-radius:6px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.55);animation:panelIn .34s cubic-bezier(.2,.8,.2,1);transition:transform .2s}
-.dbody{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain}
-.dgrab{display:none}
-@media (max-width:560px){
-  .detail{place-items:end stretch;padding:0}
-  .dpanel{width:100%;max-height:94dvh;border-radius:6px 6px 0 0;border-bottom:0}
-  .dgrab{display:block;position:absolute;top:0;left:0;right:0;height:26px;z-index:3;touch-action:none}
-  .dgrab::after{content:"";position:absolute;top:8px;left:50%;width:44px;height:5px;margin-left:-22px;border-radius:3px;background:rgba(255,255,255,.55)}
-  .dcover{touch-action:none}
-}
-.dcover{position:relative;min-height:170px;background:#120e19 center/cover no-repeat;display:flex;align-items:flex-end}
-.dcover::before{content:"";position:absolute;inset:0;background:linear-gradient(rgba(27,31,47,.1),rgba(27,31,47,.98))}
-.dclose{position:absolute;top:12px;right:12px;z-index:4;background:rgba(0,0,0,.5)}
-.dhead{position:relative;padding:18px 18px 8px;display:flex;flex-direction:column;gap:2px;min-width:0}
-.dhead b{font-size:21px;line-height:1.25}
-.dhead span{color:#e6def2}
-.dhead small{color:var(--dim);font-size:13px}
-.dchips{display:flex;flex-wrap:wrap;gap:6px;padding:6px 18px 10px;align-items:center}
-.dchips em{font-style:normal;font-size:12px;padding:3px 10px;border-radius:5px;background:rgba(255,255,255,.1)}
-.dacts{display:flex;gap:8px;padding:0 18px 10px;flex-wrap:wrap;align-items:flex-start}
-.ddl summary{list-style:none}
-.ddl summary::-webkit-details-marker{display:none}
-.ddl[open]{flex-basis:100%}
-.ddlmenu{display:flex;flex-direction:column;gap:4px;padding:8px;margin-top:8px;border-radius:5px;background:var(--panel);border:1px solid var(--line)}
-.ddlmenu a{display:flex;justify-content:space-between;gap:10px;min-height:44px;align-items:center;padding:0 12px;border-radius:5px;color:inherit;text-decoration:none;background:rgba(255,255,255,.05);font-size:14px}
-.ddlmenu a small{color:var(--dim)}
-.ddlmenu a:active{background:rgba(255,255,255,.12)}
-.dvol{margin:0 18px 12px;padding:2px 12px;border-radius:5px;background:rgba(255,255,255,.05)}
-.dlabel{padding:2px 18px 6px;font-size:13px;color:var(--dim)}
-.dlist{padding:0 12px 14px;display:flex;flex-direction:column;gap:6px}
-.drow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:10px 12px;min-height:58px;border-radius:5px;border:2px solid transparent;background:rgba(255,255,255,.05);cursor:pointer;animation:cardIn .3s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i) * 25ms);transition:background .15s,border-color .15s}
-@media (hover:hover){.drow:hover{background:rgba(255,255,255,.09)}}
-.drow.on{border-color:var(--pink);background:rgba(194,107,255,.13)}
-.star{flex:0 0 auto;min-width:62px;text-align:center;padding:5px 8px;border-radius:5px;font-size:13px;font-weight:600}
-.dname{display:flex;flex-direction:column;gap:2px;min-width:0}
-.dname b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dname small{color:var(--dim);font-size:12px;display:flex;flex-wrap:wrap;gap:2px 12px}
-.dfoot{flex:0 0 auto;display:flex;gap:8px;padding:12px 16px calc(14px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
-.dfoot .btn{height:50px;font-size:16px;overflow:hidden;text-overflow:ellipsis}
-.dfoot .btn.main{flex:1;min-width:0}
-.dempty{color:var(--dim);padding:18px;text-align:center;font-size:14px}
 @keyframes panelIn{from{transform:translateY(28px);opacity:0}}
 @keyframes fadeIn{from{opacity:0}}
 
@@ -298,7 +256,10 @@ select{height:40px;border-radius:var(--r-ctl);border:1px solid var(--bd);backgro
 .tpgo{margin-bottom:6px}
 
 .skip{position:absolute;right:calc(env(safe-area-inset-right) + 16px);bottom:calc(env(safe-area-inset-bottom) + 96px);z-index:3;height:48px;padding:0 26px;border-radius:6px;border:2px solid #fff;background:rgba(194,107,255,.85);color:#fff;font-size:17px;font-weight:600;cursor:pointer;animation:skipIn .35s cubic-bezier(.2,.9,.3,1.3) both,skipGlow 1s ease-in-out infinite alternate}
+.skip.rot{right:auto;left:calc(env(safe-area-inset-left) + 16px)}
 @keyframes skipIn{from{transform:translateX(60px);opacity:0}}
+.skip.rot{animation-name:skipInL,skipGlow}
+@keyframes skipInL{from{transform:translateX(-60px);opacity:0}}
 @keyframes skipGlow{to{box-shadow:0 0 22px rgba(194,107,255,.9)}}
 
 .sheet{position:absolute;right:0;top:0;bottom:0;z-index:4;width:min(370px,100%);background:rgba(27,31,47,.97);padding:calc(env(safe-area-inset-top) + 14px) calc(env(safe-area-inset-right) + 16px) calc(env(safe-area-inset-bottom) + 20px) 16px;overflow:auto;overscroll-behavior:contain;animation:sheetIn .28s cubic-bezier(.2,.8,.2,1);box-shadow:-10px 0 40px rgba(0,0,0,.5);touch-action:pan-y;user-select:text;-webkit-user-select:text}
@@ -385,14 +346,45 @@ button.cmpdiff{cursor:pointer}@media (hover:hover){button.cmpdiff:hover{backgrou
 
 /* ---------- loading & toast ---------- */
 .loading{position:fixed;inset:0;z-index:10;background:rgba(18,14,26,.9);display:grid;place-content:center;justify-items:center;gap:16px;padding:20px;text-align:center}
-.ring{width:124px;height:124px;transform:rotate(-90deg)}
-.ring circle{fill:none;stroke-width:8}
-.ring .trk{stroke:var(--line)}
-.ring .prg{stroke:var(--pink);stroke-linecap:round;stroke-dasharray:264;stroke-dashoffset:264;transition:stroke-dashoffset .2s}
-.ring.spin{animation:spin .9s linear infinite}
-.ring.spin .prg{stroke-dashoffset:190}
-@keyframes spin{to{transform:rotate(270deg)}}
 .loading p{margin:0;max-width:320px;color:var(--dim)}
+/* the loading scene (js/loadscene.js): three notes that close in and pop on their own beat, 1 then 2 then 3 (124px box). Every moving layer is its own
+   box animated with transform/opacity keyframes only, so the loop keeps running while the main thread is busy. Mode classes on #ldStage:
+   .lp loop (nothing drawn yet), .dt determinate (notes already hit stay as ghosts), .hd holding what was drawn. Un-animated styles = the reduced-motion frame. */
+.ldstage{position:relative;width:124px;height:124px}
+.ldstage .L{position:absolute;left:0;top:0;width:124px;height:124px;overflow:visible}
+.ldstage .mv{position:absolute;left:0;top:0;width:0;height:0}
+.ldstage .mv>svg{position:absolute;left:-14px;top:-14px;width:28px;height:28px;overflow:visible}
+.ldstage .hc .f{fill:#3d2a57}
+.ldstage .hc .w{fill:none;stroke:#eceaf8;stroke-width:2.2}
+.ldstage .hc .o{fill:none;stroke:var(--pink);stroke-width:1.6}
+.ldstage text{fill:#fff;font:700 11px Inter,system-ui,sans-serif;text-anchor:middle;dominant-baseline:central}
+.ldstage .ap{opacity:0}
+.ldstage .ap circle{fill:none;stroke:var(--pink);stroke-width:1.8}
+.ldstage:not(.lp) .tr{transition:transform .35s cubic-bezier(.2,.8,.3,1),opacity .35s ease-out}
+.ldstage .rf circle{fill:var(--lav);opacity:.4}
+.ldstage .rb{opacity:0}
+.ldstage .rb circle{fill:none;stroke:#fff;stroke-width:2}
+.ldstage .rq{display:none}
+.ldstage:not(.lp) .rq{display:block}
+.ldstage:not(.lp) .rb{display:none}
+.ldstage .rq svg{opacity:0}
+.ldstage .rq circle{fill:none;stroke:var(--pink);stroke-width:2}
+/* the reduced-motion frame: note 1 settled as a ghost with its burst, notes 2 and 3 still closing in */
+.ldstage .rn1{opacity:.22;transform:scale(.9)}
+.ldstage .rb1{opacity:.35;transform:scale(1.35)}
+.ldstage .ra2{opacity:.85;transform:scale(1.5)}
+.ldstage .ra3{opacity:.85;transform:scale(1.9)}
+/* every note: its approach circle closes by 50% of the loop, it pops with a burst, settles as a ghost and fades; notes start 0.384 s apart */
+.ldstage.lp :is(.rn,.ra,.rb){animation-duration:2.4s;animation-iteration-count:infinite;animation-fill-mode:both;animation-delay:var(--d)}
+.ldstage.lp .rn{animation-name:ldN}
+.ldstage.lp .ra{animation-name:ldAp}
+.ldstage.lp .rb{animation-name:ldB}
+.ldstage:not(.lp) .rq svg{animation:ldQ 1.2s cubic-bezier(.2,.6,.3,1) infinite}
+@keyframes ldN{0%{opacity:0;transform:scale(.7);animation-timing-function:cubic-bezier(.2,.8,.3,1.3)}6%{opacity:1;transform:scale(1)}50%{opacity:1;transform:scale(1);animation-timing-function:cubic-bezier(.2,.8,.3,1.4)}54%{opacity:1;transform:scale(1.2);animation-timing-function:cubic-bezier(.3,0,.4,1)}61%,84%{opacity:.22;transform:scale(.9)}96%,to{opacity:0;transform:scale(.9)}}
+@keyframes ldAp{0%{opacity:0;transform:scale(1.9);animation-timing-function:cubic-bezier(.35,.15,.7,.95)}6%{opacity:.9}50%{opacity:1;transform:scale(1)}51.5%,to{opacity:0;transform:scale(1)}}
+@keyframes ldB{0%,49.5%{opacity:0;transform:scale(.9)}51%{opacity:1;transform:scale(1);animation-timing-function:cubic-bezier(.2,.8,.3,1)}64%,to{opacity:0;transform:scale(1.9)}}
+@keyframes ldQ{0%{opacity:.75;transform:scale(.9)}to{opacity:0;transform:scale(1.7)}}
+@media (prefers-reduced-motion:reduce){.ldstage,.ldstage *{animation:none!important;transition:none!important}}
 .toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 24px);z-index:20;max-width:calc(100% - 32px);padding:12px 18px;border-radius:5px;background:#352c4b;border:1px solid var(--line);font-size:14px;transform:translate(-50%,20px);opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;overflow-wrap:anywhere}
 .toast.on{opacity:1;transform:translate(-50%,0)}
 .drop{position:fixed;inset:0;z-index:15;border:4px dashed var(--pink);background:rgba(21,24,37,.8);display:grid;place-items:center;font-size:20px;pointer-events:none}
@@ -544,6 +536,7 @@ a.mcard:active{transform:scale(.98)}
 .foot nav{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;align-items:center}
 .foot a{color:var(--ink);text-decoration:none}@media (hover:hover){.foot a:hover{color:var(--pink)}}
 .foot small{font-size:11px;opacity:.8}
+.foot .footname{color:var(--ink);font-weight:700;font-size:14px}
 /* song cards: preview button + progress */
 .cact{gap:6px;justify-content:flex-end}
 .cplay .pa{display:none}
@@ -560,11 +553,10 @@ a.mcard:active{transform:scale(.98)}
 /* detail: download menu + editor button */
 .ddlmenu a.osu{background:rgba(194,107,255,.18);border:1px solid rgba(194,107,255,.5)}
 .ddlmenu a.osu span{font-weight:600}
-.ddlsep{font-size:11px;color:var(--dim);padding:6px 4px 0;text-transform:uppercase;letter-spacing:.5px}
+.ddlsep{font-size:12px;color:var(--dim);padding:6px 4px 0;text-transform:uppercase;letter-spacing:.5px}
 .dlsum{border-color:var(--pink)}
 .dfoot.edfirst #dEdit{order:2;flex:1}
 .dfoot.edfirst #dGo{flex:0 1 auto}
-.dcover{animation:coverIn .6s cubic-bezier(.2,.8,.2,1)}
 @keyframes coverIn{from{background-size:115%;filter:brightness(.6)}}
 /* create page */
 .cform{display:flex;flex-direction:column;gap:14px}
@@ -757,19 +749,130 @@ a.mcard:active{transform:scale(.98)}
 .mdlb p:last-child{margin-bottom:0}
 .mdlbtns{justify-content:flex-end;margin-top:20px;gap:8px}
 .mdlbtns .btn{min-width:96px}
-/* the Aspire warning (app.js aspireAsk): the map and its tags, the risks as a list; "Don't open" is the main button */
-.aspmap{display:flex;flex-direction:column;gap:8px;margin:2px 0 12px;padding:10px 12px;border-radius:5px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07)}
-.aspmap b{font-size:14px;line-height:1.35;overflow-wrap:anywhere}
-.aspchips{display:flex;flex-wrap:wrap;gap:6px}
-.aspchip{padding:2px 9px;border-radius:6px;font-size:12px;line-height:1.6;color:#ffd08a;background:rgba(255,181,71,.12);border:1px solid rgba(255,181,71,.32)}
-.asprisk{margin:2px 0 10px;padding:0;list-style:none;display:grid;gap:6px}
-.asprisk li{position:relative;padding-left:20px;color:var(--dim)}
-.asprisk li::before{content:"";position:absolute;left:4px;top:.6em;width:7px;height:7px;border-radius:50%;background:#ffb547;box-shadow:0 0 0 3px rgba(255,181,71,.16)}
-.aspq{font-weight:600}
-.aspw~.mdlbtns .btn.main{box-shadow:0 0 0 4px rgba(194,107,255,.22)}
-.aspw~.mdlbtns .btn.main:focus-visible{outline-color:#fff}
-.mdlbtns .btn.aspgo{border-color:transparent;font-size:14px;opacity:.85}
-.mdlbtns .btn.aspgo:focus-visible{opacity:1;border-color:rgba(255,90,110,.5)}@media (hover:hover){.mdlbtns .btn.aspgo:hover{opacity:1;border-color:rgba(255,90,110,.5)}}
+/* the Aspire warning (app.js aspireAsk, modal variant "hazard"). osu!'s own shapes: a red hit circle with "!" that
+   approach circles keep closing in on (each one lands with a "hit": the circle pops and the box's edge flashes). The
+   screen goes near-black with drifting static and a red glow behind the box; the box tears in sideways with a red /
+   cyan split; the title decodes from noise (app.js); the risks have red crosses. "Hold to open anyway" fills up while
+   held (--hold, 0..1, set by app.js): the box shakes harder and the screen goes redder with it; letting go drops it
+   back. Opening anyway ends in a red flash, not opening in a calm fade. Reduced motion: none of it. */
+.mdl.v-hazard{--hz:#ff3355;--hold:0;overflow:hidden;background:radial-gradient(ellipse at 50% 50%,rgba(70,0,14,calc(.45 + var(--hold) * .4)),rgba(2,1,2,.92) 70%);animation:hzBack .45s ease-out}
+.mdl.v-hazard::before{content:"";position:absolute;inset:-50%;pointer-events:none;opacity:.07;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");animation:hzStatic .5s steps(4) infinite}
+.mdl.v-hazard::after{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 calc(140px + var(--hold) * 260px) calc(10px + var(--hold) * 80px) rgba(255,20,50,calc(.18 + var(--hold) * .5))}
+.v-hazard .mdlp{width:min(470px,100%);padding:22px 24px 18px;border-radius:8px;border:1px solid rgba(255,60,85,.32);background:radial-gradient(circle at 46px 46px,rgba(255,40,70,.16),transparent 170px),linear-gradient(180deg,#140a0d,#0b0708);
+  box-shadow:0 0 0 1px rgba(0,0,0,.6),0 30px 90px rgba(0,0,0,.7),0 0 60px rgba(255,30,60,.12);animation:hzIn .62s cubic-bezier(.2,.9,.25,1) both,hzEdge 1.6s ease-out .62s infinite,hzSlice 7s steps(1) 2s infinite}
+.v-hazard .mdlp::before{display:none}
+.mdl.v-hazard.holding .mdlp{animation:hzShake .09s linear infinite}
+.v-hazard .asphd{display:grid;grid-template-columns:62px 1fr;align-items:center;gap:16px;margin:0 0 16px}
+.v-hazard .aspring{position:relative;width:62px;height:62px;display:grid;place-items:center}
+.v-hazard .aspring b{position:relative;z-index:1;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font:800 24px/1 system-ui,sans-serif;color:#fff;
+  background:radial-gradient(circle at 50% 35%,#ff5a76,#b3001f 70%);box-shadow:0 0 0 3px #fff,0 0 0 4px rgba(0,0,0,.5),0 0 26px rgba(255,40,70,.7);animation:hzHit 1.6s ease-out .62s infinite}
+.v-hazard .aspring i{position:absolute;inset:9px;border-radius:50%;border:2.5px solid var(--hz);opacity:0;animation:hzApproach 1.6s cubic-bezier(.4,0,1,1) .62s infinite}
+.v-hazard .aspring i+i{animation-delay:1.42s}
+.v-hazard .asptt{min-width:0}
+.v-hazard .aspk{display:inline-flex;align-items:center;gap:6px;font:700 11.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:3px;text-transform:uppercase;color:var(--hz)}
+:lang(th) .v-hazard .aspk,:lang(ja) .v-hazard .aspk,:lang(ko) .v-hazard .aspk{letter-spacing:1px;font-family:inherit}
+.v-hazard .aspk::after{content:"";width:7px;height:12px;background:var(--hz);animation:hzCaret 1s steps(1) infinite}
+.v-hazard .aspt{margin:6px 0 0;font-size:21px;line-height:1.25;color:#fff;letter-spacing:.2px;text-shadow:-1px 0 rgba(255,40,70,.55),1px 0 rgba(80,220,255,.35);overflow-wrap:anywhere}
+.v-hazard .mdlb{color:#e6dcde}
+.v-hazard .aspmap{display:flex;flex-direction:column;gap:8px;margin:0 0 14px;padding:10px 12px 10px 14px;border-radius:4px;background:rgba(255,40,70,.06);border:1px solid rgba(255,60,85,.16);border-left:3px solid var(--hz)}
+.v-hazard .aspmap b{font-size:14px;line-height:1.35;overflow-wrap:anywhere}
+.v-hazard .aspchips{display:flex;flex-wrap:wrap;gap:6px}
+/* the map as a card: its cover full width (darkened, a red cast), the title, artist and mapper over it. Its own layer
+   (translateZ): the box "breathes" (hzBreatheS) and a repainted cover shimmered while it scaled */
+.v-hazard .aspmap.hascard{padding:0;background:none;border:0;gap:10px}
+.v-hazard .aspcard{position:relative;isolation:isolate;display:flex;align-items:flex-end;min-height:150px;padding:14px 16px;border-radius:6px;overflow:hidden;
+  border:1px solid rgba(255,60,85,.35);background:radial-gradient(circle at 80% 20%,rgba(255,40,70,.22),transparent 60%),linear-gradient(135deg,#2a0c13,#0d0608);box-shadow:0 10px 30px rgba(0,0,0,.45);transform:translateZ(0);backface-visibility:hidden}
+.v-hazard .aspcov{position:absolute;inset:0;z-index:-1}
+.v-hazard .aspcov img{width:100%;height:100%;object-fit:cover;opacity:0;filter:saturate(.85) contrast(1.05) brightness(.92);transform:scale(1.04);transition:opacity .5s ease-out,transform 6s ease-out}
+.v-hazard .aspcard.pic .aspcov img{opacity:1;transform:scale(1)}
+.v-hazard .aspcov::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(12,4,7,0) 0%,rgba(12,4,7,.3) 40%,rgba(10,3,6,.92) 100%),linear-gradient(90deg,rgba(255,30,60,.18),transparent 55%)}
+.v-hazard .aspctx{display:flex;flex-direction:column;gap:2px;min-width:0;text-shadow:0 1px 6px rgba(0,0,0,.85)}
+.v-hazard .aspct{font-size:18px;line-height:1.25;font-weight:800;color:#fff;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.v-hazard .aspca{font-size:13.5px;font-weight:600;color:#f0d9de;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:1;overflow:hidden}
+.v-hazard .aspcm{margin-top:4px;font-size:12px;color:#ffb3c0;overflow-wrap:anywhere}
+@media (max-width:420px){.v-hazard .aspcard{min-height:128px;padding:12px 13px}.v-hazard .aspct{font-size:16px}}
+@media (prefers-reduced-motion:reduce){.v-hazard .aspcov img{transition:none;transform:none}}
+.v-hazard .aspchip{padding:2px 9px;font-size:12px;line-height:1.6;border:1px solid;border-radius:3px;color:#ffb3c0;background:rgba(255,40,70,.14);border-color:rgba(255,60,85,.45)}
+.v-hazard .aspchip.user{color:#fff;background:rgba(255,40,70,.3);border-color:var(--hz)}
+.v-hazard .aspchip.user::before{content:"♦ ";color:var(--hz)}
+.v-hazard .asprisk{margin:4px 0 12px;padding:0;list-style:none;display:grid;gap:6px}
+.v-hazard .asprisk li{position:relative;padding-left:22px;color:#c8b9bc}
+.v-hazard .asprisk li::before{content:"✕";position:absolute;left:2px;top:.05em;width:auto;height:auto;border-radius:0;background:none;box-shadow:none;font-size:12px;font-weight:800;color:var(--hz);text-shadow:0 0 8px rgba(255,40,70,.8)}
+.v-hazard .aspq{font-weight:600;color:#fff;font-size:15px}
+.v-hazard .mdlbtns{justify-content:flex-end;gap:10px;margin-top:18px}
+.v-hazard .btn.aspno{min-height:42px;padding:0 20px;border-radius:5px;background:#f2eef0;border-color:#f2eef0;color:#140a0d;font-weight:700}
+.v-hazard .btn.aspno:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.v-hazard .btn.aspgo{position:relative;overflow:hidden;isolation:isolate;min-height:42px;padding:0 16px;border-radius:5px;border:1px solid rgba(255,60,85,.55);color:#ff8a9e;background:rgba(255,40,70,.06);font-weight:600;opacity:1;
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}
+.v-hazard .btn.aspgo::before{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,#b3001f,var(--hz));transform-origin:left;transform:scaleX(var(--hold))}
+.mdl.v-hazard.holding .btn.aspgo{color:#fff;border-color:var(--hz)}
+@media (hover:hover){.v-hazard .btn.aspgo:hover{border-color:var(--hz);color:#ffb3c0;box-shadow:0 0 18px rgba(255,40,70,.3)}.v-hazard .btn.aspno:hover{background:#fff}}
+.mdl.v-hazard.out{animation:mdlOut .3s ease-in forwards}
+.mdl.v-hazard.out .mdlp{animation:hzAway .26s ease-in forwards}
+.mdl.v-hazard.go.out{animation:hzFlash .3s ease-out forwards}
+.mdl.v-hazard.go.out .mdlp{animation:hzBurst .26s ease-in forwards}
+@keyframes hzBack{from{opacity:0}}
+@keyframes hzStatic{25%{transform:translate(-40px,20px)}50%{transform:translate(30px,-30px)}75%{transform:translate(-20px,-40px)}}
+@keyframes hzIn{0%{opacity:0;transform:translateX(-30px) skewX(14deg) scale(.96);filter:blur(6px);box-shadow:-10px 0 0 rgba(255,40,70,.6),10px 0 0 rgba(80,220,255,.45)}35%{opacity:1;transform:translateX(10px) skewX(-6deg);filter:none}48%{transform:translateX(-5px) skewX(3deg);box-shadow:-4px 0 0 rgba(255,40,70,.5),4px 0 0 rgba(80,220,255,.35)}60%{transform:translateX(2px)}72%,100%{transform:none}}
+@keyframes hzEdge{0%{border-color:rgba(255,90,110,.9);box-shadow:0 0 0 1px rgba(0,0,0,.6),0 30px 90px rgba(0,0,0,.7),0 0 70px rgba(255,30,60,.35)}40%,100%{}}
+@keyframes hzApproach{0%{opacity:0;transform:scale(1.9)}30%{opacity:.85}100%{opacity:1;transform:scale(1)}}
+@keyframes hzHit{0%{transform:scale(1.14);filter:brightness(1.5)}30%,100%{transform:none;filter:none}}
+@keyframes hzCaret{50%{opacity:0}}
+@keyframes hzSlice{0%{transform:none;filter:none}93%{transform:translateX(-8px) skewX(5deg);filter:hue-rotate(-20deg) contrast(1.4)}94%{transform:translateX(7px) skewX(-3deg);filter:none}95%{transform:translateX(-2px)}96%{transform:none}} /* (transform only: a clip-path would also move where clicks land) */
+@keyframes hzShake{0%{transform:translate(calc(var(--hold) * -4px),calc(var(--hold) * 2px)) rotate(calc(var(--hold) * -.6deg))}33%{transform:translate(calc(var(--hold) * 4px),calc(var(--hold) * -2px)) rotate(calc(var(--hold) * .5deg))}66%{transform:translate(calc(var(--hold) * -2px),calc(var(--hold) * -3px))}}
+@keyframes hzAway{to{opacity:0;transform:translateY(10px) scale(.97);filter:blur(3px)}}
+@keyframes hzFlash{0%{background-color:rgba(255,60,80,.6)}100%{opacity:0}}
+@keyframes hzBurst{to{opacity:0;transform:scale(1.08);filter:brightness(2.5) blur(4px)}}
+@media (max-width:560px){
+  .mdl.v-hazard{place-items:center;padding:12px}
+  .v-hazard .mdlp{width:100%;max-height:92dvh;border-radius:8px;padding:20px 18px calc(16px + env(safe-area-inset-bottom));animation:hzIn .62s cubic-bezier(.2,.9,.25,1) both,hzEdge 1.6s ease-out .62s infinite,hzSlice 7s steps(1) 2s infinite}
+  .mdl.v-hazard.out .mdlp{animation:hzAway .26s ease-in forwards}
+  .mdl.v-hazard.go.out .mdlp{animation:hzBurst .26s ease-in forwards}
+  .v-hazard .asphd{grid-template-columns:54px 1fr;gap:12px}
+  .v-hazard .aspring{width:54px;height:54px}
+  .v-hazard .aspring b{width:38px;height:38px;font-size:21px}
+  .v-hazard .aspt{font-size:18.5px}
+  .v-hazard .mdlbtns{flex-direction:column-reverse!important;align-items:stretch}
+  .v-hazard .mdlbtns .btn{width:100%!important;min-height:48px}
+}
+/* creepier while it's open (app.js aspireFx): darkness closing in from the edges over ~14 s (--creep), the light flickering now and then, the box breathing (scale, so
+   it never fights the transform animations), the "!" twitching, red drips running down from the box's top edge */
+@property --creep{syntax:"<number>";inherits:true;initial-value:0}
+.mdl.v-hazard{animation:hzBack .45s ease-out,hzCreep 14s ease-in .4s forwards}
+.mdl.v-hazard::after{box-shadow:inset 0 0 calc(140px + var(--hold) * 260px + var(--creep) * 220px) calc(10px + var(--hold) * 80px + var(--creep) * 120px) rgba(0,0,0,calc(.2 + var(--creep) * .55)),inset 0 0 calc(160px + var(--hold) * 260px) calc(10px + var(--hold) * 80px) rgba(255,20,50,calc(.16 + var(--hold) * .5))}
+.hzfx{position:absolute;inset:0;pointer-events:none;z-index:0}
+.mdl.v-hazard::after{z-index:1}.mdl.v-hazard .mdlp{z-index:2} /* (the darkness closes in around the box, never over it: on phones the box is nearly as wide as the screen) */
+.hzflick{position:absolute;inset:0;background:#000;opacity:0;animation:hzFlick 6.3s steps(1) 2.4s infinite}
+.mdl.v-hazard .mdlp{scale:1;animation-name:hzIn,hzEdge,hzSlice,hzBreatheS}
+.mdl.v-hazard .mdlp{animation-duration:.62s,1.6s,7s,4.2s;animation-timing-function:cubic-bezier(.2,.9,.25,1),ease-out,steps(1),ease-in-out;animation-delay:0s,.62s,2s,.8s;animation-iteration-count:1,infinite,infinite,infinite;animation-fill-mode:both,none,none,none}
+.mdl.v-hazard.holding .mdlp{animation:hzShake .09s linear infinite}
+.mdl.v-hazard.out .mdlp{animation:hzAway .26s ease-in forwards}
+.mdl.v-hazard.go.out .mdlp{animation:hzBurst .26s ease-in forwards}
+.v-hazard .aspring b{rotate:0deg;animation:hzHit 1.6s ease-out .62s infinite,hzTwitch 3.7s steps(1) 2s infinite}
+.hzdrip{position:absolute;top:0;width:3px;height:0;border-radius:0 0 3px 3px;background:linear-gradient(180deg,rgba(255,40,70,.0),rgba(200,10,35,.9));pointer-events:none;animation:hzDrip 3.2s ease-in both}
+.hzdrip::after{content:"";position:absolute;left:-1.5px;bottom:-5px;width:6px;height:7px;border-radius:50% 50% 50% 50%/40% 40% 60% 60%;background:rgba(210,12,40,.95)}
+@keyframes hzCreep{to{--creep:1}}
+@keyframes hzFlick{0%{opacity:0}61%{opacity:.45}65%{opacity:0}89%{opacity:.22}92%{opacity:0}} /* (two short dims a cycle, 1.5 s apart: no fast flashing) */
+@keyframes hzBreatheS{50%{scale:1.012}}
+@keyframes hzTwitch{0%{rotate:0deg}84%{rotate:-14deg}85%{rotate:9deg}86%{rotate:-4deg}87%{rotate:0deg}}
+@keyframes hzDrip{0%{height:0;opacity:0}10%{opacity:1}55%{height:22px}100%{height:34px;opacity:0;transform:translateY(40px)}}
+@media (max-width:560px){.mdl.v-hazard .mdlp{animation-name:hzIn,hzEdge,hzSlice,hzBreatheS}}
+/* the heads-up after "Open anyway" (app.js aspireFyi): the usual dialog, the points sliding in one after another and
+   the "!" glowing once as it opens */
+.mdl.v-fyi .mdlic{animation:fyiGlow 1.2s ease-out .15s}
+.aspfyil{margin:6px 0 0;padding:0;list-style:none;display:grid;gap:8px}
+.aspfyil li{position:relative;padding:8px 10px 8px 30px;border-radius:5px;background:rgba(255,181,71,.06);border:1px solid rgba(255,181,71,.14);color:var(--ink);font-size:13.5px;line-height:1.45;animation:fyiIn .32s cubic-bezier(.2,.9,.25,1) both}
+.aspfyil li::before{content:"";position:absolute;left:12px;top:15px;width:7px;height:7px;border-radius:50%;background:#ffb547;box-shadow:0 0 0 3px rgba(255,181,71,.16)}
+.aspfyil li:nth-child(1){animation-delay:.12s}.aspfyil li:nth-child(2){animation-delay:.19s}.aspfyil li:nth-child(3){animation-delay:.26s}.aspfyil li:nth-child(4){animation-delay:.33s}.aspfyil li:nth-child(5){animation-delay:.4s}
+.mdl.v-fyi .mdlbtns{animation:fyiIn .3s .45s both}
+.mdl.v-fyi .mdlbtns{align-items:center}
+.mdl.v-fyi .btn.fyino{min-width:150px;font-weight:700;box-shadow:0 0 0 4px color-mix(in srgb,var(--pink) 22%,transparent)}
+.mdl.v-fyi .btn.fyigo{min-width:0;padding:0 10px;border-color:transparent;background:none;color:var(--dim);font-size:13px;font-weight:500;opacity:.75;font-variant-numeric:tabular-nums}
+.mdl.v-fyi .btn.fyigo:disabled{opacity:.4;cursor:not-allowed}
+@media (hover:hover){.mdl.v-fyi .btn.fyigo:not(:disabled):hover{opacity:1;color:#ffb547;background:none}}
+@media (max-width:560px){.mdl.v-fyi .mdlbtns{flex-direction:column-reverse!important;align-items:stretch}.mdl.v-fyi .btn.fyino{width:100%;min-height:48px}.mdl.v-fyi .btn.fyigo{flex:none!important;width:auto!important;min-height:40px;align-self:center}}
+@keyframes fyiIn{from{opacity:0;transform:translateY(6px)}}
+@keyframes fyiGlow{0%{box-shadow:0 0 0 0 rgba(255,181,71,.5)}100%{box-shadow:0 0 0 14px rgba(255,181,71,0)}}
 .btn.danger.solid{background:var(--red);border-color:var(--red);color:#2a0a10;font-weight:600}
 @media (hover:hover){.btn.danger.solid:hover{background:#ff7385}}
 .mdlin{display:block;width:100%;height:46px;margin:12px 0 0;padding:0 14px;border-radius:5px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:16px;outline:none;transition:border-color .15s,box-shadow .15s}
@@ -1208,14 +1311,10 @@ button.arow{cursor:pointer}
 /* map details: genre, language, player tags, mapper tags, nominators */
 .dmeta{padding:0 18px}
 .dmeta:empty{display:none}
-.dmrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding-bottom:8px}
 .dmchip{height:26px;padding:0 10px;border-radius:5px;border:1px solid rgba(159,184,245,.4);background:rgba(159,184,245,.1);color:#bfe6ff;font-size:12px;cursor:pointer}
 @media (hover:hover){.dmchip:hover{background:rgba(159,184,245,.2)}}
 .dmrate,.dmnsfw{font-style:normal;font-size:12px;padding:3px 10px;border-radius:5px;background:rgba(255,216,74,.14);color:#ffe28a}
-.dmnsfw{background:rgba(255,77,94,.16);color:#ff9aa5}
 .dml{font-size:11px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.05em;margin:4px 0 6px}
-.dmnoms{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding-bottom:8px}
-.dmnoms .dml{margin:0}
 .dmnom{display:inline-flex;align-items:center;gap:6px;font-size:13px}
 .dmnom .cav{width:22px;height:22px;font-size:11px}
 .dmnom small{font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px;background:rgba(163,71,235,.25);color:#e2c2ff}
@@ -1224,6 +1323,7 @@ button.arow{cursor:pointer}
 .dmcat{font-size:11.5px;color:#9fd9ff;font-weight:600;min-width:74px}
 .dmtag{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 9px;border-radius:4px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--ink);font-size:12px;cursor:pointer}
 .dmtag small{font-size:10px;color:var(--dim)}
+.dmore .dmtag small{font-size:12px}
 @media (hover:hover){.dmtag:hover{border-color:var(--ice)}}
 .dmtag.plain{height:24px;border-radius:5px;color:var(--dim)}
 .dmtags .tagtip{margin:2px 0 0;font-size:12px}
@@ -1381,6 +1481,29 @@ body.gated #shell,body.gated #player,body.gated #detail{display:none!important}
 .ghow{padding:8px 4px 4px}
 .ghow h3,.gask h3{margin:0 0 8px;font-size:20px}
 .ghow ol{margin:0;padding-left:22px;color:var(--dim);line-height:1.8}
+.gmore{position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:28px;align-items:center;margin:32px 0;padding:32px;border:1px solid rgba(194,107,255,.35);border-radius:16px;
+  background:radial-gradient(120% 140% at 0% 0%,rgba(194,107,255,.22),transparent 55%),radial-gradient(90% 120% at 100% 100%,rgba(159,184,245,.14),transparent 60%),var(--s1)}
+.gmore::after{content:"";position:absolute;right:-60px;top:-60px;width:220px;height:220px;border-radius:50%;border:2px solid rgba(194,107,255,.18);box-shadow:0 0 0 22px rgba(194,107,255,.06),0 0 0 48px rgba(194,107,255,.04);pointer-events:none}
+.gmcopy{position:relative;z-index:1;display:flex;flex-direction:column;align-items:flex-start;gap:10px;min-width:0}
+.gmeyebrow{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--vio)}
+.gmore h3{margin:0;font-size:clamp(24px,3.2vw,32px);line-height:1.15;text-wrap:balance}
+.gmore p{margin:0;color:var(--dim);line-height:1.55;max-width:44ch}
+.gmacts{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px}
+.gmlogin{height:48px;padding:0 20px;font-size:16px;gap:10px;box-shadow:0 8px 28px rgba(194,107,255,.35)}
+.gmacts .altlogin{display:flex;gap:10px}.gmacts .altlogin .btn{height:48px;padding:0 18px;font-size:15px}
+.gmnote{color:var(--dim);font-size:12.5px;opacity:.85}
+.gmgrid{position:relative;z-index:1;list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.gmitem{display:flex;gap:12px;align-items:flex-start;padding:16px;border-radius:12px;background:rgba(21,24,37,.55);border:1px solid var(--bd);min-width:0}
+.gmitem b{display:block;color:var(--ink);font-size:15px;margin-bottom:3px}
+.gmitem span:not(.gmic){display:block;color:var(--dim);font-size:13.5px;line-height:1.5}
+.gmic{flex:0 0 auto;width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:rgba(194,107,255,.16);color:var(--vio)}
+.gmic svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+@media (hover:hover){.gmitem{transition:border-color .2s,transform .2s}.gmitem:hover{border-color:rgba(194,107,255,.5);transform:translateY(-2px)}}
+@media (prefers-reduced-motion:reduce){.gmitem{transition:none}.gmitem:hover{transform:none}}
+/* narrow: one column read top to bottom: the pitch, the perks, then the buttons and the note */
+@media (max-width:860px){.gmore{display:flex;flex-direction:column;align-items:stretch;padding:24px 20px;gap:14px}.gmcopy{display:contents}
+  .gmeyebrow,.gmore h3,.gmore p{order:0}.gmgrid{order:1;margin:6px 0}.gmacts{order:2;margin-top:4px}.gmnote{order:3;text-align:center}}
+@media (max-width:520px){.gmgrid{grid-template-columns:minmax(0,1fr)}.gmacts{flex-direction:column}.gmacts>*,.gmacts .altlogin,.gmacts .altlogin .btn{width:100%;justify-content:center}}
 .gask{margin:18px auto 0;max-width:560px;width:100%;display:flex;flex-direction:column;gap:12px;padding:24px;border-radius:6px;border:1px solid rgba(194,107,255,.45);background:radial-gradient(ellipse at 50% 0%,rgba(194,107,255,.16),transparent 70%),var(--s1)}
 .gask p{margin:0;line-height:1.5}
 .gbig{justify-content:center;gap:10px;min-height:48px;font-size:16px;text-decoration:none}
@@ -1846,6 +1969,10 @@ body.live-watch #edTabs button:not([data-etab="compose"]),body.live-watch #edTes
 
 /* ===================== redesign: navbar, home, footer ===================== */
 html{overflow-x:clip}
+/* the page under an overlay stays put (js/core.js pageLock): no scrolling by wheel, keys or touch. A classic scrollbar's room is kept as
+   padding (.plockg) so nothing in the page moves; not scrollbar-gutter, which would also narrow the fixed overlays and leave a bare strip */
+html.plock{overflow:hidden}
+html.plockg{padding-right:var(--plg,0px)}
 #shell{padding-top:0}
 .apptop{position:sticky;top:0;z-index:9;height:calc(60px + env(safe-area-inset-top));margin:0 calc(50% - 50vw) 18px;padding:env(safe-area-inset-top) max(calc(env(safe-area-inset-right) + 24px),calc(50vw - 800px)) 0 max(calc(env(safe-area-inset-left) + 24px),calc(50vw - 800px));background:var(--s1);border-bottom:1px solid var(--bd);display:flex;flex-wrap:nowrap;align-items:center;gap:20px}
 .apptop .brand{gap:10px;flex:0 0 auto}
@@ -1879,30 +2006,39 @@ html{overflow-x:clip}
 .hsearch input::placeholder{color:var(--mute)}
 .hsearch input::-webkit-search-cancel-button{filter:invert(.7)}
 .hsearch .btn{min-height:42px;padding:0 20px}
-.hgrid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1.25fr) minmax(0,1fr) minmax(0,1fr);grid-template-rows:184px 112px;gap:10px}
+.hgrid{display:flex;gap:10px}
+/* (two groups that reflow without holes when items are hidden by a feature switch or a permission (display:none!important from [data-feat] / [data-perm]):
+   .hbig = the big tiles share one row, .hsmall = the small cards, two per line, an odd last one takes the whole line; home.js adds .none to a group whose items are all hidden, so the other one takes the width) */
+.hbig{flex:1 1 0;min-width:0;display:flex;gap:10px}
+.hsmall{flex:0 0 42%;min-width:0;display:flex;flex-wrap:wrap;gap:10px}
+.hsmall>*{flex:1 1 calc(50% - 5px);min-width:0}
+.hbig.none,.hsmall.none{display:none}
+.hbig.none+.hsmall{flex:1 1 100%}
 .hic{display:grid;place-items:center;flex:0 0 auto}
 .hic svg{width:22px;height:22px;fill:none;stroke:var(--bg);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.htile{grid-row:span 2;position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;padding:30px;border-radius:var(--r-card);color:var(--bg);text-decoration:none;transition:filter var(--t) ease-out}
+.htile{flex:1 1 0;min-width:0;min-height:306px;position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;padding:24px;border-radius:var(--r-card);color:var(--bg);text-decoration:none;transition:filter var(--t) ease-out}
 .htile.songs{background:var(--vio)}
 .htile.editor{background:var(--ice)}
+.htile.replays{background:var(--teal)}
 @media (hover:hover){.htile:hover{filter:brightness(1.07)}}
-.htile .hic{position:absolute;left:30px;top:30px;width:58px;height:58px;border-radius:var(--r-card);background:var(--bg)}
-.htile.songs .hic svg{stroke:var(--vio)}.htile.editor .hic svg{stroke:var(--ice)}
+/* (the icon is in the flow, pinned to the top: the title can never slide under it, the tile grows instead) */
+.htile .hic{position:relative;margin-bottom:auto;width:58px;height:58px;border-radius:var(--r-card);background:var(--bg)}
+.htile.songs .hic svg{stroke:var(--vio)}.htile.editor .hic svg{stroke:var(--ice)}.htile.replays .hic svg{stroke:var(--teal)}
 .htile kbd{position:absolute;right:18px;top:18px;background:rgba(21,24,37,.16);border-color:transparent;color:var(--bg)}
-.hnum{position:absolute;right:-6px;bottom:-40px;font:italic 800 200px/1 Inter,system-ui,sans-serif;letter-spacing:-10px;color:rgba(21,24,37,.12);pointer-events:none}
-.htile b{position:relative;font-size:34px;font-weight:800;letter-spacing:-1px;line-height:1.05}
-.htile>span:not(.hic){position:relative;margin-top:6px;font-size:15px;font-weight:600;color:rgba(21,24,37,.78)}
-.hcard{position:relative;display:flex;flex-direction:column;justify-content:flex-end;padding:22px;border-radius:var(--r-card);background:var(--s1);border:1px solid var(--bd);color:var(--txt);text-decoration:none;transition:background var(--t) ease-out,border-color var(--t) ease-out}
+.hnum{position:absolute;right:-6px;bottom:-34px;font:italic 800 170px/1 Inter,system-ui,sans-serif;letter-spacing:-10px;color:rgba(21,24,37,.12);pointer-events:none}
+.htile b{position:relative;padding-top:14px;font-size:26px;font-weight:800;letter-spacing:-.8px;line-height:1.05;overflow-wrap:anywhere}
+.htile>span:not(.hic){position:relative;margin-top:6px;font-size:14.5px;font-weight:600;color:rgba(21,24,37,.78)}
+.hcard{min-height:184px;position:relative;display:flex;flex-direction:column;justify-content:flex-end;padding:22px;border-radius:var(--r-card);background:var(--s1);border:1px solid var(--bd);color:var(--txt);text-decoration:none;transition:background var(--t) ease-out,border-color var(--t) ease-out}
 .hcard .hic{position:absolute;left:22px;top:22px;width:46px;height:46px;border-radius:var(--r-ctl)}
 .hcard.new .hic{background:var(--teal)}.hcard.open .hic{background:var(--lav)}
 .hcard kbd{position:absolute;right:16px;top:16px}
 .hcard b{font-size:20px;font-weight:800;letter-spacing:-.4px}
 .hcard span:not(.hic){margin-top:4px;color:var(--dim);font-size:13.5px}
 .hcard.open{padding:0}
-.hcover{all:unset;box-sizing:border-box;position:relative;display:flex;flex-direction:column;justify-content:flex-end;width:100%;height:100%;padding:22px;cursor:pointer;border-radius:var(--r-card)}
+.hcover{all:unset;box-sizing:border-box;position:relative;display:flex;flex-direction:column;justify-content:flex-end;flex:1 1 auto;width:100%;padding:22px;cursor:pointer;border-radius:var(--r-card)}
 .hcover:focus-visible{outline:2px solid var(--vio);outline-offset:2px}
 .hcard .gdopen{position:absolute;right:16px;bottom:16px;font-size:12px}
-.hrow{display:flex;align-items:center;gap:14px;padding:0 22px;border-radius:var(--r-card);background:var(--s1);border:1px solid var(--bd);color:var(--txt);text-decoration:none;text-align:left;cursor:pointer;font:inherit;transition:background var(--t) ease-out,border-color var(--t) ease-out}
+.hrow{min-height:112px;display:flex;align-items:center;gap:14px;padding:0 22px;border-radius:var(--r-card);background:var(--s1);border:1px solid var(--bd);color:var(--txt);text-decoration:none;text-align:left;cursor:pointer;font:inherit;transition:background var(--t) ease-out,border-color var(--t) ease-out}
 .hrow .hic{width:46px;height:46px;border-radius:var(--r-ctl);background:var(--s3)}
 .hrow.live .hic{background:var(--brz)}
 .hrow.mine .hic svg{stroke:var(--lav)}
@@ -1926,8 +2062,8 @@ html{overflow-x:clip}
 .foot small{font-size:13px;opacity:1;color:var(--mute)}
 
 .hrow .htx span,.hcard span:not(.hic){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hrow{padding:0 14px;gap:11px}.hrow .hic{width:40px;height:40px}.hrow .htx span{font-size:12.5px}.hrow b{white-space:nowrap;font-size:16px}.hrow .harr{width:17px;height:17px}
-@media (max-width:960px){.hgrid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:170px 170px auto auto}.htile{grid-row:span 1}.hrow{min-height:72px}.hnum{font-size:150px}}
+.hrow{padding:0 14px;gap:11px}.hrow .hic{width:40px;height:40px}.hrow .htx span{font-size:12.5px}.hrow b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:16px}.hrow .harr{width:17px;height:17px}
+@media (max-width:960px){.hgrid{flex-direction:column}.hbig,.hsmall,.hbig.none+.hsmall{flex:0 0 auto}.htile{min-height:170px}.htile b{font-size:30px}.hcard{min-height:170px}.hrow{min-height:72px}.hnum{font-size:150px}}
 @media (max-width:760px){
   .homev{min-height:0;align-content:start;padding:6px 0 0}
   .hwrap{gap:10px}
@@ -1937,14 +2073,21 @@ html{overflow-x:clip}
   .hfree{display:none}
   .hsearch{height:50px;padding:0 12px}
   .hsearch kbd,.hsearch .btn{display:none}
-  .hgrid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:156px;grid-auto-rows:58px;gap:8px}
-  .htile{grid-row:span 1;padding:16px}
-  .htile .hic{left:16px;top:16px;width:40px;height:40px}
+  .hgrid,.hbig,.hsmall{gap:8px}
+  .hbig{flex-wrap:wrap}
+  .hsmall{flex-direction:column;flex-wrap:nowrap}
+  .hsmall>*{flex:0 0 auto}
+  .htile{flex:1 1 calc(50% - 4px);min-height:156px;padding:16px}
+  .htile.replays{flex-basis:100%;min-height:84px;display:grid;grid-template-columns:40px minmax(0,1fr);grid-template-rows:auto auto;column-gap:12px;align-content:center}
+  .htile.replays .hic{grid-row:span 2;margin:0;align-self:center}
+  .htile.replays b,.htile.replays>span:not(.hic){grid-column:2}
+  .htile.replays b{padding-top:0}
+  .htile .hic{width:40px;height:40px}
   .htile kbd{display:none}
-  .htile b{font-size:22px;letter-spacing:-.5px}
+  .htile b{padding-top:8px;font-size:22px;letter-spacing:-.5px}
   .htile>span:not(.hic){font-size:12.5px;margin-top:3px}
   .hnum{font-size:110px;bottom:-22px;letter-spacing:-6px}
-  .hcard,.hcard.open,.hrow{grid-column:span 2;flex-direction:row;justify-content:flex-start;align-items:center;gap:12px;padding:0 14px;min-height:58px}
+  .hcard,.hcard.open,.hrow{flex-direction:row;justify-content:flex-start;align-items:center;gap:12px;padding:0 14px;min-height:58px}
   .hcard .hic,.hrow .hic{position:static;width:38px;height:38px}
   .hcard kbd{display:none}
   .hcard b,.hrow b{font-size:15px}
@@ -1984,8 +2127,8 @@ html{overflow-x:clip}
 .homev .hhead h1 em{position:relative;display:inline-block;animation:hInk .8s var(--ease-io) .15s backwards}
 .homev .hhead h1 em::after{content:"";position:absolute;left:-3px;right:-3px;top:8%;bottom:4%;background:var(--vio);transform:scaleX(0);animation:hWipe .8s var(--ease-io) .15s backwards}
 .homev .hsearch{animation:hRise .55s var(--ease) .16s backwards}
-.homev .hgrid>*{animation:hPop .6s var(--ease) backwards;animation-delay:calc(.22s + var(--k,0) * .06s)}
-.homev .hgrid>:nth-child(2){--k:1}.homev .hgrid>:nth-child(3){--k:2}.homev .hgrid>:nth-child(4){--k:3}.homev .hgrid>:nth-child(5){--k:4}.homev .hgrid>:nth-child(6){--k:5}
+.homev .hbig>*,.homev .hsmall>*{animation:hPop .6s var(--ease) backwards;animation-delay:calc(.22s + var(--k,0) * .06s)}
+.homev .hbig>:nth-child(2){--k:1}.homev .hbig>:nth-child(3){--k:2}.homev .hsmall>:nth-child(1){--k:3}.homev .hsmall>:nth-child(2){--k:4}.homev .hsmall>:nth-child(3){--k:5}.homev .hsmall>:nth-child(4){--k:6}
 .homev .htile .hnum{animation:hNum .9s var(--ease) backwards;animation-delay:calc(.35s + var(--k,0) * .06s)}
 .homev .hchips>*{animation:hRise .5s var(--ease) backwards;animation-delay:calc(.55s + var(--k,0) * .04s)}
 .homev .hchips>:nth-child(2){--k:1}.homev .hchips>:nth-child(3){--k:2}.homev .hchips>:nth-child(4){--k:3}.homev .hchips>:nth-child(5){--k:4}.homev .hchips>:nth-child(6){--k:5}.homev .hchips>:nth-child(7){--k:6}
@@ -2048,12 +2191,34 @@ body:has(#select:not([hidden])) #shell{--gut:max(24px,calc(50vw - 800px));max-wi
 .bc-cov{position:relative;height:108px;border-radius:var(--r-card) var(--r-card) 0 0;overflow:hidden;background:var(--s2)}
 .bc-img{position:absolute;inset:0;background:center/cover no-repeat;transition:transform .5s var(--ease)}
 .bc-tag{position:absolute;left:10px;top:10px;z-index:2;font-style:normal;height:18px;padding:0 6px;display:inline-flex;align-items:center;border-radius:var(--r-tag);font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;background:var(--s3);color:var(--txt)}
+.bc-have{position:absolute;left:10px;bottom:10px;z-index:2;font-style:normal;height:22px;padding:0 9px 0 7px;display:inline-flex;align-items:center;border-radius:var(--r-tag);font-size:11.5px;font-weight:800;letter-spacing:.3px;background:#3ddbb0;color:#06281f;box-shadow:0 2px 10px rgba(0,0,0,.45),0 0 0 2px rgba(6,40,31,.55)}
+.card.has{border-color:#3ddbb0;box-shadow:0 0 0 1px #3ddbb0,0 6px 20px rgba(61,219,176,.18)}
+.dhave{display:flex;align-items:center;gap:12px;margin:2px 22px 12px;padding:10px 12px;border-radius:var(--r-card);background:rgba(61,219,176,.13);border:1px solid rgba(61,219,176,.55);border-left:5px solid #3ddbb0}
+.dhave .dhok{flex:0 0 auto;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:#3ddbb0;color:#06281f;font-weight:900;font-size:16px}
+.dhave .dhtx{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.dhave .dhtx b{font-size:15px;color:#fff}.dhave .dhtx small{color:var(--dim);font-size:12.5px;line-height:1.35}
+.dhave .btn{flex:0 0 auto}
+.dhave.upd{background:rgba(255,184,77,.13);border-color:rgba(255,184,77,.65);border-left-color:#ffb84d}.dhave.upd .dhok{background:#ffb84d;color:#2e1d00}.dhave.upd .dhok::before{content:"!"}.dhave.upd .dhok{font-size:0}.dhave.upd .dhok::before{font-size:16px}
+@media (max-width:520px){.dhave{flex-wrap:wrap}.dhave .btn{width:100%}}
+.cmgr{display:flex;flex-direction:column;gap:10px;min-width:0}
+.cmgr input[type=checkbox]{width:18px;height:18px;flex:0 0 auto;accent-color:var(--vio)}
+.cmrow{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:var(--r-ctl);cursor:pointer;min-width:0}
+.cmrow:hover{background:rgba(255,255,255,.06)}
+.cmrow .cmn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmrow small{color:var(--dim);flex:0 0 auto;font-size:12px}
+.cmall{border:1px solid var(--bd);background:var(--s2)}
+.cmhd{font-size:13px;letter-spacing:.4px;text-transform:uppercase;color:var(--lav);margin-top:2px}.cmhd small{margin-left:auto}
+.cmlist{display:flex;flex-direction:column;max-height:26vh;overflow:auto;border-left:2px solid var(--bd);margin-left:9px;padding-left:4px}
+.cmnone{margin:6px 8px;color:var(--mute);font-size:13px}
+.cmsum{min-height:18px;color:var(--dim);font-size:13px}
+.cmgo{width:100%;justify-content:center;transition:background .15s,transform .15s}
+.cmgo.btn.armed,.cmgo.btn.armed:hover{background:#ff8a3d;border-color:#ff8a3d;color:#1c0d00}.cmgo.btn.armed2,.cmgo.btn.armed2:hover{background:#ff4d6d;border-color:#ff4d6d;color:#fff;box-shadow:0 0 0 3px rgba(255,77,109,.35)}
 .bc-tag.st-ranked,.bc-tag.st-approved{background:var(--teal)!important;color:#11302d}
 .bc-tag.st-loved{background:#f19ac4!important;color:#3a1028}
 .bc-tag.st-qualified{background:var(--ice)!important;color:#142545}
 .bc-tag.st-pending,.bc-tag.st-wip{background:var(--brz)!important;color:#2e2410}
 .bc-tag.st-graveyard{background:var(--s3)!important;color:var(--dim)}
-.bc-dl{position:absolute;right:10px;top:10px;z-index:3;width:28px;height:28px;display:grid;place-items:center;border-radius:var(--r-ctl);background:rgba(21,24,37,.72);color:var(--txt);opacity:0;transform:translateY(-4px);transition:opacity var(--t) ease-out,transform .25s var(--ease)}
+.bc-dl{position:absolute;right:10px;top:10px;border:0;padding:0;cursor:pointer;z-index:3;width:28px;height:28px;display:grid;place-items:center;border-radius:var(--r-ctl);background:rgba(21,24,37,.72);color:var(--txt);opacity:0;transform:translateY(-4px);transition:opacity var(--t) ease-out,transform .25s var(--ease)}
+.bc-dl:disabled{cursor:progress;opacity:1;transform:none}
 .bc-dl svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 .bc-play{position:absolute;right:14px;bottom:10px;z-index:3;width:38px;height:38px;display:grid;place-items:center;border:0;border-radius:var(--r-ctl);background:var(--txt);color:var(--bg);cursor:pointer;transition:transform .25s var(--ease),background var(--t) ease-out}
 .bc-play svg{width:16px;height:16px;fill:currentColor;stroke:none}
@@ -2090,49 +2255,418 @@ body:has(#select:not([hidden])) #shell{--gut:max(24px,calc(50vw - 800px));max-wi
 @keyframes dDim{from{opacity:0}}
 @keyframes dUndim{to{opacity:0}}
 @keyframes dRise{from{transform:translateY(18px);opacity:0}to{transform:none;opacity:1}}
-.detail{z-index:10;padding:24px;background:rgba(10,12,20,.74);animation:dDim .2s ease-out}
+/* Layout of the panel (#detail > #dPanel). .dpanel is ONE box with no transform at rest (it is what the open/close motion moves).
+   Inside #dBody: .dside (cover, actions, set information) and .dmain (the difficulty table).
+   >=900px: two zones side by side, each scrolls on its own; 701-899px: one column in a centred dialog; <=700px: a bottom sheet.
+   Below 900px .dside/.dmain are display:contents and `order` puts the difficulties before the set information.
+   One type scale: title 22/700, body 13, labels 11-12 (uppercase for headers), numbers tabular. One accent (the violet): the picked row,
+   Listen, Preview. Quiet hairlines (white at 6%) instead of boxes; only what can be pressed gets a surface. */
+.detail{position:fixed;inset:0;z-index:10;display:grid;place-items:center;padding:24px;background:rgba(10,12,20,.74);animation:dDim .2s ease-out;overscroll-behavior:contain;touch-action:pinch-zoom} /* (the backdrop, the footer, the grab strip: a pan there moves nothing, the page under it is locked; the panel's scrollers keep their own pans) */
 .detail.out{animation:dUndim .18s ease-in forwards}
-.dpanel{width:min(620px,100%);max-height:min(88dvh,860px);background:var(--s1);border-color:var(--bd);border-radius:6px;box-shadow:0 32px 90px rgba(0,0,0,.6);animation:dFloat .46s var(--ease)}
+.dpanel{position:relative;display:flex;flex-direction:column;width:min(760px,100%);max-height:min(90vh,900px);max-height:min(90svh,900px);background:var(--s1);border:1px solid var(--bd);border-radius:6px;overflow:hidden;box-shadow:0 32px 90px rgba(0,0,0,.6);animation:dFloat .46s var(--ease);transition:transform .2s}
 .detail.out .dpanel{animation:dSink .18s ease-in forwards}
-@media (max-width:560px){
-  .detail{padding:0}
-  .dpanel{width:100%;max-height:94dvh;border-radius:6px 6px 0 0;animation:dSheet .34s var(--ease)}
-  .detail.out .dpanel{animation:dSheetOut .18s ease-in forwards}
+.dbody{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow:auto;overscroll-behavior:contain}
+.dside,.dmain{display:contents}
+.dside>*,.dmain>*{flex:0 0 auto;min-width:0}
+.dcover{order:0}.dhave{order:2}.dacts{order:3}.dstats{order:5}.dtlabel{order:6}.dlist{order:7}.dilabel{order:8}.dmeta{order:9}
+.dgrab{display:none}
+/* the muted label colour, inside the panel only (the site-wide --mute #646a87 is 3.08:1 on the panel): #8a90ad is 5.2:1 on the panel surface and
+   4.65:1 on a hovered row; the picked row's violet tint is darker-ish, so there (row + its strip) a lighter #9aa0bb keeps 5.5:1. Set on the body and the footer,
+   not on #detail: the flying copy of the card lives in #dPanel and must keep the card's own colours. */
+#dBody,#dfoot{--mute:#8a90ad}
+.drow.on,.dstrip{--mute:#a8aec8}
+/* wide screens: the panel opens out of the card that was clicked and closes back into it (js dFlyOpen / dFlyBack, Web
+   Animations; the panel is moved and clipped, never scaled). .fly: the CSS float-in/out is off (one motion at a time); .flyout: closing,
+   clicks go to the page under it; .dpicfly: the card's picture is flying (.dshr); .dsrc: the card the panel stands in for; .dghost: the
+   copy of that card the move starts from / ends on */
+.detail.fly,.detail.fly .dpanel{animation:none}
+.detail.fly .dpanel{transform-origin:0 0}
+.detail.flyout{pointer-events:none}
+.card.dsrc{opacity:.001;pointer-events:none} /* (not visibility:hidden: Safari/WebKit drops a hidden card's painted picture and repaints it late when it shows again, so the card landed dark for a few frames) */
+.dghost{position:absolute;z-index:6;margin:0;transform-origin:0 0;pointer-events:none;content-visibility:visible;animation:none!important;transition:none!important}
+.dghost *{animation:none!important;transition:none!important}
+/* .dgp: the card's picture flies on its own layer (.dshr), the copy keeps only the card's words, tag and buttons over it */
+.dghost.dgp,.dghost.dgp .bc-cov{background:transparent!important}
+.dghost.dgp .bc-img{visibility:hidden}
+.dghost.dgp .bc-body{background:var(--s1);border-radius:0 0 calc(var(--r-card) - 1px) calc(var(--r-card) - 1px)}
+/* the flying picture (js dShared): in the panel, above its cover and below the cover's title / badge, the close button and the card copy;
+   one scale for both axes (its background-size is set in px), its shade comes in as it lands (the panel cover's own shade) */
+.dshr{position:absolute;z-index:2;margin:0;pointer-events:none;background-color:var(--s2);background-position:center;background-repeat:no-repeat;overflow:hidden}
+.dshr{background-size:cover}.dshc{position:absolute;inset:0;background:center/cover no-repeat}
+.dshade{position:absolute;inset:0;background:linear-gradient(rgba(27,31,47,.05) 15%,rgba(27,31,47,.6) 60%,var(--s1) 100%)}
+.detail.dpicfly .dcover{background:transparent!important}.detail.dpicfly .dcover::before{opacity:0} /* (while the picture flies the cover box is see-through: whatever order a browser paints the layers in, nothing dark covers the flying picture) */
+.detail.dpicfly .dcovfx{visibility:hidden}
+.detail.dpicfly .dhead{z-index:3}
+.detail.dlate .dchips{animation:fadeIn .24s ease-out .12s backwards} /* (the panel's badge comes in as the card's tag goes) */
+/* .dlate (opened from a card): the content comes in once the window has mostly opened, the difficulty rows one after another */
+.detail.dlate .dhead,.detail.dlate .dacts{animation-duration:.36s;animation-delay:.1s}
+.detail.dlate .dhave,.detail.dlate .dlabel,.detail.dlate .dmeta{animation:dRise .32s var(--ease) .18s backwards}
+.detail.dlate .dlist .drow,.detail.dlate .dlist .dstrip.first{animation-delay:calc(.16s + min(var(--i,0) * 25ms,110ms))}
+/* (everything has landed about .55s after the click: the rows start at .16s, 25ms apart, the stagger stops at .11s however many rows there are, each takes .28s) */
+@media (min-width:900px){
+  .dpanel{width:min(1100px,100%);height:min(92vh,780px);height:min(92svh,780px)} /* (a fixed height: opening "More details" never moves the panel; the columns scroll inside it. svh, not dvh: Safari's toolbar coming or going right after it lands must not resize it, which made it drift up) */
+  .dbody{display:grid;grid-template-columns:minmax(300px,320px) minmax(0,1fr);grid-template-rows:minmax(0,1fr);overflow:hidden}
+  .dside,.dmain{display:flex;flex-direction:column;min-height:0;overflow:auto;overscroll-behavior:contain}
+  .dside{border-right:1px solid rgba(255,255,255,.06)}
+  /* the information column scrolls under a soft fade at its bottom edge (sticky, so it stays at the edge while there is more below; the blank padding under the last row lies beneath it at the end) */
+  .dside::after{content:"";order:99;position:sticky;bottom:0;flex:0 0 28px;height:28px;margin-top:-28px;z-index:1;background:linear-gradient(rgba(27,31,47,0),var(--s1));pointer-events:none}
+  .dside .dmeta{padding-bottom:32px}
+  .dside .dacts{z-index:2}
+  .dextra .dkv{min-height:28px;padding:2px 0}
+  .dextra{display:flex;flex-direction:column} /* (rating and nominators first: on a short screen they are what the column's end would hide; the DOM order, which phones and keyboards follow, is unchanged) */
+  .dextra .dkrate{order:-2}.dextra .dknom{order:-1}
+  @media (max-height:800px){.dcover{min-height:120px}.dhead{padding-top:46px;padding-bottom:12px}.dacts{padding-bottom:14px}.dilabel{padding-top:2px}}
 }
-.dcover{min-height:200px;background-color:var(--s2);animation:none}
-.dcover::before{background:linear-gradient(rgba(27,31,47,0) 35%,var(--s1) 100%)}
-.dhead{padding:20px 22px 8px;animation:dRise .45s var(--ease) .05s backwards}
-.dhead b{font-size:26px;font-weight:800;letter-spacing:-.6px;line-height:1.1}
-.dhead span{color:var(--dim);font-weight:500}
-.dhead small{color:var(--dim)}
-.dhead small .mlink{color:var(--txt);font-weight:700}
-.dclose{background:rgba(21,24,37,.72)}
-.dchips{padding:4px 22px 12px;animation:dRise .45s var(--ease) .09s backwards}
-.dchips em{border-radius:var(--r-tag);background:var(--s2);font-size:11.5px;font-weight:700;color:var(--dim)}
-.dchips em[class*="st-"]{color:var(--bg);text-transform:uppercase;letter-spacing:.6px}
+@media (max-width:700px){
+  .detail{place-items:end stretch;padding:0}
+  .dpanel{width:100%;max-height:94vh;max-height:94svh;border-radius:6px 6px 0 0;border-bottom:0;animation:dSheet .34s var(--ease)}
+  .detail.out .dpanel{animation:dSheetOut .18s ease-in forwards}
+  .dgrab{display:block;position:absolute;top:0;left:0;right:0;height:26px;z-index:3;touch-action:none}
+  .dgrab::after{content:"";position:absolute;top:8px;left:50%;width:44px;height:5px;margin-left:-22px;border-radius:3px;background:rgba(255,255,255,.55)}
+  .dcover{touch-action:none}
+}
+/* cover: the status badge top left, the title (2 lines), artist and mapper (1 line each, the full text in the tooltip) at the bottom */
+.dcover{position:relative;min-height:172px;display:flex;align-items:flex-end;background:var(--s2) center/cover no-repeat}
+.dcover::before{content:"";position:absolute;inset:0;background:linear-gradient(rgba(27,31,47,.05) 15%,rgba(27,31,47,.6) 60%,var(--s1) 100%)}
+/* the card's picture while the larger cover loads (js dCoverFx): above the cover, with the same shade, so it can fade out */
+.dcovfx{position:absolute;inset:0;background:center/cover no-repeat;pointer-events:none}
+.dcovfx::after{content:"";position:absolute;inset:0;background:linear-gradient(rgba(27,31,47,.05) 15%,rgba(27,31,47,.6) 60%,var(--s1) 100%)}
+/* the close button belongs to the PANEL (a direct child of #dPanel, first in tab order): 44px, solid, in the top-right corner at every width, above both
+   columns / the cover / the table's sticky header (z 4; the Download menu is 5 and the flying card copy 6, so it never shows over the card shape while the panel is still growing).
+   It stays put while the content scrolls. Violet on hover (the one accent), pressed a little smaller, a clear ring on keyboard focus */
+.dclose{position:absolute;top:10px;right:12px;z-index:4;width:44px;height:44px;border-radius:10px;background:var(--s3);border:1px solid rgba(255,255,255,.18);color:var(--txt);box-shadow:0 2px 10px rgba(0,0,0,.45);touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background var(--t) ease-out,border-color var(--t) ease-out,box-shadow var(--t) ease-out,transform var(--t) ease-out,opacity .1s}
+.dclose svg{width:20px;height:20px;stroke-width:2.2}
+@media (hover:hover){.dclose:hover{background:#58427f;border-color:var(--vio);color:#fff}}
+.dclose:active{background:#58427f;border-color:var(--vio);transform:scale(.96)}
+.dclose:focus-visible{outline:2px solid var(--vio);outline-offset:3px;box-shadow:0 0 0 7px rgba(194,107,255,.28),0 2px 10px rgba(0,0,0,.45)}
+@keyframes dClosePop{from{opacity:0;transform:scale(.85)}}
+.detail.dlate .dclose{animation:dClosePop .22s var(--ease) .22s backwards}
+.detail.flyout .dclose{opacity:0}
+.dchips{position:absolute;z-index:3;top:16px;left:24px;right:64px;display:flex;flex-wrap:wrap;gap:6px;pointer-events:none}
+.dchips em{font-style:normal;font-size:12px;font-weight:700;line-height:1;padding:5px 9px;border-radius:var(--r-tag);background:rgba(21,24,37,.7);color:var(--txt);text-transform:uppercase;letter-spacing:.6px}
+.dchips em[class*="st-"]{color:var(--bg)}
 .dchips .st-ranked,.dchips .st-approved{background:var(--teal)!important}.dchips .st-loved{background:#f19ac4!important}.dchips .st-qualified{background:var(--ice)!important}.dchips .st-pending,.dchips .st-wip{background:var(--brz)!important}
-.dacts{padding:0 22px 12px;animation:dRise .45s var(--ease) .12s backwards}
-#dPrev{background:var(--vio);border-color:var(--vio);color:var(--vio-dk);font-weight:700}
-.dstats{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;padding:0 22px 14px;animation:dRise .45s var(--ease) .15s backwards}
-.dstat{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 2px;border-radius:var(--r-ctl);background:var(--s2)}
-.dstat small{font-size:9.5px;font-weight:700;letter-spacing:.8px;color:var(--mute)}
-.dstat b{font-size:16px;font-weight:800}
-.dvol{margin:0 22px 12px;border-radius:var(--r-ctl);background:var(--s2)}
-.dlabel{padding:4px 22px 8px;font-size:10.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--mute)}
-.dlist{padding:0 16px 16px;gap:4px}
-.drow{min-height:50px;padding:8px 12px;border:0;border-left:3px solid transparent;border-radius:var(--r-ctl);background:var(--s2);transition:background var(--t) ease-out,border-color var(--t) ease-out,transform .25s var(--ease)}
-@media (hover:hover){.drow:hover{background:var(--s3);transform:translateX(3px)}}
-.drow.on{border-color:var(--vio);background:var(--s3)}
-.star{border-radius:var(--r-tag);font-size:12px;font-weight:800;min-width:58px}
-.dname b{font-size:14.5px;font-weight:700}
-.dfoot{border-top:1px solid var(--bd);padding:12px 16px calc(14px + env(safe-area-inset-bottom))}
-.dfoot .btn{height:46px;font-size:15px}
+.dchips em[class*="st-"]:not(.st-ranked):not(.st-approved):not(.st-loved):not(.st-qualified):not(.st-pending):not(.st-wip){background:rgba(21,24,37,.7)!important;color:var(--txt)}
+.dchips .nsfw{background:rgba(255,77,94,.85);color:#fff}
+.dhead{position:relative;display:flex;flex-direction:column;gap:4px;min-width:0;padding:56px 24px 16px;width:100%;animation:dRise .45s var(--ease) .05s backwards}
+.dhead b{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;font-size:22px;font-weight:700;letter-spacing:-.4px;line-height:1.2}
+.dhead span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt);opacity:.8;font-weight:500;font-size:14px}
+.dhead small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dim);font-size:13px}
+.dhead small .mlink{color:var(--txt);font-weight:600}
+/* actions: one row that doesn't wrap. Listen is tinted with the accent, Share and Download are quiet; narrow: Share, then Download, shrink to their icons */
+.dacts{position:relative;container-type:inline-size;display:flex;align-items:center;gap:8px;padding:4px 24px 20px;animation:dRise .45s var(--ease) .12s backwards}
+.dacts .btn{flex:0 0 auto;min-height:38px;padding:0 12px;font-size:13px;gap:7px;border-color:rgba(255,255,255,.09);color:var(--dim);overflow:hidden}
+.dacts .btn svg{flex:0 0 auto;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.dacts .btn .btxt{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.dacts .btn .bic{font-size:12px}
+#dPrev{flex:1 0 auto;min-width:84px;justify-content:center;background:rgba(194,107,255,.15);border-color:rgba(194,107,255,.35);color:#e2c2ff;font-weight:700}
+.dacts .ddl{flex:0 1 auto;min-width:0;display:flex}
+.dacts .ddl summary{flex:0 1 auto;min-width:0}
+.dacts .ddl summary{list-style:none;cursor:pointer;user-select:none;-webkit-user-select:none}
+.ddl summary::-webkit-details-marker{display:none}
+.dacts .btn .chev{width:14px;height:14px;opacity:.7;transition:transform var(--t) ease-out}
+.ddl[open] .chev{transform:rotate(180deg)}
+@media (hover:hover){.dacts .btn:not(:disabled):hover{background:rgba(255,255,255,.06);color:var(--txt)}.dacts #dPrev:hover{background:rgba(194,107,255,.24);color:#fff}}
+@container (max-width:340px){#dShare .btxt{display:none}#dShare{padding:0 11px}}
+@container (max-width:300px){.dacts{gap:6px}.dacts .btn{padding:0 10px}#dShare{padding:0 10px}.dlsum>svg:first-child{display:none}}
+@container (max-width:240px){.dlsum .btxt,.dlsum .chev{display:none}.dlsum>svg:first-child{display:block}.dlsum{padding:0 11px}}
+@container (min-width:420px){#dPrev{flex:0 0 auto;min-width:120px}}
+/* the Download menu opens over what is below it (it never pushes the row apart) */
+.ddlmenu{position:absolute;z-index:5;left:24px;right:24px;top:calc(100% - 14px);display:flex;flex-direction:column;gap:4px;padding:8px;border-radius:6px;background:var(--s2);border:1px solid rgba(255,255,255,.09);box-shadow:0 18px 40px rgba(0,0,0,.5)}
+.ddlmenu a{display:flex;justify-content:space-between;gap:10px;min-height:44px;align-items:center;padding:0 12px;border-radius:5px;color:inherit;text-decoration:none;background:rgba(255,255,255,.05);font-size:14px}
+.ddlmenu a small{color:var(--dim);font-size:12px}
+.ddlmenu a:active{background:rgba(255,255,255,.12)}
+.dlsum{border-color:rgba(255,255,255,.09)}
+/* "downloaded" note: a quiet line, amber when a newer version is out */
+.dhave{display:flex;align-items:center;gap:10px;margin:0 24px 14px;padding:8px 10px;border-radius:var(--r-card);background:rgba(143,218,211,.07);border:0}
+.dhave .dhok{width:20px;height:20px;font-size:12px;background:var(--teal);color:#06281f}
+.dhave .dhtx b{font-size:13px;color:var(--txt)}
+.dhave .dhtx small{font-size:12px}
+.dhave.upd{background:rgba(255,184,77,.09);border:0}
+@media (max-width:520px){.dhave .btn{width:auto}}
+@media (min-width:900px){.dhave{flex-wrap:wrap}.dhave .dhtx{flex:1 1 150px}.dhave .btn{width:100%}}
+.dmvol{padding:14px 0 0}
+.dmvol .dml{margin:0 0 2px}
+.dvol{margin:0;padding:0}
+.dvol .vrow{min-height:32px;font-size:13px}
+.dlabel{padding:4px 24px 8px;font-size:12px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--mute)}
+.dilabel{padding-top:8px}
+.dempty{color:var(--dim);padding:18px;text-align:center;font-size:14px}
+/* set information: four calm rows, then "More details". Key 12px muted, value 13px; one hairline (above the toggle), no boxes */
+.dmeta{padding:0 24px 12px}
+.dorig{display:flex;flex-direction:column;gap:2px;margin:0 0 12px;color:var(--mute);font-size:13px;line-height:1.4}
+.dorig:empty{display:none}
+.dorig span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dkvs{margin:0}
+.dkv{display:grid;grid-template-columns:92px minmax(0,1fr);gap:12px;align-items:center;min-height:32px;padding:4px 0;font-size:13px;line-height:1.5}
+.dkv dt{color:var(--mute);font-size:12px;font-weight:500}
+.dkv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.dwho{display:flex;align-items:center;gap:8px;min-width:0}
+.dwho .cav,.dgrp{flex:0 0 auto}
+.dwho .cav,.dnoms .cav{width:22px;height:22px;font-size:12px;margin:0;vertical-align:baseline}
+.dwho .mlink,.dnoms .mlink{font-weight:600}
+.dgrp,.dmnom small{padding:0;background:none;font-size:12px;font-weight:600;color:var(--mute);letter-spacing:.3px}
+.dnoms .dmnom{text-decoration:none}
+.dst{display:inline-flex;align-items:center;gap:8px;font-weight:600}
+.dst i{width:7px;height:7px;border-radius:50%;background:var(--mute)}
+.dst[data-st=ranked] i,.dst[data-st=approved] i{background:var(--teal)}.dst[data-st=loved] i{background:#f19ac4}.dst[data-st=qualified] i{background:var(--ice)}.dst[data-st=pending] i,.dst[data-st=wip] i{background:var(--brz)}
+.dsd{color:var(--dim);font-weight:400;white-space:pre-wrap}
+.dfacts{display:flex;flex-direction:column;gap:6px;margin-top:8px;color:var(--dim);font-size:13px;line-height:1.5}
+.dfacts:empty{display:none}
+.dnum{display:flex;flex-wrap:wrap;gap:2px 16px;font-variant-numeric:tabular-nums}
+.dnum>span{white-space:nowrap}
+.dnum i{font-style:normal;font-size:12px;margin-right:6px;color:var(--mute)}
+.dsr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.dlink{padding:0;border:0;background:none;color:inherit;font:inherit;cursor:pointer;text-align:left}
+@media (hover:hover){.dlink:hover{color:var(--txt);text-decoration:underline}}
+.dmorebtn{display:flex;align-items:center;gap:6px;width:100%;margin-top:14px;padding:12px 0 8px;border:0;border-top:1px solid rgba(255,255,255,.06);background:none;color:var(--dim);font-size:13px;font-weight:600;cursor:pointer;text-align:left}
+.dmorebtn[hidden]{display:none}
+.dmore.flat .dmvol{margin-top:10px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)}
+.dmorebtn svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s ease}
+.dmorebtn[aria-expanded=true] svg{transform:rotate(180deg)}
+@media (hover:hover){.dmorebtn:hover{color:var(--txt)}}
+.dmore{display:grid;grid-template-rows:0fr;visibility:hidden;transition:grid-template-rows .2s ease,visibility 0s .2s}
+.dmore.open{grid-template-rows:1fr;visibility:visible;transition:grid-template-rows .2s ease}
+.dmorein{min-height:0;overflow:hidden}
+.dmorein>.dkvs:first-child{padding-top:2px}
+.dkv .dmrate{display:inline-flex;align-items:baseline;gap:8px;padding:0;background:none;font-size:13px;font-weight:600;color:var(--txt)}
+.dmrate b{white-space:nowrap}
+.dmrate small{color:var(--dim);font-weight:400;font-size:12px}
+.dnoms{display:flex;flex-wrap:wrap;gap:4px 14px}
+.dkv.tags{display:block}.dkv.tags dt{margin-bottom:4px}
+.dmore .dmtagrow{margin:0;gap:2px 12px}
+.dmore .dmtag.plain{display:inline;height:auto;min-height:0;padding:0;border:0;border-radius:0;background:none;color:var(--dim);font-size:13px;line-height:1.7;text-align:left;white-space:normal;overflow-wrap:anywhere}
+@media (hover:hover){.dmore .dmtag.plain:hover{color:var(--txt);text-decoration:underline}}
+.dmore .dmtags{padding:12px 0 0}
+.dmore .dml{margin:0 0 8px;color:var(--mute);font-size:12px;font-weight:500;letter-spacing:0;text-transform:none}
+.dmore .dmcat{min-width:0;margin-right:2px;color:var(--mute);font-size:12px;font-weight:500}
+.dmore .dmtagrow:has(.dmcat){gap:6px;margin-bottom:6px}
+.dmore .dmtag:not(.plain){height:24px;padding:0 9px;border:0;border-radius:12px;background:rgba(255,255,255,.05);color:var(--dim);font-size:12px}
+@media (hover:hover){.dmore .dmtag:not(.plain):hover{background:rgba(255,255,255,.1);color:var(--txt)}}
+.dmore .tagtip{margin:6px 0 0;font-size:12px;color:var(--mute);min-height:1.5em}
+/* the difficulty table: plain numbers, no grid, hover tint, the picked row accented; the rest is in the strip under it */
+/* the heading of the choice: a real heading (primary colour, 15px / 600, not a muted caption) with the number of difficulties as a quiet suffix */
+.dtlabel{display:flex;align-items:center;gap:10px;padding:14px 24px 8px;font-size:15px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--txt)}
+.dcount{display:inline-block;min-width:22px;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.07);color:var(--dim);font-size:12px;font-weight:600;line-height:1.35;text-align:center;font-variant-numeric:tabular-nums}
+.dcount:empty{display:none}
+.dlist{container-type:inline-size;padding:0 16px 24px}
+/* >=900px: the top of the right zone is a fixed band (the heading on the left, the close button on the right); only the table scrolls under it */
+@media (min-width:900px){
+  .dmain{overflow:hidden}
+  .dtlabel{display:flex;align-items:center;height:64px;padding:0 76px 0 28px}
+  .dlist{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding-top:0}
+}
+.dtab{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+.dtab th{position:sticky;top:0;z-index:2;padding:8px;background:var(--s1);border:0;color:var(--mute);font-size:12px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;text-align:right;white-space:nowrap}
+/* below 900px the table is not in a zone of its own: its sticky header would stick under the floating button, so there it scrolls away with the rows */
+@media (max-width:899px){.dtab th{position:static}}
+/* a row is 52px: 48px of row and a 2px gap above and below (a transparent border, the background and the inset lines stop at the padding edge) */
+.dtab td{height:52px;padding:0 8px;border:0;border-block:2px solid transparent;background-clip:padding-box;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.dtab th.c-star,.dtab th.c-name,.dtab td.c-star,.dtab td.c-name{text-align:left}
+.dtab .c-star{width:1%;padding-left:12px}
+.dtab .c-name{width:100%;max-width:0;overflow:hidden}
+.dtab .c-n{min-width:44px}
+/* the choice: every row carries a radio mark and answers the pointer. --rl: the line round the row (inset lines, drawn on the cells so they follow the corners), --bar: the
+   width of the left edge, --rb: the bottom line (none while the picked row's strip is open under it, the two are one card). The picked row is the strongest thing in the panel:
+   a solid violet tint, a 3px bar, a violet outline, a soft glow, a 16px / 700 name, bigger star chip, primary-colour figures; the others are 14px / 600 with dimmer figures. */
+#dBody{--selbg:#3e2f5b}
+.drow{--rl:transparent;--bar:1px;--rb:1px;cursor:pointer;scroll-margin-top:36px}
+.drow td{background-color:transparent;box-shadow:inset 0 1px 0 var(--rl),inset 0 calc(-1 * var(--rb)) 0 var(--rl);transition:background-color 140ms ease-out,box-shadow 140ms ease-out}
+.drow td:first-child{border-radius:8px 0 0 8px;box-shadow:inset 0 1px 0 var(--rl),inset 0 calc(-1 * var(--rb)) 0 var(--rl),inset var(--bar) 0 0 var(--rl)}
+.drow td.c-last{border-radius:0 8px 8px 0;box-shadow:inset 0 1px 0 var(--rl),inset 0 calc(-1 * var(--rb)) 0 var(--rl),inset -1px 0 0 var(--rl)}
+@media (hover:hover){.drow:not(.on):hover{--rl:rgba(194,107,255,.5)}.drow:not(.on):hover td{background-color:rgba(194,107,255,.1)}}
+.drow.on{--rl:var(--vio);--bar:3px;box-shadow:0 0 22px rgba(194,107,255,.2)}
+.drow.on:has(+ .dstrip){box-shadow:0 -10px 20px -8px rgba(194,107,255,.28)} /* (the picked row and its strip are one card: the glow above the row, below the strip; neither spills onto the other) */
+.drow.on td,.drow.on:hover td{background-color:var(--selbg)}
+.drow.on:has(+ .dstrip){--rb:0px}
+.drow.on:has(+ .dstrip) td{border-bottom-width:0}
+.drow.on:has(+ .dstrip) td:first-child{border-bottom-left-radius:0}.drow.on:has(+ .dstrip) td.c-last{border-bottom-right-radius:0}
+.drow:has(.dn:focus-visible){--rl:var(--txt)}
+.drow:has(.dn:focus-visible) td{box-shadow:inset 0 2px 0 var(--rl),inset 0 -2px 0 var(--rl)}
+.drow:has(.dn:focus-visible) td:first-child{box-shadow:inset 0 2px 0 var(--rl),inset 0 -2px 0 var(--rl),inset 2px 0 0 var(--rl)}
+.drow:has(.dn:focus-visible) td.c-last{box-shadow:inset 0 2px 0 var(--rl),inset 0 -2px 0 var(--rl),inset -2px 0 0 var(--rl)}
+/* while a pick settles (js pickDiff puts .dpk on the list for the strips' 200 ms): the highlight leaves one row and lands on the other in the same frame (no fades of
+   different lengths on the cells, the glow, the radio, the chip and the name), and rows sliding under a pointer that stands still don't light up as they pass */
+#dList.dpk .drow,#dList.dpk .drow td,#dList.dpk .rad,#dList.dpk .star,#dList.dpk .dn b{transition:none}
+@media (hover:hover){#dList.dpk .drow:not(.on):hover{--rl:transparent;background:none;border-color:transparent}#dList.dpk .drow:not(.on):hover td{background-color:transparent}#dList.dpk .drow:not(.on):hover .rad{border-color:#7a80a3}}
+.dtab .c-star{white-space:nowrap}
+.rad{display:inline-block;position:relative;box-sizing:border-box;width:18px;height:18px;margin-right:10px;border:2px solid #7a80a3;border-radius:50%;vertical-align:middle;transition:background-color 140ms ease-out,border-color 140ms ease-out,box-shadow 140ms ease-out}
+@media (hover:hover){.drow:not(.on):hover .rad{border-color:var(--vio)}}
+.drow.on .rad{background:var(--vio);border-color:var(--vio);box-shadow:0 0 0 3px rgba(194,107,255,.28)}
+.drow.on .rad::after{content:"";position:absolute;left:4.5px;top:1.5px;width:4px;height:8px;border:solid var(--vio-dk);border-width:0 2px 2px 0;transform:rotate(45deg)}
+.star{display:inline-block;min-width:54px;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700;line-height:1.3;text-align:center;white-space:nowrap;vertical-align:middle;transition:box-shadow 140ms ease-out}
+.drow.on .star{min-width:60px;padding:4px 11px;font-size:13px;box-shadow:0 0 0 2px rgba(233,235,247,.28)}
+.dn{display:flex;align-items:baseline;gap:8px;width:100%;min-width:0;padding:0;border:0;background:none;color:var(--txt);font:inherit;text-align:left;cursor:pointer}
+.dn:focus-visible{outline:2px solid var(--vio);outline-offset:3px;border-radius:3px}
+.dn b{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:14px;font-weight:600;transition:font-size 140ms ease-out}
+.drow.on .dn b{font-size:16px;font-weight:700}
+@supports selector(:has(*)){.dn:focus-visible{outline:none}}
+.dn small{flex:0 99 auto;min-width:0;max-width:45%;overflow:hidden;text-overflow:ellipsis;color:var(--mute);font-size:12px}
+.c-n b{display:block;font-weight:500;color:var(--dim)}
+.drow.on .c-n b{color:var(--txt);font-weight:600}
+.c-n.none b{color:var(--mute);font-weight:400}
+.drow.on .c-bpm,.drow.on .c-len{color:var(--txt)}
+.c-mob,.dtab td.c-guest{display:none}
+/* the strip: opens under the picked row (the grid row goes 0fr -> 1fr), bars on the left, the figures on the right */
+.dstrip{box-shadow:0 10px 20px -8px rgba(194,107,255,.28)}
+.dstrip>td{height:auto;padding:0;border-width:0 0 2px;border-bottom-style:solid;border-bottom-color:transparent;border-radius:0 0 8px 8px;background-color:var(--selbg);background-clip:padding-box;box-shadow:inset 3px 0 0 var(--vio),inset -1px 0 0 var(--vio),inset 0 -1px 0 var(--vio),inset 0 1px 0 rgba(255,255,255,.08);text-align:left;white-space:normal}
+.dsw{display:grid;grid-template-rows:0fr;transition:grid-template-rows .2s ease}
+.dstrip.open .dsw{grid-template-rows:1fr}
+.dsin{min-height:0;overflow:hidden}
+.dsc{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px 40px;padding:4px 20px 18px 23px;opacity:0;transition:opacity .2s ease}
+.dstrip.open .dsc{opacity:1}
+/* a folding strip (the pick has moved on, js dStripTo): no glow, frame, fill or figures from the first frame, only its height closes, so nothing of the old pick is left
+   under its row; js removes it once the height is 0 (no border or padding left, and on the narrow table a -2px margin cancels the row gap it would otherwise
+   keep apart from the next row's: taking it away moves nothing) */
+.dstrip:not(.open){margin-bottom:-2px;border-width:0;background:none;box-shadow:none}
+.dstrip:not(.open)>td{border-bottom-width:0;background-color:transparent;box-shadow:none}
+.dstrip:not(.open) .dsc{transition:none}
+.dsbars{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 28px;align-content:start}
+.dsb{display:grid;grid-template-columns:auto 1fr;align-items:baseline;gap:6px 8px}
+.dsl{color:var(--mute);font-size:12px;font-weight:600;letter-spacing:.6px}
+.dsb b{justify-self:end;font-size:13px;font-weight:600;color:var(--txt)}
+.dsb i{grid-column:1/-1;position:relative;height:6px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
+.dsb i::after{content:"";position:absolute;inset:0 auto 0 0;width:calc(var(--p,0) * 100%);border-radius:3px;background:var(--lav)}
+.dsobj{margin:0;display:flex;flex-direction:column;gap:6px;align-content:start;font-size:13px}
+.dsobj>div{display:flex;justify-content:space-between;align-items:baseline;gap:16px}
+.dsobj dt{color:var(--mute)}
+.dsobj dd{white-space:nowrap}
+.dsobj dd{margin:0;color:var(--txt);font-variant-numeric:tabular-nums}
+.dsid{color:var(--ice);text-decoration:none}
+@media (hover:hover){.dsid:hover{text-decoration:underline}}
+.dlist .dstrip.first{animation:vSide .28s var(--ease) backwards;animation-delay:calc(.08s + min(var(--i,0) * 25ms,110ms))}
+@container (max-width:560px){.dsc{grid-template-columns:minmax(0,1fr);gap:14px;padding-right:16px}.dsbars{grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.dsobj{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 24px}.dsobj>.dsidr{grid-column:1/-1}}
+/* narrow table (a phone, or a narrow panel): a row is two lines, star + name + "3:10 · 180 BPM" over CS AR OD HP; the picked row's strip opens under it */
+@container (max-width:480px){
+  .dtab,.dtab tbody{display:block}
+  .dtab thead{display:none}
+  .drow{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:3px 10px;margin-block:2px;padding:11px 12px 10px;border:1px solid transparent;border-radius:8px;transition:background-color 140ms ease-out,border-color 140ms ease-out,box-shadow 140ms ease-out}
+  .drow::before{content:"";order:4;flex:0 0 100%;height:0}
+  .drow.on,.drow.on:hover{background:var(--selbg);border-color:var(--vio);box-shadow:inset 3px 0 0 var(--vio),0 0 22px rgba(194,107,255,.2)}
+  @media (hover:hover){.drow:not(.on):hover{background:rgba(194,107,255,.1);border-color:rgba(194,107,255,.5)}}
+  .drow:has(.dn:focus-visible){border-color:var(--txt);box-shadow:0 0 0 1px var(--txt)}
+  .drow.on:has(+ .dstrip){margin-bottom:0;border-bottom-color:transparent;border-bottom-left-radius:0;border-bottom-right-radius:0;box-shadow:inset 3px 0 0 var(--vio),0 -10px 20px -8px rgba(194,107,255,.28)}
+  .dtab .drow td,.dtab .drow.on td,.dtab .drow:hover td{display:block;height:auto;padding:0;border:0;border-radius:0;background:none;box-shadow:none;text-align:left}
+  .dtab .drow:has(.dn:focus-visible) td{border:0;border-radius:0;background:none;box-shadow:none}
+  .dtab .drow td.c-star{order:1;width:auto}
+  .rad{display:none} /* (no radio mark on a two-line row: there is no room, the bar, the outline and the bold name say which is picked, and the pills at the top of a phone sheet carry the choice) */
+  .drow.on .star{min-width:54px;padding:4px 8px}
+  .dtab .drow td.c-name{order:2;flex:1 1 0;min-width:0;width:auto;max-width:none}
+  .dtab .drow td.c-mob{order:3;display:block;margin-left:auto;color:var(--dim);font-size:13px;font-weight:500}
+  .dtab .drow td.c-bpm,.dtab .drow td.c-len{display:none}
+  .dn small{display:none} /* (the guest's credit is on line 2, in .c-guest, before CS) */
+  .dtab .drow td.c-guest{order:4;display:block;flex:0 0 calc(100% - 64px);min-width:0;margin-left:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--mute);font-size:12px}
+  .dtab .drow td.c-cs,.dtab .drow td.c-ar,.dtab .drow td.c-od,.dtab .drow td.c-hp{order:5;display:inline-flex;align-items:baseline;gap:5px;min-width:0;margin-right:10px}
+  .dtab .drow td.c-cs{margin-left:64px}
+  .dtab .drow td.c-n::before{content:attr(data-k);color:var(--mute);font-size:12px;font-weight:600;letter-spacing:.3px}
+  .dtab .drow td.c-n b{font-size:13px;color:var(--dim)}
+  .dtab .drow.on td.c-n b,.dtab .drow.on td.c-mob{color:var(--txt)} /* (the picked row: its figures in the primary colour, like the wide table) */
+  .dtab .drow td.c-n.none{display:none}
+  .drow.on:has(.dn:focus-visible){border-color:var(--txt);box-shadow:inset 3px 0 0 var(--vio),0 0 0 1px var(--txt)} /* (after the strip rules above: a keyboard ring on the picked row too) */
+  .dstrip{display:block;margin-bottom:2px;background:var(--selbg);border:1px solid var(--vio);border-top:0;box-shadow:inset 3px 0 0 var(--vio),0 10px 20px -8px rgba(194,107,255,.28);border-radius:0 0 8px 8px}
+  .dstrip>td{display:block;border:0;background:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.08);border-radius:0}
+}
+@container (max-width:340px){ /* (320px phones: CS AR OD HP stay on one line, even "4.5 10 9.5 8") */
+  .dtab .drow td.c-cs,.dtab .drow td.c-ar,.dtab .drow td.c-od,.dtab .drow td.c-hp{gap:3px;margin-right:7px}
+  .dtab .drow td.c-hp{margin-right:0}
+}
+/* #dStats is kept (hidden): every figure of the picked difficulty is in its row or in the strip under it */
+.dstats{display:none}
+/* footer: the main buttons, on a plain surface with a soft shade above instead of a border */
+.dfoot{position:relative;flex:0 0 auto;display:flex;gap:8px;padding:14px 24px calc(16px + env(safe-area-inset-bottom));background:var(--s1);box-shadow:0 -16px 20px -16px rgba(0,0,0,.5)}
+.dfoot .btn{height:44px;font-size:14px;overflow:hidden;text-overflow:ellipsis}
+.dfoot .btn.ghost{border-color:rgba(255,255,255,.09);color:var(--dim)}
+@media (hover:hover){.dfoot .btn.ghost:hover{color:var(--txt)}}
+.dfoot .btn.main{flex:1;min-width:0}
+@media (max-width:360px){.dfoot .btn{padding:0 12px}.dfoot .btn .gostar{padding:2px 6px;font-size:11px}}
+.dfoot .btn .gostar{flex:0 0 auto;min-width:0;padding:3px 9px;font-size:12px;box-shadow:0 0 0 2px rgba(21,24,37,.5)} /* (the picked difficulty's star chip before "Preview: …"; the dark ring keeps it apart from the violet button) */
+@media (min-width:701px){.dfoot{justify-content:flex-end}.dfoot .btn{min-width:150px}.dfoot .btn.main{flex:0 1 380px}.dfoot.edfirst #dEdit{flex:0 1 380px}}
+@media (max-width:700px){
+  .dcover{min-height:136px}
+  .dhead{padding:54px 20px 12px}.dhead b{font-size:20px}
+  .dchips{top:14px;left:20px}
+  .dclose{top:8px;right:8px}
+  .dacts{padding:2px 20px 14px}.ddlmenu{left:20px;right:20px}
+  .dhave{margin:0 20px 12px}
+  .dtlabel{padding:14px 20px 4px}.dlist{padding:0 8px 8px}
+  .dilabel{padding:8px 20px 8px}.dmeta{padding:0 20px 20px}.dlabel{padding-left:20px;padding-right:20px}
+  .dfoot{padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
+}
+/* phones: the set information comes right after the cover and the actions, above the difficulties, as compact label/value rows (renderSetMeta
+   draws includes, source, dates, rating and nominators in .dextra, always visible, at every width: on a wide screen they fill the information column, which scrolls); only the tags and the volume stay behind "More details" */
+.dextra:empty{display:none}
+/* phones: the picked row's CS AR OD HP are in the row itself, so the strip under it holds only the extra facts (circles, sliders, spinners, combo, drain time, ID); no extra facts (a local file): no strip at all */
+@media (max-width:700px){
+  .dsbars{display:none}
+  .dstrip:not(:has(.dsobj)){display:none}
+  .drow.on:has(+ .dstrip:not(:has(.dsobj))){margin-bottom:2px;border-bottom-color:var(--vio);border-radius:8px;box-shadow:inset 3px 0 0 var(--vio),0 0 22px rgba(194,107,255,.2)}
+  .drow.on:has(.dn:focus-visible):has(+ .dstrip:not(:has(.dsobj))){border-color:var(--txt);box-shadow:inset 3px 0 0 var(--vio),0 0 0 1px var(--txt)}
+}
+@media (max-width:700px){
+  .dilabel{display:none}
+  .dmeta{order:4;padding:0 20px 6px}
+  .dorig{margin:0 0 8px}
+  .dmeta .dkv{grid-template-columns:92px minmax(0,1fr);gap:8px;align-items:start;min-height:0;padding:3px 0;line-height:1.4}
+  .dmeta .dkv dt{line-height:20px}
+  .dmeta .dkv dd{min-height:20px;display:flex;align-items:center;flex-wrap:wrap}
+  .dmeta .dkv.tags{display:block}
+  .dfacts{margin:6px 0 2px;gap:4px}
+  .dnoms{gap:2px 12px}
+  .dmorebtn{margin-top:8px;padding:10px 0 6px}
+  .dtlabel{padding-top:10px}
+}
 @media (max-width:900px){
   #select .searchbar{flex-wrap:wrap;height:auto;padding-top:10px;padding-bottom:8px;gap:8px}
   .sbq{flex:1 1 100%}
   #select #filters{flex:1 1 auto;overflow-x:auto}
   .sbtools .mirror .lbl{display:none}
 }
+
+/* ---- touch targets: the links in the panel get a taller hit area through padding (the negative margin keeps the look): --hp is 3px with a pointer
+   (>= 24px tall), 5px on phones (>= 28px). The cover's mapper line clips its content, so it carries the padding itself too ---- */
+#dBody{--hp:3px}
+.dwho .mlink,.dnoms .dmnom{padding-block:var(--hp);margin-block:calc(-1 * var(--hp))}
+.dhead small{--hq:calc(var(--hp) + 1.5px);position:relative;padding-block:var(--hq);margin-block:calc(-1 * var(--hq))} /* (relative: above the artist line, which is translucent and so paints over a plain block) */
+.dhead small .mlink{padding-block:var(--hq)} /* (inline, so a long name still ends in "…"; an inline box is as tall as its font, hence the extra 1.5px) */
+.dlink,.dsid{display:inline-block;line-height:1.5;padding-block:var(--hp);margin-block:calc(-1 * var(--hp))}
+.dmore .dmtag.plain{display:inline-block;padding-block:var(--hp);margin-block:calc(-1 * var(--hp))}
+.dmore .dmtagrow{row-gap:calc(2 * var(--hp))}
+.dnoms,.dfacts{row-gap:calc(2 * var(--hp))}
+.dvol .vrow input{height:36px}
+@media (max-width:700px){
+  #dBody{--hp:5px}
+  .dacts .btn{min-height:44px}
+  .dmorebtn{min-height:44px;margin-top:4px;padding-block:0}
+  .dmore .dmtag:not(.plain){height:28px}
+}
+/* the grab handle: while the sheet is scrolled, a solid band (the sheet's own colour, 48px, fading out below it) carries the handle and the close button, so the text passing under them stays clean; at the top they float over the cover as before */
+@media (max-width:700px){
+  .dgrab::before{content:"";position:absolute;left:0;right:0;top:0;height:60px;background:linear-gradient(var(--s1) 80%,rgba(27,31,47,0));opacity:0;transition:opacity .15s;pointer-events:none}
+  .dpanel.dscr .dgrab::before{opacity:1}
+}
+/* phones: the rail of difficulty pills under Listen / Share / Download (js dRailBuild): one 44px pill per difficulty (star chip + short name), the picked one filled violet,
+   ringed and a little bigger; scroll-snap, the edges fade while it scrolls that way (.fl / .fr set from js); 56px in all. Not on wider screens, not for a single difficulty. */
+.drail{display:none}
+@media (max-width:700px){
+  .drail{order:3;--fl:0px;--fr:0px;display:flex;align-items:center;gap:8px;padding:6px 20px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scroll-padding-inline:20px;scrollbar-width:none;
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 var(--fl),#000 calc(100% - var(--fr)),transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 var(--fl),#000 calc(100% - var(--fr)),transparent 100%)}
+  .detail.dlate .drail{animation:dRise .32s var(--ease) .18s backwards} /* (comes in with the rest of the content, like Set information) */
+  .drail::-webkit-scrollbar{display:none}
+  .drail.fl{--fl:28px}.drail.fr{--fr:28px}
+  .drail[hidden]{display:none}
+  .dpill{flex:0 0 auto;scroll-snap-align:center;display:inline-flex;align-items:center;gap:8px;max-width:240px;height:44px;padding:0 13px 0 7px;border:1px solid rgba(233,235,247,.26);border-radius:999px;background:transparent;color:var(--txt);font:inherit;font-size:13px;font-weight:600;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background-color 140ms ease-out,border-color 140ms ease-out,box-shadow 140ms ease-out,transform 140ms ease-out}
+  .dpill .star{min-width:0;padding:3px 8px;font-size:12px;box-shadow:none}
+  .dpill .pname{min-width:0;max-width:112px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dpill.on{background:var(--vio);border-color:var(--vio);color:var(--vio-dk);font-size:14px;font-weight:700;box-shadow:0 0 0 3px rgba(194,107,255,.38);transform:scale(1.04)}
+  .dpill.on .star{box-shadow:0 0 0 2px rgba(21,24,37,.55)}
+  .dpill:active:not(.on){background:rgba(194,107,255,.16);border-color:var(--vio)}
+  .dpill:focus-visible{outline:2px solid var(--txt);outline-offset:3px}
+}
+/* a press on the cover's title / artist / mapper line opens the whole text (js: .xp), again folds it */
+.dhead{-webkit-tap-highlight-color:transparent}
+.dhead.xp b{display:block;-webkit-line-clamp:none;line-clamp:none;overflow:visible}
+.dhead.xp span,.dhead.xp small{white-space:normal;overflow:visible;text-overflow:clip}
+.dhead.xp small{padding-block:0;margin-block:0}
 
 /* ===================== redesign: motion on every page ===================== */
 @keyframes vIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
@@ -2163,7 +2697,7 @@ body:has(#select:not([hidden])) #shell{--gut:max(24px,calc(50vw - 800px));max-wi
 @media (hover:hover){a.mcard:hover,.mcard:focus-within{transform:translateY(-3px);border-color:var(--s3);box-shadow:none}a.mcard:hover .mic{transform:rotate(-6deg) scale(1.06)}a.mcard:hover em{transform:translateX(5px)}}
 /* lists everywhere: drafts, projects, difficulty rows, cards */
 .grid>.card{animation:vPop .5s var(--ease) backwards;animation-delay:calc(min(var(--i,0),12) * .035s)}
-.dlist>.drow{animation:vSide .4s var(--ease) backwards;animation-delay:calc(.12s + min(var(--i,0),16) * .03s)}
+.dlist .drow{animation:vSide .28s var(--ease) backwards;animation-delay:calc(.08s + min(var(--i,0) * 25ms,110ms))}
 .drafts>*{animation:vIn .45s var(--ease) backwards}
 /* dialogs, sheets, menus and toasts */
 .mdl{animation:vFade .18s ease-out}
@@ -2477,6 +3011,15 @@ body:has(#player[hidden]) .edtip{display:none}
 #filters.chips{scroll-snap-type:x proximity;scroll-padding-inline:28px}
 #filters.chips>.chip{scroll-snap-align:start}
 @media (min-width:1500px){#select #filters{flex-shrink:0;max-width:calc(100% - 590px)}}
+/* 1500px+: clicking / tabbing / pressing "/" into the search box stretches it (440 -> up to 760px). It takes the free room first, then the chips give way
+   (they scroll, the edge fade shows it); the mirror + refresh stay put. Going back waits .28s so a chip pressed right after the blur (which happens on
+   mousedown) is still under the pointer when the click lands */
+@media (min-width:1500px){
+  #select .sbq{transition:border-color var(--t) ease-out,flex .22s var(--ease) .28s}
+  #select #filters{transition:flex .22s var(--ease) .28s}
+  #select .sbq:focus-within{flex:0 0 clamp(440px,32vw,600px);transition-delay:0s,0s}
+  #select .sbq:focus-within~#filters{flex-shrink:1;transition-delay:0s}
+}
 @media (min-width:901px) and (max-width:1499px){
   #select .searchbar{flex-wrap:wrap;height:auto;row-gap:10px;padding-top:12px;padding-bottom:10px}
   #select .sbq{order:1;flex:1 1 320px;max-width:none}
@@ -2635,3 +3178,527 @@ body:has(#player[hidden]) .edtip{display:none}
   .topnav{order:3;width:100%;margin:0;height:44px;justify-content:space-around}
   .topnav a{flex:1;justify-content:center;padding:0 6px;font-size:14px}
 }
+
+/* touch screens: text fields at 16 px at least, or iOS zooms the page in when one gets the focus (and leaves it zoomed);
+   the pages stay zoomable. The player and the editor lock the zoom instead (player.js lockZoom), so their compact
+   fields keep their size there */
+@media (pointer:coarse){
+  :is(input:not([type=checkbox],[type=radio],[type=range],[type=color],[type=file],[type=button],[type=submit],[type=reset],[type=image]),textarea,select):not(#player *){font-size:16px!important}
+}
+
+/* ---------- Settings: a window floating in the middle of the screen (tabs down the left, the pane scrolls) ---------- */
+.setdim{position:absolute;inset:0;z-index:4;background:rgba(8,10,18,.42);animation:setDimIn .2s var(--ease)}
+@keyframes setDimIn{from{opacity:0}}
+#sheet.setwin{inset:0;margin:auto;max-height:none;width:min(860px,calc(100% - 32px));height:min(640px,calc(100% - 40px));padding:0;z-index:5;
+  display:grid;grid-template-columns:184px 1fr;grid-template-rows:auto 1fr;overflow:hidden;border:1px solid var(--bd);border-radius:8px;box-shadow:0 24px 70px rgba(0,0,0,.6);animation:setWinIn .26s var(--ease)}
+#sheet.setwin[hidden]{display:none}
+@keyframes setWinIn{from{opacity:0;transform:translateY(10px) scale(.98)}}
+#sheet.setwin>*{animation:none}
+#sheet.setwin .sheet-top{grid-column:1/-1;position:static;margin:0;padding:12px 14px 10px 18px;border-bottom:1px solid var(--bd);background:var(--s1)}
+#sheet.setwin .sheet-h{margin:0}
+#sheet.setwin .settabs{grid-column:1;flex-direction:column;flex-wrap:nowrap;gap:2px;margin:0;padding:10px 8px;border-radius:0;background:rgba(255,255,255,.025);border-right:1px solid var(--bd);overflow-y:auto}
+#sheet.setwin .settabs .tab{flex:0 0 auto;height:38px;text-align:left;padding:0 12px;font-size:14px}
+#sheet.setwin .settabs .tab:not(.on):hover{background:rgba(255,255,255,.06);color:var(--txt)}
+#sheet.setwin .setbody{grid-column:2;min-height:0;overflow:auto;overscroll-behavior:contain;padding:4px 20px 22px;touch-action:pan-y}
+#sheet.setwin .spane>.subh:first-child,#sheet.setwin .spane>div>.subh:first-child{margin-top:12px}
+/* upright phones and small windows: nearly the whole screen, the tabs one scrolling row at the top */
+@media (max-width:640px){
+  #sheet.setwin{width:calc(100% - 16px)!important;height:calc(100% - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));margin-top:calc(8px + env(safe-area-inset-top));grid-template-columns:1fr;grid-template-rows:auto auto 1fr;border-radius:8px}
+  #sheet.setwin .settabs{grid-column:1;flex-direction:row;overflow-x:auto;overflow-y:hidden;padding:6px 8px;border-right:0;border-bottom:1px solid var(--bd)}
+  #sheet.setwin .settabs .tab{text-align:center}
+  #sheet.setwin .setbody{grid-column:1;padding:2px 14px 18px}
+}
+/* phones on their side: short, so the bars get thinner */
+@media (max-height:500px) and (min-width:641px){
+  #sheet.setwin{height:calc(100% - 16px);width:min(860px,calc(100% - 16px - env(safe-area-inset-left) - env(safe-area-inset-right)))}
+  #sheet.setwin .sheet-top{padding:8px 12px 6px 16px}
+  #sheet.setwin .settabs{padding:6px}
+  #sheet.setwin .settabs .tab{height:32px;font-size:13px}
+}
+
+/* ---------- timing window (F6) ---------- */
+/* osu!stable's "Timing and Control Points" window in the site's look (the pop-ups' panel, tabs, switches): the selected
+   point on the left, the list on the right, the options and OK / Cancel under them. It floats over the editor and is
+   dragged by its title bar (timingwin.js places it); phones get a full-screen panel with the two halves stacked */
+.twin{position:absolute;z-index:5;left:0;top:0;width:min(900px,calc(100% - 24px));max-height:calc(100% - 24px);display:flex;flex-direction:column;background:linear-gradient(180deg,var(--s2),var(--bg2) 120px);border:1px solid rgba(255,255,255,.09);border-radius:6px;box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 30px 80px rgba(0,0,0,.6);animation:fadeIn .16s ease-out;touch-action:pan-y;color:var(--txt);font-size:13px;overflow:hidden}
+.twin:focus{outline:none}
+.twin::before{content:"";position:absolute;left:22px;right:22px;top:0;height:2px;border-radius:0 0 2px 2px;background:linear-gradient(90deg,transparent,var(--sky),transparent);opacity:.8}
+.twhead{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 16px;border-bottom:1px solid rgba(255,255,255,.07);cursor:move;touch-action:none;flex:0 0 auto}
+.twhead b{flex:1;min-width:0;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.twro{padding:2px 8px;border-radius:var(--r-tag);background:var(--s3);color:var(--dim);font-size:11.5px}
+.twbody{display:grid;grid-template-columns:minmax(270px,330px) minmax(0,1fr);gap:16px;padding:12px 16px 6px;min-height:0;flex:1 1 auto;overflow:auto;overscroll-behavior:contain}
+.twin .tabs{margin:0 0 10px}
+.twin .tab{height:34px}
+.twpane{display:grid;gap:2px;align-content:start}
+.twrow{display:grid;grid-template-columns:minmax(84px,32%) minmax(0,1fr);gap:8px;align-items:center;min-height:42px;color:var(--dim)}
+.twrow>.twlbl{overflow-wrap:anywhere}
+.twin input[type=text],.twin input[type=number]{height:34px;min-width:0;width:100%;padding:0 8px;border-radius:4px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-variant-numeric:tabular-nums}
+.twin input.bad{border-color:var(--red);box-shadow:0 0 0 3px rgba(255,90,110,.18)}
+.twin input:disabled,.twin select:disabled{opacity:.5;cursor:default}
+.twspin{display:flex;gap:4px;align-items:center;min-width:0}
+.twspin input{flex:1}
+.twspin .btn.sm{flex:0 0 auto;width:34px;min-height:34px;padding:0;font-size:16px}
+.twoff{display:flex;flex-direction:column;gap:2px;min-width:0}
+.twts{color:var(--dim);font-size:12px;padding-left:40px}
+.twnow{justify-self:start}
+.twsig{display:flex;flex-direction:column;gap:2px;padding:4px 0}
+.twradio{display:flex;gap:8px;align-items:center;min-height:32px;color:var(--txt);cursor:pointer}
+.twradio input[type=radio]{width:18px;height:18px;margin:0;flex:0 0 auto;accent-color:var(--pink)}
+.twradio input[type=text]{width:58px;flex:0 0 auto}
+.twradio input:disabled+span{opacity:.5}
+.twvol{display:flex;gap:8px;align-items:center;min-width:0}
+.twvol input[type=range]{flex:1;min-width:0;accent-color:var(--pink)}
+.twin .twvol input[type=number]{width:62px;flex:0 0 auto}
+.twplays{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:6px}
+.twplays .btn{padding:0 6px}
+.twsw{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:42px;color:var(--txt);cursor:pointer}
+.twpane .hint{margin:0 0 8px}
+.twright{min-width:0;display:flex;flex-direction:column}
+.twtbl{overflow:auto;height:min(44dvh,330px);border-radius:5px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);overscroll-behavior:contain;touch-action:pan-x pan-y}
+.twtbl table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.twtbl th{position:sticky;top:0;z-index:1;background:var(--s3);color:var(--dim);font-weight:600;font-size:11.5px;text-align:left;padding:7px 8px;white-space:nowrap}
+.twtbl td{padding:0 8px;height:30px;white-space:nowrap;border-top:1px solid rgba(255,255,255,.05)}
+.twtbl tbody tr{cursor:pointer}
+@media (hover:hover){.twtbl tbody tr:not(.twempty):hover{background:rgba(255,255,255,.06)}}
+.twtbl tbody tr.on,.twtbl tbody tr.on:hover{background:rgba(194,107,255,.22)}
+.twtbl td.hint{white-space:normal;padding:10px;cursor:default}
+.twdot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px;background:var(--red);vertical-align:1px}
+.twtbl tr.green .twdot{background:var(--teal)}
+.twtbl tr.green td:nth-child(2){color:var(--teal)}
+.twk{color:#ffd84a;text-align:center}
+.twlfoot{display:flex;align-items:center;gap:8px;margin-top:8px}
+.twlfoot .chkrow{flex:1;min-width:0}
+.twlfoot .btn.sm{width:40px;padding:0;font-size:16px}
+.twapply{margin:6px 16px 0;padding:10px 0 2px;border-top:1px solid rgba(255,255,255,.08);flex:0 0 auto}
+.twapply h4{margin:0 0 8px;font-size:13px;color:var(--pink)}
+.twopts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px}
+.twopts .chkrow{min-height:28px}
+.twdiv select{height:32px;padding:0 8px}
+.twfoot{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px 14px;flex:0 0 auto}
+.twfoot .btn{min-width:104px}
+/* phones (and short landscape screens): the whole screen, scrolled as one; upright, the halves stacked */
+@media (max-width:760px),(max-height:520px){
+  .twin{left:0!important;top:0!important;right:0;bottom:0;width:auto;max-height:none;border:0;border-radius:0;overflow:auto;overscroll-behavior:contain;padding:env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left)}
+  .twin::before{display:none}
+  .twhead{cursor:default;position:sticky;top:0;z-index:3;background:var(--s2)}
+  .twbody{overflow:visible;flex:none}
+  .twfoot{position:sticky;bottom:0;z-index:3;background:var(--s1);border-top:1px solid rgba(255,255,255,.07);padding-bottom:calc(env(safe-area-inset-bottom) + 12px)}
+  .twfoot .btn{flex:1}
+}
+@media (max-width:760px){
+  .twbody{grid-template-columns:minmax(0,1fr);gap:12px}
+  .twright{order:-1} /* (the list first, like a pick-then-edit screen) */
+  .twtbl{height:auto;max-height:34dvh}
+  .twopts{grid-template-columns:minmax(0,1fr)}
+  .twtbl td,.twtbl th{padding-left:6px;padding-right:6px}
+}
+
+/* ===== Admin → Features ===== */
+.afstate{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;margin:0 0 14px;border:1px solid var(--bd);border-radius:var(--r-card);background:var(--s1)}
+.afstate.off{border-color:var(--red);background:rgba(255,107,138,.08)}
+.afgroup{margin:0 0 16px}
+.afgroup h4{margin:0 0 8px;font-size:11.5px;font-weight:800;letter-spacing:1.6px;text-transform:uppercase;color:var(--dim)}
+.afrow{padding:9px 12px;margin:0 0 6px;border:1px solid var(--bd);border-radius:var(--r-ctl);background:var(--s1)}
+
+/* ===== Replays (js/replayui.js): the results screen, the end menu and the Replays page ===== */
+/* results screen: a full-screen layer over the page (and over the player when it is opened after a replay) */
+.rpres{position:fixed;inset:0;z-index:9;overflow:hidden auto;overscroll-behavior:contain;background:#0d0f19;color:var(--txt);display:flex;flex-direction:column}
+.rpbg{position:fixed;inset:-48px;background:radial-gradient(ellipse at 30% 20%,#3a2a58,#151825 70%) center/cover;filter:blur(26px) brightness(.42) saturate(1.15);pointer-events:none}
+.rpbg[style]{background-size:cover;background-position:center}
+.rpin{position:relative;margin:auto;width:100%;max-width:1040px;padding:calc(env(safe-area-inset-top) + 28px) calc(env(safe-area-inset-right) + 28px) calc(env(safe-area-inset-bottom) + 28px) calc(env(safe-area-inset-left) + 28px);display:flex;flex-direction:column;gap:16px}
+.rpnav{flex:0 0 auto;margin:0;z-index:3;background:rgba(13,15,25,.88);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.rpmap{display:flex;align-items:center;gap:16px;padding:14px;border-radius:var(--r-card);background:rgba(13,15,25,.64);border:1px solid rgba(255,255,255,.1);min-height:96px}
+.rpthumb{flex:0 0 auto;width:168px;height:72px;border-radius:var(--r-ctl);object-fit:cover;background:var(--s2)}
+.rpmt{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0}
+.rptitle{font-size:22px;font-weight:800;letter-spacing:-.4px;line-height:1.2;overflow-wrap:anywhere}
+.rpartist{color:var(--lav);font-size:15px;font-weight:600;overflow-wrap:anywhere}
+.rpdiff{color:var(--dim);font-size:13.5px}
+.rpids{color:var(--mute);font-size:12px;margin-top:2px}
+.rpmt .btn{margin-top:8px}
+.rptags{display:flex;flex-wrap:wrap;gap:8px}
+.rptag{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:var(--r-tag);background:rgba(255,255,255,.1);font-size:11.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase}
+.rptag.stable{background:rgba(159,184,245,.2);color:var(--ice)}.rptag.lazer{background:rgba(194,107,255,.22);color:#e0b3ff}.rptag.fc{background:rgba(255,210,63,.18);color:#ffd23f}
+.rpmain{display:grid;grid-template-columns:auto minmax(0,1fr);gap:32px;align-items:center;padding:26px 30px;border-radius:var(--r-card);background:rgba(13,15,25,.72);border:1px solid rgba(255,255,255,.1)}
+.rprk{display:inline-block;font:italic 800 150px/1 Inter,system-ui,sans-serif;letter-spacing:-8px;padding:0 12px 0 0;text-shadow:0 6px 40px rgba(0,0,0,.45)}
+.rprk.sm{font-size:46px;letter-spacing:-2px;padding:0}
+.rprk.xs{font-size:22px;letter-spacing:-1px;padding:0;text-shadow:none}
+.rprk.r-SS{color:#ffd23f}.rprk.r-S{color:#ffb62e}.rprk.r-A{color:#7ee34a}.rprk.r-B{color:#4db8ff}.rprk.r-C{color:#c26bff}.rprk.r-D{color:#ff5470}
+.rprk.h{color:#dfe6f2}
+.rpright{display:flex;flex-direction:column;gap:18px;min-width:0}
+.rpscorebox{display:flex;flex-direction:column;gap:2px}
+.rpscorebox small,.rpstat small{color:var(--dim);font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase}
+.rpscore{font-size:64px;font-weight:800;letter-spacing:-1.5px;line-height:1.05;font-variant-numeric:tabular-nums}
+.rpstrow{display:flex;flex-wrap:wrap;gap:8px 40px}
+.rpstat{display:flex;flex-direction:column;gap:2px}.rpstat b{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums}
+.rpjs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.rpj{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:var(--r-ctl);background:rgba(255,255,255,.06);border-left:3px solid var(--jc,#fff)}
+.rpj small{color:var(--dim);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase}
+.rpj b{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--jc)}
+.rpj em{font-style:normal;color:var(--mute);font-size:11.5px}
+.rpj.j300{--jc:#32bce7}.rpj.j100{--jc:#57e313}.rpj.j50{--jc:#ffcc22}.rpj.j0{--jc:#ff4d5e}
+.rpmods{display:inline-flex;flex-wrap:wrap;gap:6px}
+.rpmod{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:var(--r-tag);background:var(--vio);color:var(--vio-dk);font-size:11.5px;font-weight:800;letter-spacing:.5px}
+.rpmod.off{background:rgba(255,255,255,.12);color:var(--dim);cursor:help}
+.rpmodrow:empty{display:none}
+.rpby{margin:0;color:var(--dim);font-size:14px}
+.rpbtns{display:flex;justify-content:flex-end;gap:10px;margin-top:4px}
+.rpbtns .btn{min-height:46px;padding:0 22px}
+.rpbtns .rpwatch{font-size:16px;padding:0 30px}
+.rpfoot{margin:0;color:var(--mute);font-size:12px;text-align:center}
+/* end menu: over the last frame of the replay */
+.rpend{position:fixed;inset:0;z-index:9;display:grid;place-items:center;padding:16px;background:rgba(8,10,18,.5)}
+.rpendp{display:flex;flex-direction:column;gap:18px;padding:22px 24px;border-radius:var(--r-card);background:rgba(21,24,37,.94);border:1px solid var(--bd);box-shadow:0 18px 60px rgba(0,0,0,.6);min-width:min(420px,100%)}
+.rpendh{display:flex;align-items:center;gap:16px}
+.rpendt{display:flex;flex-direction:column;gap:2px}.rpendt b{font-size:20px;font-weight:800}.rpendt span{color:var(--dim)}
+.rpendbtns{display:flex;gap:10px}.rpendbtns .btn{flex:1;min-height:46px}
+/* the Replays page */
+.rpdrop{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 14px;padding:14px 16px;border:1px dashed var(--bd);border-radius:var(--r-card);color:var(--dim)}
+.rpdrop span{flex:1 1 220px}
+.rprow{display:grid;grid-template-columns:128px minmax(0,1fr) auto;gap:14px;align-items:center;padding:10px 14px 10px 10px;border-radius:5px;border:1px solid var(--line);background:rgba(255,255,255,.04)}
+.rprthumb{width:128px;height:72px;border-radius:var(--r-ctl);background:var(--s2);overflow:hidden}
+.rprthumb img{width:100%;height:100%;object-fit:cover;display:block}
+.rprtx{display:flex;flex-direction:column;gap:3px;min-width:0}
+.rprtx b{font-size:15px;overflow-wrap:anywhere}
+.rprsub{color:var(--dim);font-size:13px;overflow-wrap:anywhere}
+.rprmeta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;font-size:13px;font-weight:700}
+.rprdate{color:var(--mute);font-size:12px}
+.rpracts{display:flex;flex-direction:column;gap:6px}
+@media (max-width:760px){
+  .rpin{padding:calc(env(safe-area-inset-top) + 16px) calc(env(safe-area-inset-right) + 16px) calc(env(safe-area-inset-bottom) + 20px) calc(env(safe-area-inset-left) + 16px);gap:12px}
+  .rpmap{gap:12px;padding:12px;min-height:0}
+  .rpthumb{width:96px;height:56px}
+  .rptitle{font-size:18px}
+  .rpmain{grid-template-columns:minmax(0,1fr);gap:8px;padding:18px 16px;justify-items:start}
+  .rprk{font-size:96px;letter-spacing:-5px}
+  .rpscore{font-size:44px}
+  .rpstat b{font-size:24px}
+  .rpjs{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .rpright{width:100%}
+  .rpbtns{flex-direction:column-reverse}.rpbtns .btn{width:100%}
+  .rprow{grid-template-columns:84px minmax(0,1fr);gap:10px}
+  .rprthumb{width:84px;height:48px}
+  .rpracts{grid-column:1/-1;flex-direction:row}.rpracts .btn{flex:1}
+}
+@media (max-height:520px) and (orientation:landscape){.rpin{margin:0 auto}}
+#replayCache{margin-top:8px}
+/* ===== end of Replays ===== */
+
+/* ===== Replays saved online (js/replayui.js): the results screen line, the Replays page section ===== */
+.rpsaved{display:inline-flex;align-items:center;min-height:46px;padding:0 4px;color:var(--teal);font-weight:700;font-size:14px}
+.rpnote{margin:-6px 0 0;color:var(--dim);font-size:12.5px;text-align:right}
+.rpsech{margin:22px 0 8px;font-size:17px;font-weight:800;letter-spacing:-.3px}
+.rpsecn{margin:0 0 10px;color:var(--dim);font-size:13.5px}
+.rpoff{margin:0 0 12px;color:var(--mute);font-size:13px}
+.rprexp{color:var(--dim);font-size:12px;font-weight:700}
+.rprexp.soon{color:var(--red)}
+.rprshared{display:block;color:var(--teal);font-size:12px;font-weight:700}
+@media (max-width:760px){
+  .rpsaved{min-height:0;justify-content:center;text-align:center;padding:4px 0}
+  .rpnote{text-align:center;margin-top:0}
+  .rpracts{flex-wrap:wrap}
+}
+/* ===== end of Replays saved online ===== */
+
+/* ===== Top 50 scores of the replay's map (js/replayui.js) ===== */
+.t5{display:flex;flex-direction:column;gap:10px;padding:16px 18px;border-radius:var(--r-card);background:rgba(13,15,25,.72);border:1px solid rgba(255,255,255,.1)}
+.t5[hidden]{display:none}
+.t5h{margin:0;font-size:16px;font-weight:800;letter-spacing:-.2px}
+.t5bar{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.t5bar[hidden],.t5msg[hidden]{display:none}
+.t5hint{margin:0;color:var(--mute);font-size:12.5px}
+.t5msg{margin:0;color:var(--red);font-size:13.5px}
+.t5list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
+.t5hd,.t5i{display:grid;grid-template-columns:34px 24px minmax(0,1fr) 104px 84px 64px 118px 62px 90px;align-items:center;gap:10px}
+.t5hd{padding:0 8px 4px;color:var(--mute);font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase}
+.t5hd span:nth-child(n+4):nth-child(-n+6),.t5hd span:nth-child(8){text-align:right}
+.t5hd span:nth-child(8){text-transform:none}
+.t5i{padding:6px 8px;border-radius:var(--r-ctl);background:rgba(255,255,255,.04);font-size:13.5px;font-variant-numeric:tabular-nums}
+.t5i.me{background:rgba(194,107,255,.22);box-shadow:inset 3px 0 0 var(--vio)}
+.t5n{font-weight:800;color:var(--dim)}
+.t5i:nth-child(1) .t5n{color:#ffd23f}.t5i:nth-child(2) .t5n{color:#cfd6e6}.t5i:nth-child(3) .t5n{color:#c98a52}
+.t5av{display:block;width:24px;height:24px;border-radius:var(--r-tag);background:var(--s2);overflow:hidden}
+.t5av img{width:100%;height:100%;object-fit:cover;display:block}
+.t5who{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
+.t5nm{overflow-wrap:anywhere}
+.t5sc{text-align:right;font-weight:800}
+.t5sub{display:contents}
+.t5ac,.t5cb,.t5pp{text-align:right}
+.t5pp{color:var(--teal);font-weight:700}
+.t5dt{color:var(--mute);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t5md .rpmods{display:flex;flex-wrap:wrap;gap:3px}
+.t5i .rpmod{height:18px;padding:0 5px;font-size:10.5px}
+.t5foot{margin:4px 0 0;color:var(--mute);font-size:12px}
+.t5empty{padding:18px 8px;color:var(--dim);text-align:center}
+.t5sks{display:flex;flex-direction:column;gap:3px}
+.t5ld{margin:0 0 4px;color:var(--dim);font-size:13px}
+.t5sk{height:36px;border-radius:var(--r-ctl);background:linear-gradient(100deg,var(--s1) 30%,var(--s2) 50%,var(--s1) 70%) 0 0/300% 100%;animation:shimmer 1.2s linear infinite}
+@media (max-width:900px){
+  .t5hd{display:none}
+  .t5who{white-space:normal;overflow:visible}
+  .t5i{grid-template-columns:30px 24px minmax(0,1fr) auto;gap:2px 8px}
+  .t5sub{display:flex;flex-wrap:wrap;align-items:center;gap:2px 10px;grid-column:3/-1;color:var(--dim);font-size:12px}
+  .t5ac,.t5cb,.t5pp{text-align:left}
+  .t5md:empty{display:none}
+}
+@media (max-width:760px){.t5{padding:12px}}
+/* ===== end of Top 50 scores ===== */
+
+/* ===== skin cards and options (js/skins.js renderSkinUI, Settings → Skin) ===== */
+.skgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin:8px 0 4px}
+.skcard{display:flex;flex-direction:column;min-width:0;border-radius:5px;border:1px solid var(--line);background:rgba(255,255,255,.05);overflow:hidden}
+.skcard.on{border-color:var(--pink);box-shadow:0 0 0 1px var(--pink)}
+.skpv{display:block;width:100%;height:auto;aspect-ratio:4/1;background:linear-gradient(135deg,#1b1530,#0f0c1a);cursor:pointer;opacity:.35;transition:opacity .25s}
+.skpv.ready{opacity:1}.skcard.on .skpv{cursor:default}
+.skbody{display:flex;flex-direction:column;gap:2px;padding:8px 10px 10px;min-width:0}
+.sktop{display:flex;align-items:center;gap:8px;min-width:0}
+.skname{font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.skbadge{flex:0 0 auto;font-size:11px;padding:1px 7px;border-radius:9px;background:var(--pink);color:#fff}
+.skinfo{color:var(--dim);font-size:12px;line-height:1.4;overflow-wrap:anywhere}
+.skacts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.skacts .btn.sm{min-height:32px;padding:0 10px}
+.skedit{width:100%;min-width:0;height:30px;border-radius:5px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:0 8px;font-size:14px;box-sizing:border-box}
+.sknote{margin:8px 0;padding:10px 12px;border-radius:5px;background:rgba(255,200,90,.12);border:1px solid rgba(255,200,90,.4);font-size:13px;line-height:1.45}
+#skinOpts .row select{max-width:50%}
+#skinOpts .row>span:first-child{min-width:0;overflow-wrap:anywhere}
+@media (max-width:520px){.skgrid{grid-template-columns:minmax(0,1fr)}#skinOpts .rng{width:50%}#skinOpts .row:has(select){flex-wrap:wrap;gap:4px 12px;padding:8px 0}#skinOpts .row select{max-width:100%;width:100%}}
+/* ===== end of skin cards ===== */
+
+/* ===== Replays motion (js/replayui.js): the results screen entrance, the map card, the end menu, Top 50, the Replays page =====
+   Only transform and opacity move. The base styles above are the final state: every keyframe set has a "from" and an implicit "to", so
+   taking the class away (a key press, a click, the end of the entrance) shows the end state at once. The site's reduced-motion rule
+   (animation:none, transition:none) covers all of it; the JS adds no class and no count-up then. */
+@keyframes rpmFade{from{opacity:0}}
+@keyframes rpmUp{from{opacity:0;transform:translateY(10px)}}
+@keyframes rpmRise{from{opacity:0;transform:translateY(22px) scale(.985)}}
+@keyframes rpmSide{from{opacity:0;transform:translateX(-18px)}}
+@keyframes rpmBg{from{opacity:0;transform:scale(1.06)}}
+@keyframes rpmStamp{0%{opacity:0;transform:scale(1.4) rotate(-5deg)}45%{opacity:1;transform:scale(.93) rotate(1deg)}72%{transform:scale(1.04) rotate(0)}100%{transform:none}}
+@keyframes rpmPop{from{opacity:0;transform:scale(.6)}60%{transform:scale(1.1)}}
+@keyframes rpmPanel{from{opacity:0;transform:translateY(14px) scale(.96)}}
+@keyframes rpmOut{to{opacity:0}}
+@keyframes rpmPanelOut{to{opacity:0;transform:translateY(6px) scale(.97)}}
+@keyframes rpmSweep{to{transform:translateX(100%)}}
+@keyframes rpmBar{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+@keyframes rpmGlow{0%{opacity:0}30%{opacity:1}100%{opacity:0}}
+@keyframes rpmBusy{50%{opacity:.22}}
+/* results screen: the layer fades in, the backdrop settles, the card rises, then its parts one after another (about 1.3 s all in) */
+.rpres.rpgo{animation:rpmFade .24s ease-out backwards}
+.rpgo .rpbg{animation:rpmBg .8s var(--ease) backwards} /* (no will-change: the browser promotes what animates, and only while it does; many forced layers cost more than they save) */
+.rpgo .rpcw{animation:rpmSide .42s var(--ease) .05s backwards}
+.rpgo .rpmain{animation:rpmRise .45s var(--ease) .08s backwards}
+.rpgo .rprk{animation:rpmStamp .55s ease-out .24s backwards}
+.rpgo .rpscorebox{animation:rpmUp .36s var(--ease) .22s backwards}
+.rpgo .rpstat:nth-child(1){animation:rpmUp .34s var(--ease) .38s backwards}
+.rpgo .rpstat:nth-child(2){animation:rpmUp .34s var(--ease) .44s backwards}
+.rpgo .rpj{animation:rpmUp .34s var(--ease) .5s backwards}
+.rpgo .rpj:nth-child(2){animation-delay:.56s}.rpgo .rpj:nth-child(3){animation-delay:.62s}.rpgo .rpj:nth-child(4){animation-delay:.68s}
+.rpgo .rptags{animation:rpmUp .3s var(--ease) .3s backwards}
+.rpgo .rpmodrow .rpmod{animation:rpmPop .28s cubic-bezier(.3,1.4,.5,1) .72s backwards}
+.rpgo .rpmodrow .rpmod:nth-child(2){animation-delay:.77s}.rpgo .rpmodrow .rpmod:nth-child(3){animation-delay:.82s}.rpgo .rpmodrow .rpmod:nth-child(4){animation-delay:.87s}.rpgo .rpmodrow .rpmod:nth-child(5){animation-delay:.92s}.rpgo .rpmodrow .rpmod:nth-child(n+6){animation-delay:.97s}
+.rpgo .rpby{animation:rpmUp .3s var(--ease) .86s backwards}
+.rpgo .rpbtns{animation:rpmUp .3s var(--ease) .9s backwards}
+.rpgo .rpnote,.rpgo .rpfoot{animation:rpmFade .3s ease-out 1s backwards}
+/* the numbers count up in a copy drawn from data-v; the real text stays in the page, transparent meanwhile (no decorative-content syntax: no copy, no count-up) */
+@supports (content:"x" / ""){
+  .rpcnt{position:relative;-webkit-text-fill-color:transparent}
+  .rpcnt::after{content:attr(data-v) / "";position:absolute;left:0;top:0;white-space:pre;-webkit-text-fill-color:currentcolor}
+}
+/* buttons: lift on hover, press in, the focus ring stays (the global :focus-visible outline); transform and shadow only, no layout change */
+.rpres .btn,.rpend .btn,.rprow .btn,.t5 .btn{transition:transform .15s var(--ease),box-shadow .15s var(--ease),background var(--t) ease-out,border-color var(--t) ease-out,color var(--t) ease-out}
+@media (hover:hover){
+  :is(.rpres,.rpend,.rprow,.t5) .btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 5px 14px rgba(0,0,0,.34)}
+  :is(.rpres,.rpend,.rprow,.t5) .btn.main:hover:not(:disabled){box-shadow:0 6px 18px rgba(194,107,255,.4)}
+  .rprow:hover{background:rgba(255,255,255,.07);border-color:var(--bd)}
+}
+:is(.rpres,.rpend,.rprow,.t5) .btn:focus-visible{transform:translateY(-1px)}
+:is(.rpres,.rpend,.rprow,.t5) .btn:active:not(:disabled),:is(.rpres,.rpend,.rprow,.t5) .btn.main:active:not(:disabled){animation:none;transform:scale(.97);box-shadow:none;transition-duration:.08s}
+.rprow{transition:background var(--t) ease-out,border-color var(--t) ease-out}
+.replaySaveOnline.busy{animation:rpmBusy 1s ease-in-out infinite}
+.rpsaved.pop{animation:rpmPop .4s cubic-bezier(.3,1.4,.5,1)}
+/* map card: shimmer while the map is being found, the text fades in once it is, a sliver while it loads, the tick pops when it is ready */
+.rpthumb{transition:opacity .3s ease-out}.rpthumb.lz{opacity:0}
+.rpsk,.rpskb,.t5sk{position:relative;overflow:hidden;background:var(--s2)}
+.rpsk::after,.rpskb::after,.t5sk::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 25%,rgba(255,255,255,.07) 50%,transparent 75%);transform:translateX(-100%);animation:rpmSweep 1.3s linear infinite}
+.rpskb{display:block;height:14px;width:220px;max-width:100%;margin-top:8px;border-radius:3px}.rpskb+.rpskb{width:150px}.rpskb+.rpskb+.rpskb{width:100px}
+.rpmap.swap .rpmt>*{animation:rpmUp .32s var(--ease) backwards;animation-delay:calc(0s - var(--sw,0ms))}
+.rpmap.swap .rpmt>:nth-child(2){animation-delay:calc(.05s - var(--sw,0ms))}.rpmap.swap .rpmt>:nth-child(3){animation-delay:calc(.1s - var(--sw,0ms))}.rpmap.swap .rpmt>:nth-child(n+4){animation-delay:calc(.15s - var(--sw,0ms))}
+/* end menu */
+.rpend{animation:rpmFade .2s ease-out backwards}
+.rpendp{animation:rpmPanel .38s var(--ease) backwards}
+.rpend .rprk.sm{animation:rpmStamp .5s ease-out .14s backwards}
+.rpend .rpendt{animation:rpmUp .3s var(--ease) .16s backwards}
+.rpendx{position:fixed;inset:0;z-index:9;display:grid;place-items:center;padding:16px;background:rgba(8,10,18,.5);pointer-events:none;animation:rpmOut .16s ease-in forwards} /* (a menu on its way out: not .rpend any more) */
+.rpendx .rpendp{animation:rpmPanelOut .16s ease-in forwards}
+/* Top 50: the panel rises in, skeleton rows sweep, the first rows slide in one after another, the highlighted row glows once */
+.t5{animation:rpmUp .36s var(--ease) backwards}
+.t5sk{background:var(--s1);animation:rpmUp .3s var(--ease) backwards;animation-delay:calc(var(--i,0) * 30ms)}
+.t5i.rpi{animation:rpmUp .34s var(--ease) backwards;animation-delay:calc(var(--i,0) * 35ms)}
+.t5i.me{position:relative}
+.t5i.me::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;box-shadow:0 0 0 2px var(--vio),0 0 20px rgba(194,107,255,.55);opacity:0;animation:rpmGlow 1.2s ease-out .55s}
+/* Replays page: the cards come in one after another; a later draw of the same visit continues the clock (--sk) instead of starting again */
+#replays.vin>*{animation-delay:calc(var(--k,0) * .05s - var(--sk,0ms))}
+.rprow{animation:rpmUp .4s var(--ease) backwards;animation-delay:calc(.16s + var(--i,0) * .05s - var(--sk,0ms))}
+.rprthumb img{transition:opacity .3s ease-out}.rprthumb img.lz{opacity:0}
+/* ===== end of Replays motion ===== */
+
+/* ===== Replay analysis (js/replayanaui.js): the Analysis layer over the results / end menu, its tabs, tiles and charts =====
+   Only transform and opacity move (the layer and the tab panels rise in; the site's reduced-motion rule and the JS cover the rest). */
+.rpbtns .rpanbtn{margin-inline-end:auto;order:-1}
+.rpendp>.rpanbtn{min-height:46px}
+.rpan{position:fixed;inset:0;z-index:9;overflow:hidden auto;overscroll-behavior:contain;background:#0d0f19;color:var(--txt);display:flex;flex-direction:column}
+.rpanin0{animation:rpmFade .24s ease-out backwards}
+.rpanin0 .rpanin{animation:rpmUp .36s var(--ease) .04s backwards}
+.rpanin{position:relative;margin:0 auto;width:100%;max-width:1040px;padding:calc(env(safe-area-inset-top) + 24px) calc(env(safe-area-inset-right) + 28px) calc(env(safe-area-inset-bottom) + 28px) calc(env(safe-area-inset-left) + 28px);display:flex;flex-direction:column;gap:14px}
+.rpanhd{display:flex;align-items:flex-start;gap:14px}
+.rpanback{flex:0 0 auto;min-height:44px}
+.rpanttl{min-width:0;display:flex;flex-direction:column;gap:3px;align-items:flex-start}
+.rpanttl h2{margin:0;font-size:24px;line-height:1.2}
+.rpansub{margin:0;color:var(--dim);font-size:14px;overflow-wrap:anywhere}
+.rpanttl .rpmods{margin-top:4px}
+.rpanstate{display:flex;flex-direction:column;align-items:center;gap:14px;padding:44px 20px;border-radius:var(--r-card);background:rgba(13,15,25,.72);border:1px solid rgba(255,255,255,.1);text-align:center}
+.rpanstate p{margin:0;max-width:420px;color:var(--lav);font-size:15px}
+.rpanbar{position:relative;overflow:hidden;width:min(240px,70%);height:2px;border-radius:2px;background:rgba(255,255,255,.1)}
+.rpanbar::after{content:"";position:absolute;left:0;top:0;bottom:0;width:40%;border-radius:2px;background:linear-gradient(90deg,transparent,var(--vio),var(--ice));animation:rpmBar 1.25s var(--ease-io) infinite}
+.rpanrow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.rpanwarn{margin:0;padding:10px 14px;border-radius:var(--r-ctl);border-left:3px solid #ffcc22;background:rgba(255,204,34,.1);color:var(--txt);font-size:13.5px;line-height:1.45}
+.rpantabs{display:flex;gap:4px;border-bottom:1px solid rgba(255,255,255,.12)}
+.rpantab{flex:0 1 auto;min-height:44px;padding:0 20px;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:none;color:var(--dim);font-weight:700;font-size:14.5px;cursor:pointer;transition:color var(--t) ease-out,border-color var(--t) ease-out}
+.rpantab.on{color:var(--txt);border-bottom-color:var(--vio)}
+@media (hover:hover){.rpantab:hover{color:var(--txt)}}
+.rpanpanel{display:flex;flex-direction:column;gap:14px;min-width:0}
+.rpansum{margin:0;color:var(--lav);font-size:14.5px;line-height:1.5}
+.rpantiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.rpantiles.col{grid-template-columns:minmax(0,1fr);align-content:start}
+.rpanst{display:flex;flex-direction:column;gap:2px;min-width:0;padding:10px 12px;border-radius:var(--r-ctl);background:rgba(255,255,255,.06);border-left:3px solid var(--vio)}
+.rpanst small{color:var(--dim);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase}
+.rpanst b{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;line-height:1.2}
+.rpanst em{font-style:normal;color:var(--dim);font-size:12px}
+.rpancard{min-width:0;padding:14px 16px;border-radius:var(--r-card);background:rgba(13,15,25,.72);border:1px solid rgba(255,255,255,.1)}
+.rpancard h3{margin:0 0 8px;font-size:14px}
+.rpan2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}
+.rpan2.aim,.rpan2.heat{grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr)}
+.rpanfig{margin:0;min-width:0}
+.rpanfig figcaption{display:flex;flex-direction:column;gap:1px}
+.rpanfig figcaption b{font-size:14px}
+.rpanfig figcaption small{color:var(--dim);font-size:12px}
+.rpanwrap{position:relative;margin-top:8px}
+.rpanwrap canvas{display:block;width:100%;touch-action:pan-y}
+.rpantip{position:absolute;z-index:2;display:flex;flex-direction:column;gap:1px;padding:6px 9px;border-radius:var(--r-ctl);background:rgba(21,24,37,.97);border:1px solid var(--bd);box-shadow:0 6px 18px rgba(0,0,0,.45);font-size:12px;line-height:1.35;white-space:nowrap;pointer-events:none}
+.rpantip b{font-size:12.5px}.rpantip span{color:var(--dim)}
+.rpantbl{display:flex;flex-direction:column}
+.rpanr{display:grid;grid-template-columns:minmax(0,1fr) 76px 76px;gap:8px;align-items:center;padding:8px 0 8px 10px;border-left:3px solid var(--jc,transparent);border-bottom:1px solid rgba(255,255,255,.06);font-size:13.5px}
+.rpanr.hd{border-left-color:transparent;color:var(--dim);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase}
+.rpanr .num{text-align:right;font-weight:800;font-variant-numeric:tabular-nums}
+.rpancq{margin:10px 0 0;font-size:13px;font-weight:700}
+.rpancq::before,.rpancons::before{content:"";display:inline-block;width:9px;height:9px;margin-right:8px;border-radius:50%;background:var(--qc,var(--dim))}
+.q-good{--qc:var(--teal)}.q-fair{--qc:#ffcc22}.q-poor{--qc:#ff4d5e}
+.rpanfoot{display:flex;flex-direction:column;gap:4px;padding-top:4px}
+.rpanfoot p{margin:0;font-size:12.5px;color:var(--dim);line-height:1.45}
+.rpanfoot .rpancons{color:var(--dim);font-weight:700}
+.rpanctl{margin-top:10px;display:flex;gap:8px}
+.rpantog.on{background:var(--vio);border-color:var(--vio);color:var(--vio-dk)}
+.rpanramp{height:8px;margin-top:12px;border-radius:4px}
+.rpanrl{display:inline-block;width:50%;margin-top:3px;color:var(--dim);font-size:11px}.rpanrl.r{text-align:right}
+.rpanlegend{display:flex;flex-wrap:wrap;gap:6px 14px;color:var(--dim);font-size:12.5px}
+.rpanlegend span::before{content:"";display:inline-block;width:9px;height:9px;margin-right:6px;border-radius:50%;background:var(--jc)}
+.rpan .btn{transition:transform .15s var(--ease),background var(--t) ease-out,border-color var(--t) ease-out,color var(--t) ease-out}
+.rpan .btn:active:not(:disabled){transform:scale(.97)}
+@media (max-width:760px){
+  .rpanin{padding:calc(env(safe-area-inset-top) + 14px) calc(env(safe-area-inset-right) + 16px) calc(env(safe-area-inset-bottom) + 20px) calc(env(safe-area-inset-left) + 16px);gap:12px}
+  .rpanttl h2{font-size:20px}
+  .rpantabs{gap:0}.rpantab{flex:1 1 0;padding:0 4px;font-size:13.5px}
+  .rpantiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rpantiles.col{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .rpanst b{font-size:19px}
+  .rpan2,.rpan2.aim,.rpan2.heat{grid-template-columns:minmax(0,1fr)}
+  .rpancard{padding:12px}
+  .rpbtns .rpanbtn{margin-inline-end:0}
+}
+/* ===== end of Replay analysis ===== */
+
+/* Replays: the eye button on the bottom bar and its switches (Top 50, hit error bar, UR, early / late) */
+.rpview{display:none;align-items:center;justify-content:center;padding:0 8px}
+.rpview svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+body.replay .rpview{display:inline-flex}
+.rppop{position:absolute;right:calc(env(safe-area-inset-right) + 10px);bottom:100%;margin-bottom:6px;z-index:5;width:min(300px,calc(100% - 20px));padding:4px 14px;border-radius:8px;background:rgba(27,31,47,.97);border:1px solid rgba(255,255,255,.12);box-shadow:0 8px 28px rgba(0,0,0,.5)}
+.rppop[hidden],body:not(.replay) .rppop{display:none}
+.rppop .sw:last-child{border-bottom:0}
+
+/* Settings → Skin: Import from a link */
+.sklink{display:flex;gap:8px;align-items:center;margin-top:10px}
+.sklink input{flex:1 1 auto;min-width:0}
+
+/* Replays: paste an osu! score link */
+.rplink{display:flex;gap:8px;align-items:center;margin:10px 0}
+.rplink input{flex:1 1 auto;min-width:0}
+
+/* the link boxes (replay score link, skin link): a real field size, 16px text (iOS doesn't zoom the page on focus), stacked on a phone */
+.rplink input,.sklink input{height:44px;font-size:16px;padding:0 12px;border-radius:8px}
+.rplink .btn,.sklink .btn{height:44px;padding:0 16px;font-size:15px;white-space:nowrap}
+.rplink,.sklink{flex-wrap:wrap}
+.rplink input,.sklink input{flex:1 1 260px}
+@media (max-width:600px){.rplink,.sklink{flex-direction:column;align-items:stretch}.rplink input,.sklink input{flex:0 0 auto;width:100%}.rplink .btn,.sklink .btn{width:100%}}
+.rphint{margin:-4px 0 14px;font-size:13px;line-height:1.5;color:var(--dim)}
+
+/* Replay results, closer to osu!lazer's: a facts row on the map card, the hit distribution, a details card, buttons that read on the dark glass in the site's colours */
+.rpres .rpmap{background:linear-gradient(180deg,rgba(13,15,25,.5),rgba(13,15,25,.78));border-color:rgba(255,255,255,.16);backdrop-filter:blur(6px)}
+.rpfacts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.rpfacts span{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:var(--r-tag);background:rgba(194,107,255,.16);border:1px solid rgba(194,107,255,.38);color:#e9d2ff;font-size:12px;font-weight:700}
+.rpres .rpmain{background:rgba(13,15,25,.76);border-color:rgba(255,255,255,.16);backdrop-filter:blur(6px);box-shadow:0 12px 40px rgba(0,0,0,.35)}
+.rprk{filter:drop-shadow(0 0 28px currentColor)}
+.rpdist{display:flex;gap:2px;height:10px;border-radius:99px;overflow:hidden;background:rgba(255,255,255,.08)}
+.rpdist i{display:block;min-width:3px;flex-basis:0}
+.rpdist .j300{background:#32bce7}.rpdist .j100{background:#57e313}.rpdist .j50{background:#ffcc22}.rpdist .j0{background:#ff4d5e}
+.rpj{position:relative}
+.rpj .rpjp{position:absolute;right:10px;top:10px;font-style:normal;font-size:12px;font-weight:700;color:var(--dim)}
+.rpdet{padding:18px 22px;border-radius:var(--r-card);background:rgba(13,15,25,.72);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(6px)}
+.rpdeth{margin:0 0 12px;font-size:12px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:var(--lav)}
+.rpkvs{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px 22px}
+.rpkv{display:flex;flex-direction:column;gap:3px;min-width:0}
+.rpkv small,.rphpbox small{color:var(--dim);font-size:11px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase}
+.rpkvv{font-size:15px;font-weight:600;overflow-wrap:anywhere;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.rpmv{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px}.rpmrate{color:var(--dim);font-size:12.5px;font-weight:700}
+.rpkeys{display:inline-flex;flex-wrap:wrap;gap:6px}
+.rpkey{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:var(--r-tag);background:rgba(255,255,255,.1);font-size:13px;font-weight:700}
+.rpkey i{font-style:normal;color:var(--teal);font-size:11px;font-weight:800;letter-spacing:.6px}
+.rplink2{color:var(--ice);font-weight:700;text-decoration:underline;text-underline-offset:3px}.rplink2:hover{color:#fff}
+.rphpbox{display:flex;flex-direction:column;gap:6px;margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.1)}
+.rphp{width:100%;height:56px;display:block;border-radius:var(--r-ctl);background:rgba(255,255,255,.05)}
+.rphpa{fill:rgba(143,218,211,.2)}.rphpl{stroke:var(--teal);stroke-width:1.6;vector-effect:non-scaling-stroke;stroke-linejoin:round}
+.rphpmin{color:var(--dim);font-size:12.5px}
+/* buttons: filled glass with a clear edge, each in a colour of the site's theme (Watch the violet one, Analysis teal, Share ice, Back / Home neutral) */
+.rpres .rpbtns .btn.ghost{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.34);color:#fff;font-weight:700}
+.rpres .rpbtns .btn.ghost:hover:not(:disabled){background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.55)}
+.rpres .rpbtns .btn.ghost.rpanbtn{background:rgba(143,218,211,.16);border-color:rgba(143,218,211,.6);color:#d6f7f3}
+.rpres .rpbtns .btn.ghost.rpanbtn:hover:not(:disabled){background:rgba(143,218,211,.26);border-color:var(--teal)}
+.rpres .rpbtns .btn.ghost.rpshare,.rpres .rpbtns .btn.ghost.rpcopy{background:rgba(159,184,245,.16);border-color:rgba(159,184,245,.6);color:#e1eaff}
+.rpres .rpbtns .btn.ghost.rpstop{background:rgba(255,107,138,.14);border-color:rgba(255,107,138,.55);color:#ffd3dc}
+.rpres .rpbtns .btn.ghost.replaySaveOnline{background:rgba(194,167,107,.18);border-color:rgba(194,167,107,.65);color:#f3e5c0}
+.rpres .rpbtns .rpwatch{box-shadow:0 6px 22px rgba(194,107,255,.38)}
+.rpres .rpsaved{align-self:center;color:var(--teal);font-size:13px;font-weight:700}
+.rpres .rpnote,.rpres .rpfoot{color:var(--dim)}
+@media (max-width:760px){
+  .rpkvs{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px}
+  .rpdet{padding:16px}
+  .rpj .rpjp{top:auto;bottom:8px}
+  .rpres .rpbtns{position:sticky;bottom:0;z-index:2;display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px calc(-16px - env(safe-area-inset-right)) calc(-20px - env(safe-area-inset-bottom)) calc(-16px - env(safe-area-inset-left));padding:12px calc(16px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));background:rgba(13,15,25,.97);border-top:1px solid rgba(255,255,255,.14);box-shadow:0 -10px 30px rgba(0,0,0,.35)}
+  .rpres .rpbtns .btn{width:100%;min-height:46px;padding:0 10px}
+  .rpres .rpbtns .rpwatch{grid-column:1/-1;order:-2;min-height:50px}
+  .rpres .rpbtns .rpsaved{grid-column:1/-1}
+}
+.rpplayed{display:flex;flex-direction:column;gap:1px}.rprel{color:var(--dim);font-size:12.5px;font-weight:600}
+/* the Top 50 card's buttons read too */
+.rpres .t5 .btn.ghost{background:rgba(194,107,255,.14);border:1px solid rgba(194,107,255,.5);color:#f1e6ff;font-weight:700}
+.rpres .t5 .btn.ghost:hover:not(:disabled){background:rgba(194,107,255,.24);border-color:var(--vio)}
+@media (max-width:760px){.rpres .rpfoot{padding-bottom:4px}}
+/* the map's epilepsy warning (player.js epiWarn): 5 s in the middle (Preview, Replay), a smaller card at the playfield's top left in Modding; never in the way of a tap */
+.epiwarn{position:absolute;left:50%;top:50%;z-index:5;box-sizing:border-box;width:min(460px,calc(100% - 32px));padding:22px 24px 20px;border-radius:16px;background:rgba(14,11,22,.93);border:2px solid #ffc83d;box-shadow:0 0 0 6px rgba(255,200,61,.14),0 18px 50px rgba(0,0,0,.6);color:var(--txt);text-align:center;pointer-events:none;opacity:0;transform:translate(-50%,-50%) scale(.96);transition:opacity .3s ease-out,transform .3s var(--ease)}
+.epiwarn.in{opacity:1;transform:translate(-50%,-50%)}
+.epiwarn.out{opacity:0;transition-duration:.4s}
+.epiwarn .epiic{width:46px;height:46px;margin:0 auto 10px;display:grid;place-items:center;border-radius:50%;background:#ffc83d;color:#1a1300;font:900 28px/1 Inter,sans-serif}
+.epiwarn b{display:block;margin-bottom:8px;font-size:24px;font-weight:900;letter-spacing:-.3px;color:#ffd666}
+.epiwarn p{margin:0;font-size:15px;line-height:1.5;color:#efe9d6}
+.epiwarn.ed{width:min(300px,calc(100% - 24px));padding:10px 12px 10px 50px;border-radius:12px;text-align:left;transform:translateY(-6px)}
+.epiwarn.ed.in{transform:none}
+.epiwarn.ed .epiic{position:absolute;left:12px;top:12px;width:28px;height:28px;margin:0;font-size:17px}
+.epiwarn.ed b{margin-bottom:2px;font-size:14px}
+.epiwarn.ed p{font-size:12px;line-height:1.4}

@@ -53,6 +53,7 @@ const annTime = a => { const o = annObj(a); return o ? o.t : a.time_ms; };
 // Quick flow: a highlight or an arrow is added at once (its note is optional, typed in the bar that opens); a comment
 // opens the same bar for its text. Enter saves, Esc closes. The old dialog stays for opening an annotation from the list.
 function annCreate(kind, o, data, quiet) {
+  if (!featOn("ed_annot")) return;
   if (!annCanCreate()) return toast(tr("View only: you can't add annotations to this project"), 2500);
   const t = o ? Math.round(o.t) : Math.round(A.cur()), me = annMe();
   const a = { id: uuid(), diff: curPath(), kind, object_id: o ? String(o.lid) : null, time_ms: t, body: "", data: data || {}, object_missing: false,
@@ -267,7 +268,7 @@ function annPanel() {
   const box = h("section", "annbox"), list = annActive().sort((a, b) => annTime(a) - annTime(b));
   const head = h("div", "annhead");
   head.append(h("b", null, tr("Annotations ({n})", { n: list.length })));
-  if (EDIT.on && annCanCreate()) for (const k of ["comment", "arrow", "highlight"]) {
+  if (EDIT.on && annCanCreate() && featOn("ed_annot")) for (const k of ["comment", "arrow", "highlight"]) {
     const b = h("button", "btn ghost sm", `${ANN_ICON[k]} ${tr({ comment: "Comment", arrow: "Arrow", highlight: "Highlight" }[k])}`);
     b.onclick = () => { edTab("compose"); annSetTool(k); }; head.append(b);
   }

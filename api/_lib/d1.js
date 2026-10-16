@@ -48,7 +48,9 @@ const SPEC = [ // obv.setting_spec(): key, kind, min, max, default
   ["perm_guest_editor", "bool", null, null, false], ["perm_member_listing", "bool", null, null, true], ["perm_member_player", "bool", null, null, true],
   ["perm_member_mappers", "bool", null, null, true], ["perm_member_editor", "bool", null, null, true], ["perm_member_online", "bool", null, null, true],
   ["turn_enabled", "bool", null, null, true], ["turn_ping_ms", "int", 50, 1000, 150], ["perm_guest_live", "bool", null, null, false],
-  ["turn_month_gb", "int", 0, 100000, 1000], ["r2_class_a_month", "int", 0, 1000000, 900000], ["r2_class_b_month", "int", 0, 10000000, 9000000]];
+  ["turn_month_gb", "int", 0, 100000, 1000], ["r2_class_a_month", "int", 0, 1000000, 900000], ["r2_class_b_month", "int", 0, 10000000, 9000000],
+  ["replay_budget_bytes", "int", 1000000, 1000000000, 100000000], ["replays_per_user", "int", 1, 200, 20],
+  ...require("./features").FEATURE_KEYS.map(k => ["feat_" + k, "bool", null, null, true])]; // (the feature switches: api/_lib/features.js)
 const specDef = k => (SPEC.find(s => s[0] === k) || [])[4];
 const num = v => v == null ? null : Number(v);
 async function setOr(q, k, d) { const v = await q.setting(k); return v == null ? d : v; }
@@ -141,6 +143,9 @@ async function newInviteCode(q) {
 }
 const newLinkKey = () => crypto.randomBytes(24).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").slice(0, 32);
 
+// the replays table exists (d1/migrations/0005_replays.sql applied)? The account functions below skip it before that, so deploying the code first breaks nothing
+const hasReplays = async q => !!await q.one("select 1 from sqlite_master where type = 'table' and name = 'replays'");
+
 const F = {}; // the functions, by name
 
 // ---------- sign-in, users ----------
@@ -183,6 +188,10 @@ F.obv_audit_add = async (q, { p_actor, p_action, p_type, p_id, p_detail }) => { 
 F.obv_turn_conf = async (q, { p_user }) => {
   const u = await q.one("select turn_relay, status from users where osu_id = ?", p_user);
   return { on: (await setOr(q, "turn_enabled", true)) !== false, ping_ms: num(await setOr(q, "turn_ping_ms", 150)), month_gb: num(await setOr(q, "turn_month_gb", 1000)), relay: !!(u && u.turn_relay && u.status === "active") };
+};
+F.obv_site_features = async q => { // the switches that are off, without the feat_ prefix
+  const s = await q.settings();
+  return SPEC.filter(([k, , , , d]) => k.startsWith("feat_") && (k in s ? s[k] : d) === false).map(([k]) => k.slice(5)).sort();
 };
 F.obv_site_perms = async q => {
   const s = await q.settings(), v = k => k in s ? s[k] : specDef(k), guest = {}, member = {};
@@ -288,6 +297,8 @@ F.obv_google_merge = async (q, { p_from, p_to, p_username, p_avatar, p_country }
     ["update users set invited_by = ? where invited_by = ?", p_to, p_from]);
   if (await q.one("select 1 from user_logins where provider = 'google' and osu_id = ?", p_to)) st.push(["delete from user_logins where osu_id = ?", p_from]);
   else st.push(["update user_logins set osu_id = ?, verified = 1 where osu_id = ?", p_to, p_from]);
+  if (await hasReplays(q)) st.push(["delete from replays where owner_id = ? and exists (select 1 from replays x where x.owner_id = ? and x.sha256 = replays.sha256)", p_from, p_to], // (saved replays move too; a duplicate file is dropped)
+    ["update replays set owner_id = ? where owner_id = ?", p_to, p_from]);
   st.push(["insert into account_deletions (osu_id, deleted_at) values (?, ?) on conflict do nothing", p_from, q.now], ["delete from users where osu_id = ?", p_from]);
   await q.batch(st);
   await audit(q, p_to, "login.google_merged", "user", p_to, { from: p_from, projects: moved });
@@ -347,6 +358,8 @@ F.obv_account_export = async (q, { p_user }) => {
     own_projects: (await q.all("select * from projects where owner_id = ? order by created_at", p_user)).map(p => ({ id: p.id, title: p.title, artist: p.artist, creator: p.creator, status: p.status, created_at: p.created_at, expires_at: p.expires_at, size_bytes: p.size_bytes, revision: p.revision })),
     shared_with_you: (await q.all("select p.id, p.title, m.role, m.added_at from members m join projects p on p.id = m.project_id where m.user_id = ?", p_user)).map(x => ({ project: x.id, title: x.title, role: x.role, added_at: x.added_at })),
     your_comments: await q.val("select count(*) from annotations where author_id = ?", p_user),
+    replays: !await hasReplays(q) ? [] : (await q.all("select * from replays where owner_id = ? and expires_at > ? order by created_at", p_user, q.now)) // (select *: share_key only once 0006_replay_share.sql has run)
+      .map(r => ({ id: r.id, size: r.size, meta: J(r.meta), created_at: r.created_at, expires_at: r.expires_at, shared: r.share_key != null })),
     invite_links: await q.all("select * from invite_links where created_by = ?", p_user),
     backup_logins: (await q.all("select provider, created_at, last_used_at from user_logins where osu_id = ?", p_user)).map(l => ({ provider: l.provider, linked_at: l.created_at, last_used_at: l.last_used_at })),
     activity_log: (await q.all("select * from audit_log where actor_id = ? order by at desc limit 200", p_user)).map(a => ({ ...a, detail: J(a.detail) })),
@@ -361,13 +374,14 @@ F.obv_account_finish = async (q, { p_user }) => {
 F.obv_account_delete = async (q, { p_user, p_owner_id }) => {
   await activeUser(q, p_user);
   if (p_owner_id != null && p_user === p_owner_id) err("forbidden", { reason: "owner" });
-  const ids = (await q.all("select id from projects where owner_id = ? and status = 'active'", p_user)).map(r => r.id);
+  const ids = (await q.all("select id from projects where owner_id = ? and status = 'active'", p_user)).map(r => r.id), rp = await hasReplays(q);
   await q.batch([
     ["update saves set state = 'expired' where state = 'open' and project_id in (select id from projects where owner_id = ?)", p_user],
     ["update projects set status = 'deleting', delete_reason = 'account', cleanup_at = ? where owner_id = ? and status = 'active'", q.now, p_user],
     ["delete from annotations where author_id = ? and project_id not in (select id from projects where owner_id = ?)", p_user, p_user],
     ["delete from members where user_id = ?", p_user],
     ["delete from invite_links where created_by = ?", p_user],
+    ...(rp ? [["delete from replays where owner_id = ?", p_user]] : []),
     ["delete from user_logins where osu_id = ?", p_user],
     ["update users set invited_by = null where invited_by = ?", p_user],
     [`update users set username = 'deleted', avatar_url = null, country = null, status_reason = null, role = 'user', access = 'none', access_message = null, access_requested_at = null,
@@ -395,3 +409,4 @@ module.exports = { F, Q, SPEC, J, B, U, P, err, uuid, left, trim, isObj, has, jt
   fxAllowed, inviteState, inviteRoom, linkOk, linkJson, newInviteCode, newLinkKey, specDef };
 require("./d1-projects");
 require("./d1-admin");
+require("./d1-replays");

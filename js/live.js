@@ -10,6 +10,7 @@ async function authCheck() {
     if ((r.headers.get("content-type") || "").includes("json")) { AUTH.api = true; const j = await r.json(); AUTH.user = j.user || null; AUTH.ticket = j.ticket || null; AUTH.preview = j.error === "preview_backend_disabled"; } // (a preview build: 503, logged out, no login)
   } catch {}
   AUTH.checked = true; renderAccount();
+  if (AUTH.user && typeof GATE !== "undefined" && GATE.welcome) route(); // logged in after all: the app's home, not the welcome page (gate.js)
   if (typeof R !== "undefined" && R.view === "account" && typeof renderAccountPage === "function") renderAccountPage(); // (opened before the login check)
   if (CR && !CR.meta.Creator && liveUser()) CR.meta.Creator = AUTH.user.username;
 }
@@ -42,16 +43,16 @@ function fillAcct() {
       p.append(li, h("small", "hint", tr("For live sessions. You can then move your access and projects to your osu! account (you're asked first), and Google keeps working as a way in.")));
     }
     // your mapper page on this site (profile, maps, groups, recent activity)
-    const me = h("a", "btn " + (go ? "ghost" : "main") + " sm wide", tr("My profile")); me.dataset.perm = "mappers"; me.href = listURL({ u: AUTH.user.username, q: "", st: "" });
+    const me = h("a", "btn " + (go ? "ghost" : "main") + " sm wide", tr("My profile")); me.dataset.perm = "mappers"; me.dataset.feat = "mappers"; me.href = listURL({ u: AUTH.user.username, q: "", st: "" });
     me.onclick = e => { e.preventDefault(); p.hidden = true; goMapper(AUTH.user.username); };
     if (!go) p.append(me);
     if (AUTH.user.id > 0 && !go) { const a = h("a", "btn ghost sm wide", tr("osu! profile")); a.href = `https://osu.ppy.sh/users/${AUTH.user.id}`; a.target = "_blank"; a.rel = "noopener"; p.append(a); }
-    if (typeof cloudEnabled === "function" && cloudEnabled() && can("online")) { const a = h("a", "btn ghost sm wide", tr("My online projects")); a.href = "?view=projects"; a.dataset.go = "projects"; a.onclick = () => p.hidden = true; p.append(a); }
+    if (typeof cloudEnabled === "function" && cloudEnabled() && can("online") && featOn("projects")) { const a = h("a", "btn ghost sm wide", tr("My online projects")); a.href = "?view=projects"; a.dataset.go = "projects"; a.onclick = () => p.hidden = true; p.append(a); }
     if (CLOUD.me && CLOUD.me.gate && CLOUD.me.access === "approved" && can("online")) { const a = h("a", "btn ghost sm wide", tr("Invite friends")); a.href = "?view=invite"; a.dataset.go = "invite"; a.onclick = () => p.hidden = true; p.append(a); }
     if (CLOUD.me && CLOUD.me.admin) {
       const a = h("a", "btn ghost sm wide", tr("Admin dashboard")); a.href = "?view=admin"; a.dataset.go = "admin"; a.onclick = () => p.hidden = true;
       const bd = CLOUD.me.badges || {}; // open the tab that needs a look: access requests first, then errors
-      if (bd.pending || bd.errors) { const c = h("span", "acnt", String(adminWaiting())); c.title = adminWaitingText(); a.append(c); a.href = "?view=admin"; a.onclick = () => { p.hidden = true; if (typeof ADM !== "undefined") ADM.tab = bd.pending ? "access" : "errors"; }; }
+      if (bd.pending || bd.errors) { const c = h("span", "acnt", String(adminWaiting())); c.title = adminWaitingText(); a.append(c); a.href = "?view=admin"; a.onclick = () => { p.hidden = true; ADM_HINT = bd.pending ? "access" : "errors"; }; }
       p.append(a);
     }
     if (!AUTH.user.dev && cloudEnabled()) { const a = h("a", "btn ghost sm wide", tr("Account settings")); a.href = "?view=account"; a.dataset.go = "account"; a.onclick = () => p.hidden = true; p.append(a); }
@@ -193,10 +194,44 @@ function send(c, msg) { try { if (c && c.open) c.send(msg); } catch {} }
 function broadcast(msg, except) { for (const [id, e] of LIVE.conns) if (id !== except && e.m) send(e.c, msg); }
 function toHost(msg) { send(LIVE.hostConn, msg); }
 const liveSendAll = msg => LIVE.host ? broadcast(msg) : toHost(msg);
+// ---------- realtime lane ----------
+// Presence (time, pointer, selection), drags and strokes being drawn also have a second data channel on each connection:
+// unordered and never resent (maxRetransmits 0). On the ordered channel one lost packet holds back everything after it
+// until it's been sent again, so over a direct link that loses a few packets the others' pointers and the host's
+// playback came in bursts, late (the TURN relay loses fewer, which hid it). Here a lost update is simply replaced by the
+// next one. Each sender numbers them (n) and an older one that arrives after a newer one is dropped. What must arrive
+// (play / pause / seek / speed, the end of a drag, a finished stroke) also goes on the ordered channel, marked k; the
+// copy that comes second has the same number and is dropped too. Edits, comments and chat stay on the ordered channel.
+const LIVE_RT_ID = 101; // (both ends make the channel themselves with this id: nothing to negotiate)
+function rtOpen(c, onMsg) {
+  try {
+    const pc = c.peerConnection; if (!pc || c.rt) return;
+    const ch = pc.createDataChannel("obv-rt", { negotiated: true, id: LIVE_RT_ID, ordered: false, maxRetransmits: 0 });
+    ch.onmessage = e => { let d; try { d = JSON.parse(e.data); } catch { return; } if (d && typeof d === "object") onMsg(d); };
+    c.rt = ch;
+  } catch {}
+}
+function sendRT(c, msg) {
+  const ch = c && c.rt;
+  if (!msg.k && ch && ch.readyState === "open") { try { const s = JSON.stringify(msg); if (s.length < 16000) { ch.send(s); return; } } catch {} }
+  if (msg.k && ch && ch.readyState === "open") { try { const s = JSON.stringify(msg); if (s.length < 16000) ch.send(s); } catch {} } // (whichever comes first)
+  send(c, msg);
+}
+function broadcastRT(msg, except) { for (const [id, e] of LIVE.conns) if (id !== except && e.m) sendRT(e.c, msg); }
+const liveSendRT = msg => { msg.n = LIVE.rtN = (LIVE.rtN || 0) + 1; if (LIVE.host) broadcastRT(msg); else sendRT(LIVE.hostConn, msg); };
+// false for an update older than (or the same as) the last one from that sender of that kind; messages without a number
+// (older versions of the site) always pass
+function rtFresh(d, from) {
+  if (typeof d.n !== "number") return true;
+  const key = d.t + "|" + (d.t === "ink" ? d.s && d.s.id : from), seen = LIVE.rtSeen || (LIVE.rtSeen = new Map()), last = seen.get(key);
+  if (last != null && d.n <= last) return false;
+  if (seen.size > 3000) seen.clear();
+  seen.set(key, d.n); return true;
+}
 
 // ---------- host ----------
 async function liveStart() {
-  if (!map) return;
+  if (!map || !featGuard("live")) return;
   if (LIVE.on) return openLive();
   if (AUTH.user && AUTH.user.google_only) { toast(tr("Live sessions need an osu! login: log in with osu! (you can then move what you have to that account)."), 4500); authLogin(); return; }
   if (!AUTH.user) { toast(tr("Log in with osu! to host a live session"), 3000); openAcct(); return; }
@@ -234,6 +269,7 @@ function hostAccept(c) {
     if (!LIVE.on) return c.close();
     if ([...LIVE.conns.values()].filter(e => e.m).length >= LIVE_MAX) { send(c, { t: "denied", why: "full" }); setTimeout(() => c.close(), 400); return; }
     LIVE.conns.set(c.peer, { c, m: null });
+    rtOpen(c, d => hostOnData(c, d).catch(e => console.warn("live", e)));
   });
   c.on("data", d => hostOnData(c, d).catch(e => console.warn("live", e)));
   c.on("close", () => memberLeft(c.peer));
@@ -281,9 +317,9 @@ async function hostOnData(c, d) {
     if (d.p.diff !== osuFiles[curDiff].path) return;
     applyRemotePatch(d.p, m); broadcast({ ...d, by: m.id }, c.peer);
     feed(tr("{n}: {what}", { n: m.name, what: tr(d.label || "Edit") }), d.p.t);
-  } else if (d.t === "cur") { m.pres = { ...d, at: performance.now() }; broadcast({ ...d, id: m.id }, c.peer); dirty = true; }
-  else if (d.t === "drag") { if (!m.canEdit) return; const g = cleanDrag(d); if (g) { m.drag = g; broadcast({ ...d, id: m.id }, c.peer); dirty = true; } }
-  else if (d.t === "ink") { const st = inkClean(d.s, m); if (st) { inkAdd(st); broadcast({ t: "ink", s: { ...inkWire(st), by: m.id } }, c.peer); } }
+  } else if (d.t === "cur") { if (!rtFresh(d, m.id)) return; const g = cleanCur(d); m.pres = { ...g, at: performance.now() }; broadcastRT({ ...g, id: m.id }, c.peer); dirty = true; }
+  else if (d.t === "drag") { if (!m.canEdit || !rtFresh(d, m.id)) return; const g = cleanDrag(d); if (g) { m.drag = g; broadcastRT({ ...d, id: m.id }, c.peer); dirty = true; } }
+  else if (d.t === "ink") { if (!rtFresh(d, m.id)) return; const st = inkClean(d.s, m); if (st) { inkAdd(st); broadcastRT({ t: "ink", s: { ...inkWire(st), by: m.id }, n: d.n, k: d.k }, c.peer); } }
   else if (d.t === "inkdel") { const ids = (Array.isArray(d.ids) ? d.ids : []).slice(0, 400).map(String); inkRemove(ids, m.id); broadcast({ t: "inkdel", ids, by: m.id }, c.peer); }
   else if (d.t === "inkclr") { inkClear(m.id); broadcast({ t: "inkclr", by: m.id }, c.peer); }
   else if (d.t === "hl") { const hl = cleanHl(d.h, m); if (hl) { addHl(hl); broadcast({ t: "hl", h: hl }, c.peer); } }
@@ -314,7 +350,7 @@ async function sendPackage(c) { // for maps that aren't on the mirrors (local/cr
     const buf = LIVE.pkgBlob, CH = 64000, n = Math.ceil(buf.byteLength / CH);
     send(c, { t: "pkg0", n, size: buf.byteLength });
     for (let i = 0; i < n; i++) {
-      while (c.dataChannel && c.dataChannel.bufferedAmount > 1.5e6) await sleep(25);
+      while (c.dataChannel && c.dataChannel.bufferedAmount > 256e3) await sleep(20); // (a small queue: live updates don't wait behind seconds of map on a slow link)
       if (!c.open) return;
       send(c, { t: "pkg", i, b: buf.slice(i * CH, (i + 1) * CH) });
       if (i % 16 === 15) await sleep(0);
@@ -334,6 +370,7 @@ function kick(id) { // id: the member's id (their connection may have changed si
 
 // ---------- visitor ----------
 function liveJoinPrompt(code, lt) {
+  if (!featGuard("live")) return;
   code = String(code || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12);
   if (!code) return;
   if (LIVE.on) { if (LIVE.code === code) return openLive(); return toast(tr("You're already in a live session")); }
@@ -353,6 +390,7 @@ $("ljGo").onclick = () => {
   $("liveJoin").hidden = true; liveJoin(code, guest, $("liveJoin").dataset.lt || "");
 };
 async function liveJoin(code, guest, lt) {
+  if (!featGuard("live")) return;
   const tP = lt ? liveApi("live/ice", { code, token: lt }) : null; // relay credentials, when the link carries the session's token
   let Peer; try { Peer = await loadPeerJS(); } catch (e) { return toast(e.message); }
   if (!(await edConfirmDiscard())) return;
@@ -365,7 +403,7 @@ async function liveJoin(code, guest, lt) {
   peer.on("error", e => { clearTimeout(to); if (e.type === "peer-unavailable") fail(tr("No live session with this code (it may have ended).")); else if (!welcomed) fail(tr("Couldn't connect: {err}", { err: e.type || e.message })); });
   peer.on("open", () => {
     const c = peer.connect(peerId(code), { reliable: true });
-    c.on("open", async () => send(c, { t: "join", user: liveUser() ? { username: liveUser().username } : { username: guest || "guest" }, ticket: await ticketFor("live:" + code), relay }));
+    c.on("open", async () => { rtOpen(c, d => { if (c === LIVE.hostConn) visitorOnData(d).catch(e => console.warn("live", e)); }); send(c, { t: "join", user: liveUser() ? { username: liveUser().username } : { username: guest || "guest" }, ticket: await ticketFor("live:" + code), relay }); });
     c.on("data", d => {
       if (d && d.t === "denied") { welcomed = true; clearTimeout(to); hideLoading(); toast(d.why === "full" ? tr("This session is full") : d.why === "perm" ? tr("This site doesn't let guests watch live sessions") : tr("The host only allows people logged in with osu!"), 4500); setTimeout(() => { try { peer.destroy(); } catch {} }, 200); return; }
       if (d && d.t === "welcome") {
@@ -407,7 +445,14 @@ async function visitorOnData(d) {
       if (me && me.canEdit !== LIVE.canEdit) { LIVE.canEdit = me.canEdit; toast(tr(me.canEdit ? "The host gave you edit permission" : "You're view-only now"), 2500); }
       renderLive(); updateLivePill(); break;
     }
-    case "cur": { const m = LIVE.members.get(d.id); if (m) { m.pres = { ...d, at: performance.now() }; dirty = true; } break; }
+    case "cur": {
+      const m = LIVE.members.get(d.id); if (!m || !rtFresh(d, d.id)) break;
+      const now = performance.now(), from = m.pres ? livePointer(m.pres, now) : null; // (the pointer glides from where it's drawn)
+      const g = cleanCur(d); // (the host is checked too: a modified host build shouldn't be able to stall the guests either)
+      m.pres = { ...g, at: now, fx: from ? from[0] : g.x, fy: from ? from[1] : g.y };
+      if (d.id === LIVE.hostId) liveFolSample(g, now);
+      dirty = true; break;
+    }
     case "hl": addHl(d.h); break;
     case "cm": addCm(d.c); break;
     case "chat": chatAdd(d.m); break;
@@ -416,8 +461,8 @@ async function visitorOnData(d) {
     case "sum": if (map && !LIVE.pkg && d.path === osuFiles[curDiff].path) { if (d.h !== stateHash()) { if (++LIVE.sumBad >= 2) { LIVE.sumBad = 0; toHost({ t: "resync" }); } } else LIVE.sumBad = 0; } break;
     case "time": LIVE.expires = d.expires; break;
     case "ping": toHost({ t: "pong", s: d.s }); break;
-    case "drag": { const m = LIVE.members.get(d.id), g = cleanDrag(d); if (m && g) { m.drag = g; dirty = true; } break; }
-    case "ink": { const m = LIVE.members.get(d.s && d.s.by), st = m && inkClean(d.s, m); if (st) inkAdd(st); break; }
+    case "drag": { if (!rtFresh(d, d.id)) break; const m = LIVE.members.get(d.id), g = cleanDrag(d); if (m && g) { m.drag = g; dirty = true; } break; }
+    case "ink": { if (!rtFresh(d, d.s && d.s.by)) break; const m = LIVE.members.get(d.s && d.s.by), st = m && inkClean(d.s, m); if (st) inkAdd(st); break; }
     case "inkdel": { const by = LIVE.members.get(d.by); inkRemove((d.ids || []).map(String), by && by.host ? null : d.by); break; }
     case "inkclr": inkClear(d.all ? null : d.by); break;
     case "pings": {
@@ -435,6 +480,10 @@ async function visitorOnData(d) {
 // switch to the relay when the ping to the host stays high; back to direct if the relay is slower still
 function liveAutoRelay(ping, n) {
   LIVE.ping = ping;
+  if (ping != null && LIVE.settled && !LIVE.opening && !LIVE.pkg && performance.now() - LIVE.settled > 3000) LIVE.pingLo = LIVE.pingLo ? Math.min(LIVE.pingLo, ping) : ping;
+  // not while the map is arriving or being opened, nor for 12 s after (the host's pings were answered late then, which
+  // isn't the link: it switched people to the slower relay and kept them there)
+  if (LIVE.opening || LIVE.pkg || !LIVE.settled || performance.now() - LIVE.settled < 12000) return;
   const t = LIVE.turn; if (!turnOk(t) || LIVE.switching || ping == null || n < 3) return;
   if (!LIVE.relay && !LIVE.autoDone && ping > t.ping_ms) { LIVE.autoDone = true; LIVE.directPing = ping; liveSwitch(true, "auto", ping); }
   else if (LIVE.relay && !t.relay && LIVE.directPing != null && ping > LIVE.directPing + 20) { LIVE.directPing = null; liveSwitch(false, "back"); }
@@ -442,7 +491,7 @@ function liveAutoRelay(ping, n) {
 // a new connection to the host (relay only, or direct again); the host moves this person over to it, then the old one closes
 async function liveSwitch(relay, why, ping) {
   if (LIVE.switching || !LIVE.on || LIVE.host || !turnOk(LIVE.turn) || LIVE.relay === relay) return;
-  LIVE.switching = true;
+  LIVE.switching = true; LIVE.pingLo = 0; // (another path: its own trip time)
   let peer = null;
   try {
     const Peer = await loadPeerJS(), code = LIVE.code;
@@ -452,7 +501,7 @@ async function liveSwitch(relay, why, ping) {
       peer.on("error", e => { clearTimeout(to); rej(e); });
       peer.on("open", () => {
         const c = peer.connect(peerId(code), { reliable: true }); let ok = false;
-        c.on("open", () => send(c, { t: "resume", id: LIVE.me.id, rk: LIVE.rk, relay }));
+        c.on("open", () => { rtOpen(c, d => { if (c === LIVE.hostConn) visitorOnData(d).catch(e => console.warn("live", e)); }); send(c, { t: "resume", id: LIVE.me.id, rk: LIVE.rk, relay }); });
         c.on("data", d => {
           if (!ok) { if (d && d.t === "resumed") { ok = true; clearTimeout(to); res(c); } else if (d && d.t === "denied") { clearTimeout(to); rej(new Error(d.why || "denied")); } return; }
           if (c === LIVE.hostConn) visitorOnData(d).catch(e => console.warn("live", e));
@@ -500,7 +549,7 @@ async function applyState(d) {
   else applyText(d.text, d.ids);
   if (!EDIT.on) setMode(true);
   EDIT.changed = false; osuFiles.forEach(o => o.created = o.edited = false);
-  hideLoading(); updateLivePill(); renderLive();
+  hideLoading(); updateLivePill(); renderLive(); LIVE.settled = performance.now(); // (the auto relay waits a while after this)
   if (!d.resync) toast(tr("Live: {t}", { t: d.title }), 2000);
 }
 function applyText(text, ids) { // replace the open diff's content in place (keeps song, background, storyboard)
@@ -559,10 +608,19 @@ function liveDragSend(now) {
   let msg = null;
   if (EDIT.drag && EDIT.sel.size) msg = { t: "drag", ids: [...EDIT.sel].slice(0, 200), dx: Math.round(EDIT.dx), dy: Math.round(EDIT.dy) };
   else if (EDIT.anchor && EDIT.anchor.moved) msg = { t: "drag", a: EDIT.anchor.o.lid, pts: EDIT.anchor.pts.slice(0, 200).map(p => [Math.round(p[0]), Math.round(p[1])]) };
-  const out = m => liveSendAll(LIVE.host ? { ...m, id: LIVE.me.id } : m);
-  if (!msg) { if (LIVE.dragKey) { LIVE.dragKey = ""; out({ t: "drag", end: true }); } return; }
+  const out = m => liveSendRT(LIVE.host ? { ...m, id: LIVE.me.id } : m);
+  if (!msg) { if (LIVE.dragKey) { LIVE.dragKey = ""; out({ t: "drag", end: true, k: 1 }); } return; }
   const key = JSON.stringify(msg); if (key === LIVE.dragKey || now - (LIVE.dragAt || 0) < 40) return;
   LIVE.dragKey = key; LIVE.dragAt = now; out(msg);
+}
+// Another person's presence update, rebuilt field by field before it is kept or passed on: only what the pointer, selection and
+// follow code read, numbers finite and in range, at most 60 ids. Nothing else that came with it survives, so one peer can't
+// slow the drawing down (a huge list) or break it (a list that can't be walked) for everyone in the session.
+function cleanCur(d) {
+  const num = (v, lo, hi, def) => { v = +v; return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : def; };
+  return { t: "cur", time: num(d.time, -1e7, 1e8, 0), playing: !!d.playing, x: num(d.x, -999, 2000, -999), y: num(d.y, -999, 2000, -999),
+    sel: Array.isArray(d.sel) ? d.sel.slice(0, 60).map(Number).filter(Number.isFinite) : [],
+    rate: num(d.rate, .1, 8, 1), ...(d.ep != null ? { ep: Math.floor(num(d.ep, 0, 1e9, 0)) } : {}), ...(d.k ? { k: 1 } : {}), ...(typeof d.n === "number" && Number.isFinite(d.n) ? { n: d.n } : {}) };
 }
 function cleanDrag(d) {
   if (d.end) return { end: true, at: performance.now() };
@@ -573,27 +631,97 @@ function cleanDrag(d) {
 // presence (time, play state, pointer, selection) and following the host's playback. The render loop only runs while
 // something moves, so a paused player draws no frames: a timer does both too, or a pause would never reach the others.
 function livePresence(t, playing, now) {
+  if (!clock.pre) t = A.cur(); // the song's own time, the same from the frame loop and the timer (the frame loop draws t
+  // minus the visual offset; sending both made a follower's target jump between the two)
   const changed = playing !== LIVE.presPlaying; // play / pause goes out at once
   if (!changed && now - LIVE.lastPres <= 50) return; // ~20/s at most, only when something changes
-  const sel = [...EDIT.sel].slice(0, 60), key = [Math.round(t / 8), playing, Math.round(LIVE.mx), Math.round(LIVE.my), sel.join(), A.rate].join();
+  // (a guest following the host plays the host's time anyway: their own time alone doesn't need 20 updates a second,
+  // which the host relayed to every other guest; it still goes out with any pointer / selection change, and every 2.5 s)
+  const tk = !LIVE.host && LIVE.follow && playing ? "f" : Math.round(t / 8);
+  const sel = [...EDIT.sel].slice(0, 60), key = [tk, playing, Math.round(LIVE.mx), Math.round(LIVE.my), sel.join(), A.rate].join();
   if (key === LIVE.presKey && now - LIVE.lastPres <= 2500) return;
-  LIVE.presKey = key; LIVE.lastPres = now; LIVE.presPlaying = playing;
-  const msg = { t: "cur", time: Math.round(t), playing, x: Math.round(LIVE.mx), y: Math.round(LIVE.my), sel, rate: A.rate };
-  if (LIVE.host) broadcast({ ...msg, id: LIVE.me.id }); else if (!LIVE.watch) toHost(msg);
+  // ep: a new "epoch" whenever the time jumps (seek, play, pause, speed): a follower drops its older samples then
+  const exp = LIVE.presT == null ? null : LIVE.presT + (LIVE.presPlaying ? (now - LIVE.lastPres) * A.rate : 0);
+  const jump = changed || A.rate !== LIVE.presRate || exp == null || Math.abs(t - exp) > 60;
+  if (jump) LIVE.presEp = (LIVE.presEp || 0) + 1;
+  LIVE.presKey = key; LIVE.lastPres = now; LIVE.presPlaying = playing; LIVE.presT = t; LIVE.presRate = A.rate;
+  const msg = { t: "cur", time: Math.round(t), playing, x: Math.round(LIVE.mx), y: Math.round(LIVE.my), sel, rate: A.rate, ep: LIVE.presEp, ...(jump ? { k: 1 } : {}) };
+  if (LIVE.host) liveSendRT({ ...msg, id: LIVE.me.id }); else if (!LIVE.watch) liveSendRT(msg);
 }
+// following the host smoothly. Each "cur" is the host's time when it was sent; it arrives a little later, sometimes much
+// later (a lost packet holds back everything after it on the ordered channel, most of all through a relay). So:
+// - the samples of the current epoch are kept (1.5 s) and the host's time now is the highest of their predictions
+//   (time + elapsed × rate): a late sample predicts too early and is outvoted, plus half the ping for the trip itself;
+// - small differences are caught up by playing up to 3 % faster or slower (no seek, nothing audible), and the song only
+//   jumps when it's far off (250 ms, 400 ms on a relay or a slow link) for a while (300 ms), not on one late sample;
+// - the host's speed is taken over (mapping at 0.75x: a follower at 1x drifted 250 ms a second and kept jumping).
+// Hosts from before the epochs: a sample that doesn't fit the prediction (> 300 ms off) starts a new set.
+const LIVE_FOL_KEEP = 1500;
+function liveFolSample(d, now) {
+  const F = LIVE.fol || (LIVE.fol = { ep: null, s: [] }), r = d.rate || 1;
+  let reset = !d.playing || (d.ep != null && d.ep !== F.ep);
+  if (!reset && d.ep == null && F.s.length && Math.abs(liveFolPredict(F, r, now) - d.time) > 300) reset = true;
+  if (reset) F.s = [];
+  F.ep = d.ep ?? null; F.s.push({ time: d.time, at: now }); while (F.s.length && now - F.s[0].at > LIVE_FOL_KEEP) F.s.shift();
+}
+function liveFolPredict(F, r, now) { let best = -Infinity; for (const x of F.s) best = Math.max(best, x.time + (now - x.at) * r); return best; }
 function liveFollow(now) {
-  if (LIVE.host || !(LIVE.follow || LIVE.watch) || !map || LIVE.opening) return; // (watchers always follow)
+  if (LIVE.host || !(LIVE.follow || LIVE.watch) || !map || LIVE.opening) { if (!LIVE.host) A.untrim(); return; } // (watchers always follow)
   const hp = (LIVE.members.get(LIVE.hostId) || {}).pres;
-  if (!hp || now - hp.at > 5000) return;
-  const ht = hp.time + (hp.playing ? (now - hp.at) * (hp.rate || 1) : 0);
-  if (hp.playing && !isPlaying()) { seekTo(ht); playNow(); }
-  else if (!hp.playing && isPlaying()) { pausePlayback(); seekTo(hp.time); }
-  else if (Math.abs(ht - A.cur()) > (hp.playing ? 180 : 3)) seekTo(ht);
+  if (!hp || now - hp.at > 5000) { A.untrim(); return; }
+  if (hp.rate && Math.abs(hp.rate - A.rate) > 1e-6 && !clock.pre) setRate(hp.rate);
+  const r = hp.rate || 1, ht = hp.playing ? liveHostNow(hp, now) : hp.time;
+  if (hp.playing && !isPlaying()) { A.untrim(); seekTo(ht); playNow(); LIVE.folOff = 0; return; }
+  if (!hp.playing && isPlaying()) { pausePlayback(); seekTo(hp.time); return; }
+  if (!hp.playing) { if (Math.abs(hp.time - A.cur()) > 3) seekTo(hp.time); return; }
+  if (clock.pre) return;
+  const raw = ht - A.cur(), far = LIVE.relay || (LIVE.pingLo || 0) > 150 ? 400 : 250;
+  if (Math.abs(raw) > far) {
+    if (!LIVE.folOff) LIVE.folOff = now;
+    else if (now - LIVE.folOff > 300) { LIVE.folOff = 0; LIVE.folErr = null; A.untrim(); seekTo(ht + 30 * r); } // (+ a frame or two for the seek itself)
+    return;
+  }
+  LIVE.folOff = 0;
+  // catch up on the smoothed difference (the prediction wobbles with the jitter), in 0.5 % steps changed at most 4 times a
+  // second: about 1 % per 50 ms of difference, at most 3 %; nothing under 15 ms (let go under 6 ms)
+  const dt = LIVE.folErrAt ? Math.min(250, now - LIVE.folErrAt) : 0; LIVE.folErrAt = now;
+  const err = LIVE.folErr == null ? raw : LIVE.folErr + (raw - LIVE.folErr) * (1 - Math.exp(-dt / 400)); LIVE.folErr = err;
+  if (now - (LIVE.trimAt || 0) < 250) return;
+  const a = Math.abs(err);
+  const k = a < 6 || (a < 15 && A.nudge === 1) ? 1 : 1 + Math.sign(err) * Math.min(.03, Math.round(a / 50 * 2) / 200);
+  if (Math.abs(k - A.nudge) >= .004 || (k === 1 && A.nudge !== 1)) { A.trim(k); LIVE.trimAt = now; }
+}
+// where someone is, for their mark on the timeline: the host, while this guest follows them playing, is this guest's own
+// time plus the smoothed difference (moves as smoothly as the song); otherwise their prediction, eased so a sample that
+// shifts it doesn't make the mark hop back and forth
+function liveMarkTime(m, now) {
+  const p = m.pres; if (!p.playing) return p.time;
+  if (m.id === LIVE.hostId && (LIVE.follow || LIVE.watch) && isPlaying() && LIVE.folErr != null) return A.cur() + LIVE.folErr;
+  const want = m.id === LIVE.hostId ? liveHostNow(p, now) : p.time + (now - p.at) * (p.rate || 1);
+  const r = p.rate || 1, last = m.markT, lastAt = m.markAt; m.markAt = now;
+  if (last == null || Math.abs(want - (last + (now - lastAt) * r)) > 400) return (m.markT = want);
+  const exp = last + (now - lastAt) * r; return (m.markT = exp + (want - exp) * Math.min(1, (now - lastAt) / 300));
+}
+// the host's time now, as this guest sees it: the best of the recent samples (see above) plus the trip one way: half the
+// lowest ping since the map was open (pings during the join were answered late, a median of those put guests ahead)
+function liveHostNow(hp, now) {
+  const r = hp.rate || 1, F = LIVE.fol;
+  const base = F && F.s.length ? liveFolPredict(F, r, now) : hp.time + (now - hp.at) * r;
+  return base + Math.min(LIVE.pingLo || 0, 300) / 2 * r;
+}
+// another person's pointer, eased over the time between their updates (they come ~20 a second at most, unevenly), so it
+// glides instead of hopping; a long jump (off the field, or across it) goes straight there
+const LIVE_PTR_MS = 90;
+function livePointer(p, now) {
+  const k = Math.min(1, (now - p.at) / LIVE_PTR_MS), fx = p.fx ?? p.x, fy = p.fy ?? p.y;
+  if (k >= 1 || Math.abs(p.x - fx) + Math.abs(p.y - fy) > 400) return [p.x, p.y];
+  const e = k * (2 - k); return [fx + (p.x - fx) * e, fy + (p.y - fy) * e];
 }
 function liveFrame(t, playing) {
   const now = performance.now();
   liveDragSend(now); livePresence(t, playing, now); liveFollow(now);
   if (LIVE.flash || LIVE.highlights.length) dirty = true;
+  for (const m of LIVE.members.values()) if (m.pres && m.id !== LIVE.me.id && now - m.pres.at < LIVE_PTR_MS) { dirty = true; break; }
 }
 setInterval(() => { if (LIVE.on && map) { const now = performance.now(); livePresence(A.cur(), isPlaying(), now); liveFollow(now); } }, 200);
 function liveDrawOver(t, px) {
@@ -614,8 +742,8 @@ function liveDrawOver(t, px) {
   // other people: their selection and pointer
   for (const m of LIVE.members.values()) {
     if (m.id === LIVE.me.id || !m.pres || now - m.pres.at > 15000) continue;
-    const p = m.pres;
-    for (const id of p.sel || []) { const o = byLid(id); if (visible(o)) { ctx.setLineDash([6 * px, 5 * px]); ring(o, m.color, 2.5, .95); ctx.setLineDash([]); } }
+    const p0 = m.pres, [px0, py0] = livePointer(p0, now), p = { x: px0, y: py0 };
+    for (const id of p0.sel || []) { const o = byLid(id); if (visible(o)) { ctx.setLineDash([6 * px, 5 * px]); ring(o, m.color, 2.5, .95); ctx.setLineDash([]); } }
     if (p.x > -100 && p.x < 612 && p.y > -100 && p.y < 484) {
       ctx.globalAlpha = 1; ctx.fillStyle = m.color; ctx.strokeStyle = "#000"; ctx.lineWidth = 1.2 * px;
       ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 11 * px, p.y + 12 * px); ctx.lineTo(p.x + 4.5 * px, p.y + 12 * px); ctx.lineTo(p.x, p.y + 17 * px); ctx.closePath(); ctx.fill(); ctx.stroke();
@@ -656,7 +784,7 @@ function liveDrawTimeline(g, X, t0, t1, hh) {
   for (const c of LIVE.comments) if (c.t >= t0 && c.t <= t1) { const x = X(c.t); g.fillStyle = c.color || "#fff"; g.fillRect(x - 1, hh - 10, 2, 10); g.beginPath(); g.arc(x, hh - 11, 4, 0, 7); g.fill(); }
   for (const m of LIVE.members.values()) {
     if (m.id === LIVE.me.id || !m.pres || performance.now() - m.pres.at > 15000) continue;
-    const x = X(m.pres.time + (m.pres.playing ? (performance.now() - m.pres.at) * (m.pres.rate || 1) : 0)); if (x < 0 || x > g.canvas.width) continue;
+    const x = X(liveMarkTime(m, performance.now())); if (x < 0 || x > g.canvas.width) continue;
     g.fillStyle = m.color; g.globalAlpha = .9; g.fillRect(x - .5, 0, 1, hh); g.beginPath(); g.moveTo(x - 5, hh); g.lineTo(x + 5, hh); g.lineTo(x, hh - 7); g.fill(); g.globalAlpha = 1;
   }
 }
@@ -714,7 +842,9 @@ function liveEnd(notify, msg, why) {
   setTimeout(() => { try { peer && peer.destroy(); } catch {} }, 300);
   clearInterval(LIVE.timer);
   Object.assign(LIVE, { on: false, host: false, peer: null, hostConn: null, canEdit: false, idBase: 0, highlights: [], flash: null, pkg: null, pkgBlob: null, pkgKey: "",
-    turn: null, token: "", relay: false, rk: "", ping: null, autoDone: false, directPing: null, switching: false, watch: false });
+    turn: null, token: "", relay: false, rk: "", ping: null, autoDone: false, directPing: null, switching: false, watch: false,
+    fol: null, folOff: 0, folErr: null, folErrAt: 0, trimAt: 0, settled: 0, pingLo: 0, presEp: 0, presT: null });
+  A.untrim();
   if (watched && !can("editor")) setMode(false, true); // a guest who watched: back to the preview
   LIVE.conns.clear(); LIVE.members.clear();
   inkReset(); LIVE.dragKey = "";
@@ -827,9 +957,11 @@ $("liveBtn").onclick = e => {
   if (LIVE.on) return openLive();
   if (typeof COLLAB !== "undefined" && COLLAB.on) return collabOpen();
   const r = $("liveBtn").getBoundingClientRect(); e.stopPropagation();
-  ctxMenu(r.left, r.bottom + 6, [
-    { label: tr("Live session") + " — " + tr("the host decides who may edit"), action: () => openLive() },
-    { label: tr("Collab together") + " — " + tr("everyone edits one difficulty"), action: () => collabOpen() }]);
+  const items = [
+    ...featOn("live") ? [{ label: tr("Live session") + " — " + tr("the host decides who may edit"), action: () => openLive() }] : [],
+    ...featOn("collab") ? [{ label: tr("Collab together") + " — " + tr("everyone edits one difficulty"), action: () => collabOpen() }] : []];
+  if (!items.length) return featGuard("live"); // (both switched off)
+  ctxMenu(r.left, r.bottom + 6, items);
 };
 $("livePill").onclick = openLive;
 $("lsClose").onclick = closeLive;

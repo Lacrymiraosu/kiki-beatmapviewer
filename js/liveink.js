@@ -13,6 +13,7 @@ const inkOn = () => LIVE.on && EDIT.on && !LIVE.watch;
 const inkShown = () => inkOn() && !!S.inkTools;
 const inkUid = () => LIVE.me.id + ":" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const inkSend = msg => liveSendAll(LIVE.host ? { ...msg, by: LIVE.me.id, ...(msg.s ? { s: { ...msg.s, by: LIVE.me.id } } : {}) } : msg); // (the host's own: with its id)
+const inkSendRT = (s, done) => { const msg = { t: "ink", s: LIVE.host ? { ...s, by: LIVE.me.id } : s, ...(done ? { k: 1 } : {}) }; liveSendRT(msg); }; // (strokes: on the realtime lane, see live.js)
 
 // ---------- the floating button and its tool panel ----------
 const inkFab = h("div", "inkfab"); inkFab.id = "inkFab"; inkFab.hidden = true;
@@ -83,7 +84,7 @@ UI.player.addEventListener("pointerdown", e => {
   if (!INK.tool || e.target !== cv || !inkOn() || e.button === 2) return;
   e.preventDefault(); e.stopPropagation();
   const p = inkPoint(e);
-  if (INK.tool === "ping") { const s = inkStroke("ping", [p]); s.done = true; inkAdd(s); inkSend({ t: "ink", s: inkWire(s) }); return; }
+  if (INK.tool === "ping") { const s = inkStroke("ping", [p]); s.done = true; inkAdd(s); inkSendRT(inkWire(s), true); return; }
   if (INK.tool === "eraser") { INK.erasing = true; inkErase(p); return; }
   INK.cur = inkStroke(INK.tool, [p]); inkAdd(INK.cur); INK.lastSend = 0;
 }, true);
@@ -94,12 +95,12 @@ addEventListener("pointermove", e => {
   const p = inkPoint(e), q = s.pts[s.pts.length - 1];
   if (Math.hypot(p[0] - q[0], p[1] - q[1]) < 1.5 || s.pts.length >= 1500) return;
   s.pts.push(p); dirty = true;
-  const now = performance.now(); if (now - INK.lastSend > 50) { INK.lastSend = now; inkSend({ t: "ink", s: inkWire(s) }); } // others see it being drawn
+  const now = performance.now(); if (now - INK.lastSend > 50) { INK.lastSend = now; inkSendRT(inkWire(s)); } // others see it being drawn
 }, true);
 addEventListener("pointerup", () => {
   INK.erasing = false;
   const s = INK.cur; if (!s) return; INK.cur = null;
-  s.done = true; s.at = performance.now(); inkSend({ t: "ink", s: inkWire(s) }); dirty = true;
+  s.done = true; s.at = performance.now(); inkSendRT(inkWire(s), true); dirty = true;
 }, true);
 function inkErase(p) { // strokes under the eraser: your own (the host: anyone's)
   const hit = INK.strokes.filter(s => (LIVE.host || s.by === LIVE.me.id) && s.pts.some((q, i) => Math.hypot(q[0] - p[0], q[1] - p[1]) < 14 || (i && segDist(p[0], p[1], s.pts[i - 1], q) < 10)));

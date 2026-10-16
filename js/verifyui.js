@@ -335,7 +335,7 @@ function vfyMeta(main, res) {
 
 // ---------- files in the package ----------
 function vfyFiles(main) {
-  const kinds = fileKinds(allMaps(), sb.length ? sb : []), ORDER = ["Song", "Background", "Video", "Difficulty", "Storyboard script", "Storyboard", "Hit sound", "Skin element", "System file"];
+  const kinds = fileKinds(allMaps(), sb.length ? [{ frames: [...sb.names] }] : []), ORDER = ["Song", "Background", "Video", "Difficulty", "Storyboard script", "Storyboard", "Hit sound", "Skin element", "System file"];
   const rows = [...kinds].map(([k, kind]) => ({ k, f: files[k], kind, size: vfySize(files[k]) }))
     .sort((a, b) => (a.kind ? ORDER.indexOf(a.kind) : -1) - (b.kind ? ORDER.indexOf(b.kind) : -1) || a.k.localeCompare(b.k));
   const total = rows.reduce((s, r) => s + (r.size || 0), 0), unused = rows.filter(r => !r.kind).length;

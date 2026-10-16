@@ -28,7 +28,7 @@ async function renderInvite() {
   const row = h("div", "invrow"), copy = h("button", "btn main", tr("Copy link"));
   copy.onclick = async () => toast(await copyText(url) ? tr("Invite link copied") : url, 2000);
   row.append(inp, copy);
-  if (navigator.share) { const sh = h("button", "btn ghost", tr("Share")); sh.onclick = () => navigator.share({ title: "KIKI BEATMAP VIEWER", text: tr("Join me on KIKI BEATMAP VIEWER"), url }).catch(() => {}); row.append(sh); }
+  if (navigator.share) { const sh = h("button", "btn ghost", tr("Share")); sh.onclick = () => navigator.share({ title: "beatmap viewer", text: tr("Join me on beatmap viewer"), url }).catch(() => {}); row.append(sh); }
   const use = h("div", "invuse");
   if (r.unlimited) use.append(h("b", null, tr("No limit")), h("small", null, tr("{n} joined with your link", { n: r.used })));
   else {

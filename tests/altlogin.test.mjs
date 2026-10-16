@@ -48,7 +48,7 @@ const c = () => auth.cfg({ headers: { host: HOST } });
 function takeCookies(out, list) {
   for (const x of [].concat(list)) { const [nv] = x.split(";"), i = nv.indexOf("="), k = nv.slice(0, i), v = decodeURIComponent(nv.slice(i + 1)); (out.raw ||= {})[k] = v; if (k.startsWith("__Host-")) out.cookies[k.slice(7)] = v; }
 }
-const sessionCookie = id => "__Host-obv_s=" + encodeURIComponent(auth.sign({ id, username: "user" + id, avatar: "", country: "TH", kind: "session", exp: Date.now() + 36e5 }, c()));
+const sessionCookie = (id, iat) => "__Host-obv_s=" + encodeURIComponent(auth.sign({ id, username: "user" + id, avatar: "", country: "TH", kind: "session", ...(iat ? { iat } : {}), exp: Date.now() + 36e5 }, c()));
 // call a handler like the server does; -> { status, location, cookies: { name: value } }
 async function call(p, qs, cookie) {
   const out = { status: 0, location: "", cookies: {} };
@@ -65,12 +65,12 @@ async function authMe(sess) {
   await require(join(root, "api/auth/me.js"))(req, { statusCode: 0, setHeader() {}, end(b) { body = b; } }); return JSON.parse(body);
 }
 // start, then come back with a code: the stand-in endpoint returns an id_token for `sub` (made with `tweak`)
-async function roundTrip(p, { mode = "login", as, sub, tweak = x => x, status } = {}) {
-  const start = await call(p, `mode=${mode}&next=%2Fdone`, as ? sessionCookie(as) : "");
+async function roundTrip(p, { mode = "login", as, sub, tweak = x => x, status, iat } = {}) {
+  const start = await call(p, `mode=${mode}&next=%2Fdone`, as ? sessionCookie(as, iat) : "");
   const st = auth.unsign(start.cookies.obv_alt, c());
   const claims = tweak({ iss: "https://accounts.google.com", aud: process.env.GOOGLE_CLIENT_ID, sub, nonce: st && st.nonce, exp: Math.floor(Date.now() / 1000) + 600 });
   answer[p] = { status, body: status ? { error: "invalid_grant" } : { id_token: idToken(claims) } };
-  const ck = "__Host-obv_alt=" + encodeURIComponent(start.cookies.obv_alt) + (as ? "; " + sessionCookie(as) : "");
+  const ck = "__Host-obv_alt=" + encodeURIComponent(start.cookies.obv_alt) + (as ? "; " + sessionCookie(as, iat) : "");
   return { start, back: await call(p, `code=abc&state=${st && st.state}`, ck) };
 }
 const why = r => new URL(r.back.location, "http://x").searchParams.get("login");
@@ -138,8 +138,18 @@ test("link Google, then log in with it as the same osu! account; the list and un
   assert.equal(auth.unsign((await roundTrip("google", { sub: "g-2" })).back.cookies.obv_s, c()).gonly, true);
 });
 
+test("linking Google needs a login that hasn't been ended: a revoked login (stolen cookie) can't link, a newer one can", async () => {
+  await emu.db.query("update obv.users set sessions_valid_after = now() where osu_id = $1", [B]); // ("Log out everywhere" on B's account)
+  const old = await roundTrip("google", { mode: "link", as: B, sub: "g-revoked", iat: Date.now() - 5000 });
+  assert.equal(why(old), "link_login"); assert.equal(old.back.raw["__Host-obv_s"], "", "the ended login is cleared");
+  assert.equal((await emu.db.query("select 1 from obv.user_logins where subject = 'g-revoked'")).rows.length, 0, "nothing was linked");
+  assert.equal(why(await roundTrip("google", { mode: "link", as: B, sub: "g-revoked", iat: Date.now() + 1000 })), "linked_google", "a login made after it links");
+  await emu.db.query("delete from obv.user_logins where subject = 'g-revoked'");
+  await emu.db.query("update obv.users set sessions_valid_after = null where osu_id = $1", [B]);
+});
+
 test("refused: wrong audience, wrong nonce, expired token, provider error, a state that doesn't match", async () => {
-  assert.equal(why(await roundTrip("google", { mode: "link", as: A, sub: "g-3" })), "linked_google");
+  assert.equal(why(await roundTrip("google", { mode: "link", as: A, sub: "g-3", iat: Date.now() + 1000 })), "linked_google"); // (a login made after the unlink above ended A's earlier ones)
   assert.equal(why(await roundTrip("google", { sub: "g-3", tweak: x => ({ ...x, aud: "someone-else" }) })), "alt_error");
   assert.equal(why(await roundTrip("google", { sub: "g-3", tweak: x => ({ ...x, nonce: "nope" }) })), "alt_error");
   assert.equal(why(await roundTrip("google", { sub: "g-3", tweak: x => ({ ...x, exp: 1000 }) })), "alt_error");
@@ -276,7 +286,7 @@ async function gonlyThenOsu(sub, osu = OSU_ME, before) {
   const gs = (await roundTrip("google", { sub })).back.cookies.obv_s, gid = auth.unsign(gs, c()).id;
   await emu.db.query("update obv.users set access = 'approved' where osu_id = $1", [gid]); // (let in: an invite or an admin)
   const pr = await v1call("POST", "projects", ck({ obv_s: gs }), { clientKey: "gonly-proj-" + sub, title: "Mine" }); assert.equal(pr.status, 201, JSON.stringify(pr.body)); const pid = pr.body.project.id;
-  if (before) await before(gid);
+  if (before) await before(gid, gs);
   osuMe = osu; const done = await osuLogin(ck({ obv_s: gs })); osuMe = OSU_ME;
   return { gs, gid, pid, os: done.cookies.obv_s, gmTok: done.cookies.obv_gm };
 }
@@ -424,4 +434,25 @@ test("Google login: a hostile ?next= (start) or one in the obv_alt cookie (back)
       assert.ok(onSite(back.location), `${JSON.stringify(v)} ${qs} -> ${JSON.stringify(back.location)}`);
     }
   }
+});
+
+// saved replays (supabase/migrations/20261010090000_obv_replays.sql): a Google-only account's replays move with it
+test("Google-only merge moves the saved replays to the osu! account; a file both had is kept once", async () => {
+  const { createHash } = await import("node:crypto");
+  const file = tag => { const b = Buffer.alloc(64, 5); b[0] = 0; b.writeUInt32LE(tag, 1); return b; };
+  const body = b => ({ sha256: createHash("sha256").update(b).digest("hex"), size: b.length, data_b64: b.toString("base64"), meta: { player: "p" + b.readUInt32LE(1) } });
+  const F = { id: 5353, username: "ReplayFan", avatar_url: "", country_code: "TH" }, mine = sessionCookie(5353);
+  const own = await v1call("POST", "replays", mine, body(file(3))); assert.equal(own.status, 200, JSON.stringify(own.body)); // (the osu! account already has the shared file)
+  const x = await gonlyThenOsu("g-replays", F, async (gid, gs) => {
+    for (const t of [1, 2, 3]) assert.equal((await v1call("POST", "replays", ck({ obv_s: gs }), body(file(t)))).status, 200);
+    assert.equal((await emu.db.query("select count(*)::int n from obv.replays where owner_id = $1", [gid])).rows[0].n, 3);
+  });
+  const m = await v1call("POST", "me/merge-google", ck({ obv_s: x.os, obv_gm: x.gmTok }), {});
+  assert.equal(m.status, 200, JSON.stringify(m.body)); assert.equal(m.body.merged, true);
+  const l = await v1call("GET", "replays", ck({ obv_s: x.os }));
+  assert.equal(l.status, 200); assert.deepEqual(l.body.replays.map(r => r.meta.player).sort(), ["p1", "p2", "p3"], "three files, the shared one once");
+  assert.equal((await emu.db.query("select count(*)::int n from obv.replays where owner_id = $1", [x.gid])).rows[0].n, 0, "none left on the old account");
+  assert.ok(l.body.replays.some(r => r.id === own.body.replay.id), "the osu! account's own copy is the one that stays");
+  const one = l.body.replays.find(r => r.meta.player === "p1"), g = await v1call("GET", "replays/" + one.id, ck({ obv_s: x.os }));
+  assert.equal(g.status, 200); assert.deepEqual(Buffer.from(g.body.data_b64, "base64"), file(1), "a moved replay opens, with the same bytes");
 });

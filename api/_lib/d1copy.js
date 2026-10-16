@@ -3,7 +3,7 @@
 // foreign keys need, replacing whatever D1 had; then the row counts of both are compared. The site keeps using
 // Supabase until DB_BACKEND=d1 is set on the Worker; removing it goes back. Saving stays paused on D1 too until the
 // owner turns it on there (Admin → Settings), so nothing is saved on the side that's about to be left.
-const DEL_ORDER = ["annotations", "members", "saves", "blobs", "projects", "user_logins", "invite_links", "audit_log", "job_runs", "changelog", "client_errors", "settings", "r2_usage", "account_deletions", "users"];
+const DEL_ORDER = ["replays", "annotations", "members", "saves", "blobs", "projects", "user_logins", "invite_links", "audit_log", "job_runs", "changelog", "client_errors", "settings", "r2_usage", "account_deletions", "users"];
 const INS_ORDER = [...DEL_ORDER].reverse();
 const TS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?([+-]\d{2}:\d{2}|Z)$/; // (Postgres timestamptz as JSON)
 
@@ -29,7 +29,7 @@ async function copyToD1(pgRpc, d1, actor) {
       const row = { ...r };
       if (t === "users") row.invited_by = null; // (set below, once every user is there)
       if (t === "settings" && row.key === "saving_enabled") row.value = false;
-      const use = cols.filter(c => c in row);
+      const use = cols.filter(c => c in row); // (every column both sides have, e.g. replays.share_key once d1/migrations/0006_replay_share.sql has run on D1)
       stmts.push(d1.prepare(`insert into ${t} (${use.join(", ")}) values (${use.map(() => "?").join(", ")})`).bind(...use.map(c => cell(t, c, row[c]))));
     }
   }

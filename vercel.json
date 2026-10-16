@@ -35,78 +35,12 @@
     },
     {
       "src": "/",
-      "has": [
-        {
-          "type": "query",
-          "key": "s"
-        }
-      ],
       "dest": "/api/og"
     },
     {
-      "src": "/",
-      "has": [
-        {
-          "type": "query",
-          "key": "b"
-        }
-      ],
-      "dest": "/api/og"
-    },
-    {
-      "src": "/",
-      "has": [
-        {
-          "type": "query",
-          "key": "u"
-        }
-      ],
-      "dest": "/api/og"
-    },
-    {
-      "src": "/",
-      "has": [
-        {
-          "type": "query",
-          "key": "live"
-        }
-      ],
-      "dest": "/api/og"
-    },
-    {
-      "src": "/",
-      "has": [
-        {
-          "type": "query",
-          "key": "collab"
-        }
-      ],
-      "dest": "/api/og"
-    },
-    {
-      "src": "/",
-      "has": [
-        {
-          "type": "query",
-          "key": "project"
-        }
-      ],
-      "dest": "/api/og"
-    },
-    {
-      "src": "/",
-      "has": [
-        {
-          "type": "query",
-          "key": "invite"
-        }
-      ],
-      "dest": "/api/og"
-    },
-    {
-      "src": "/",
+      "src": "/api/(.*)",
       "headers": {
-        "Cache-Control": "public, max-age=0, must-revalidate"
+        "X-Robots-Tag": "noindex"
       },
       "continue": true
     },

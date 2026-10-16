@@ -30,6 +30,13 @@ const collabCanEdit = () => !COLLAB.on || COLLAB.host || !!COLLAB.me && COLLAB.m
 function collabNoEdit() { toast(tr("View only: the host of this collab session made you a viewer"), 2500); }
 const cpeerId = code => "obv-collab-" + code;
 const collabURL = () => location.origin + location.pathname + "?collab=" + COLLAB.code + (COLLAB.noTurn ? "&nt=1" : "");
+// another person's pointer / selection, rebuilt field by field before it is kept or passed on (finite numbers in range, at most 60
+// ids, nothing else): one peer can't slow the drawing down or break it for the others
+function cleanPres(d) {
+  const num = (v, lo, hi, def) => { v = +v; return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : def; };
+  return { x: num(d.x, -999, 2000, -999), y: num(d.y, -999, 2000, -999), sel: Array.isArray(d.sel) ? d.sel.slice(0, 60).map(v => String(v).slice(0, 120)) : [], // (120: the longest op id validOp accepts)
+    time: num(d.time, -1e7, 1e8, 0), playing: !!d.playing };
+}
 const csend = (c, msg) => { try { if (c && c.open) c.send(msg); } catch {} };
 const cbroadcast = (msg, except) => { for (const [id, e] of COLLAB.conns) if (id !== except && e.m) csend(e.c, msg); };
 
@@ -270,7 +277,7 @@ function opsSince(vv) { return COLLAB.log.filter(op => op.seq > ((vv && vv[op.pe
 
 // ---------- host ----------
 async function collabStart() {
-  if (!map) return;
+  if (!map || !featGuard("collab")) return;
   if (COLLAB.on) return collabOpen();
   if (LIVE.on) return toast(tr("End the live session first: a map can be in a live session or a collab session, not both"), 3500);
   if (!AUTH.user) { toast(tr("Log in with osu! to start a collab session"), 3000); openAcct(); return; }
@@ -376,7 +383,7 @@ async function collabHostData(c, d) {
       good.push(op);
     }
     if (good.length) { receiveOps(good, m); for (const op of good) cbroadcast({ t: "op", op }, c.peer); }
-  } else if (d.t === "pres") { m.pres = { x: +d.x, y: +d.y, sel: Array.isArray(d.sel) ? d.sel.slice(0, 60).map(String) : [], time: +d.time || 0, playing: !!d.playing, at: performance.now() }; cbroadcast({ ...d, peer: c.peer }, c.peer); dirty = true; }
+  } else if (d.t === "pres") { const g = cleanPres(d); m.pres = { ...g, at: performance.now() }; cbroadcast({ t: "pres", ...g, peer: c.peer }, c.peer); dirty = true; }
   else if (d.t === "chat") { const cm = cleanChat(d.m, { id: m.uid, name: m.name, color: m.color }); if (cm) { chatAdd(cm); cbroadcast({ t: "chat", m: cm }, c.peer); } }
   else if (d.t === "need") csend(c, { t: "ops", ops: opsSince(d.vv) });
   else if (d.t === "saved" && m.role === "editor") { collabOnSaved(d); cbroadcast(d, c.peer); }
@@ -455,6 +462,7 @@ async function collabSendPackage(c) { // maps that aren't on the mirrors: the .o
 
 // ---------- joining ----------
 function collabJoinPrompt(code, noTurn) {
+  if (!featGuard("collab")) return;
   code = String(code || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12);
   if (!code) return;
   if (COLLAB.on) { if (COLLAB.code === code) return collabOpen(); return toast(tr("You're already in a collab session")); }
@@ -471,6 +479,7 @@ function collabJoinPrompt(code, noTurn) {
   run();
 }
 async function collabJoin(code, noTurn) {
+  if (!featGuard("collab")) return;
   let Peer; try { Peer = await loadPeerJS(); } catch (e) { return toast(e.message); }
   if (LIVE.on) return toast(tr("Leave the live session first"));
   if (!(await edConfirmDiscard())) return;
@@ -547,7 +556,7 @@ async function collabVisitorData(c, peer, code, d) {
       }
       collabRender(); break;
     }
-    case "pres": { const m = COLLAB.members.get(d.peer); if (m) { m.pres = { x: +d.x, y: +d.y, sel: (d.sel || []).map(String), time: +d.time || 0, playing: !!d.playing, at: performance.now() }; dirty = true; } break; }
+    case "pres": { const m = COLLAB.members.get(d.peer); if (m) { m.pres = { ...cleanPres(d), at: performance.now() }; dirty = true; } break; }
     case "sum":
       if (!COLLAB.doc || COLLAB.opening || d.path !== COLLAB.diff) break;
       if (vvEq(d.vv, COLLAB.vv)) { if (d.h !== docHash()) { if (++COLLAB.sumBad >= 2) { COLLAB.sumBad = 0; collabSetStatus("syncing"); csend(c, { t: "resync" }); } } else { COLLAB.sumBad = 0; if (COLLAB.status !== "connected") collabSetStatus("connected"); } }

@@ -21,7 +21,7 @@ const ED_ONLY = ["edTabs", "edTest", "edAuto", "edAdv", "edTop", "edLeft", "edRi
 // The advanced elements carry the class "adv" (index.html, sidelists.js) and app.css hides them in Simple; the mod
 // note bubble, annotations and note flags aren't drawn there, and the hotkeys keep working in both.
 const ED_ADV_TABS = new Set(["notes"]);
-const edAdv = () => S.edAdv === true;
+const edAdv = () => S.edAdv === true && featOn("ed_adv");
 function applyEdAdv() {
   const on = edAdv(); UI.player.classList.toggle("edadv", on);
   const b = $("edAdv"); if (b) b.setAttribute("aria-pressed", String(on));
@@ -40,11 +40,28 @@ function setEdAdv(on, quiet) {
   if (on && typeof edTourAdvMaybe === "function") edTourAdvMaybe(); // (the first time: a look at the new tools, edtour.js)
 }
 if ($("edAdv")) $("edAdv").onclick = () => setEdAdv(!edAdv());
+// ---------- watching a replay is separate from Modding: only the normal Preview may use it ----------
+// While a replay plays (RP.on, js/auto.js; body.replay) the Preview | Modding switch, the tools sheet (Mod notes), Live mapping and the Test play
+// buttons (also the one in Settings → Test play) are hidden, and the ways in that have no button do nothing: setMode(true) (F5, a live / collab session starting), test play (js/app.js),
+// openTools. And a replay can't start over the editor (rpStart). Everything comes back by itself when rpStop takes the body class off.
+// A replay is watched on its own difficulty: the top-bar difficulty picker (and Settings' one) is hidden then, and while the results, the end menu or the
+// Analysis layer are up; switchDiff (js/app.js) does nothing while RP.on.
+const rpLocked = () => typeof RP !== "undefined" && RP.on;
+{ const st = document.createElement("style"); st.textContent = "body.replay :is(#modeSw,#toolsBtn,#liveBtn,#playBtn,#tapPlay,.tpgo,#diffQuick){display:none!important}body.replay .row:has(>#diff),body:has(.rpres,.rpend,.rpan) #diffQuick{display:none!important}"; document.head.append(st); }
+{ const rs = rpStart, ot = openTools;
+  rpStart = function (data, opts) { // (auto.js is loaded before this file, tools.js too)
+    if (EDIT.on) return; // (the editor is on, e.g. a live guest who can't leave it: no replay over it)
+    const r = rs.call(this, data, opts); if (rpLocked()) { closeTools(); if (typeof closeLive === "function") closeLive(); } return r;
+  };
+  openTools = function () { if (rpLocked()) return; return ot.apply(this, arguments); }; }
 function setMode(on, force) {
   if (on === EDIT.on) return;
+  if (on && rpLocked()) return; // (a map that opens in Modding stops the replay first: app.js enterPack / selectDiff)
   const watching = typeof LIVE !== "undefined" && LIVE.watch && (LIVE.on || LIVE.opening); // a guest watching a live session: Compose only
   if (on && !can("editor") && !watching) return; // the editor is off for this visitor (Admin → Permissions)
+  if (on && !watching && !featGuard("editor")) return; // ... or for everyone (Admin → Features)
   if (!on && watching && !force) return;
+  if (on) rpStop(); // (a replay's EZ / HR size and rate are not the map's)
   EDIT.on = on;
   if (map && map.mode !== 3 && S.edStack === false) rebuildHits(map); // (stacking is only turned off in the editor)
   for (const [id, v] of [["modePrev", !on], ["modeEdit", on]]) { $(id).classList.toggle("on", v); $(id).setAttribute("aria-pressed", v); }
@@ -60,7 +77,7 @@ function setMode(on, force) {
     edTab("compose");
     if (!setMode.hinted && typeof edTourWill === "function" && edTourWill()) setMode.hinted = true; // (the editor tour starts instead: edtour.js)
     if (!setMode.hinted) { setMode.hinted = true; toast(tr("Modding: tap an object to select it and see its timing • drag to move • drag the timeline to scrub"), 4500); } else edHint();
-  } else { edHint(true); EDIT.sliderPts = null; EDIT.box = null; $("edPanel").hidden = true; closeDlg(); if (typeof sideRender === "function") sideRender(); }
+  } else { edHint(true); EDIT.sliderPts = null; EDIT.box = null; $("edPanel").hidden = true; closeDlg(); if (typeof twClose === "function") twClose(); if (typeof sideRender === "function") sideRender(); }
   setModeParam(on);
   if (!UI.sheet.hidden) { buildSetTabs(); showSetTab(on ? S.setTabEd || "editor" : S.setTab || "audio"); }
   showUI(); measureIns(); updateEdUI(); dirty = true;
@@ -69,9 +86,10 @@ function setMode(on, force) {
 }
 $("modePrev").onclick = () => setMode(false);
 $("modeEdit").onclick = () => setMode(true);
-$("edTest").onclick = () => playStart(); // play it yourself (play.js)
-$("edAuto").onclick = () => setMode(false); // watch it on Auto (the preview)
+$("edTest").onclick = () => featGuard("ed_test") && playStart(); // play it yourself (play.js)
+$("edAuto").onclick = () => featGuard("ed_auto") && setMode(false); // watch it on Auto (the preview)
 function edTab(tab) {
+  if (tab !== "compose" && !featOn("ed_" + tab)) tab = "compose"; // (switched off by the admins: features.js)
   if (typeof hssPopClose === "function") hssPopClose(); // (Hitsound Studio's drop-down)
   if (tab !== "compose" && typeof LIVE !== "undefined" && LIVE.on && LIVE.watch) return; // watchers see Compose only
   if (tab === "verify" && EDIT.tab !== "verify" && typeof VFY_RUN !== "undefined") VFY_RUN.hold = false; // (opening Verify checks again)
@@ -135,7 +153,7 @@ $("edTime").addEventListener("pointerdown", e => {
 });
 $("edTime").addEventListener("pointerup", () => { clearTimeout(edTimeIn.t); $("edTime").classList.remove("held"); if (edTimeIn.held) edTimeIn(); }); // (opened on the release: a phone shows its keyboard for a field focused then)
 for (const ev of ["pointerleave", "pointercancel"]) $("edTime").addEventListener(ev, () => { clearTimeout(edTimeIn.t); $("edTime").classList.remove("held"); });
-function edReset() { EDIT.sel.clear(); EDIT.undo = []; EDIT.redo = []; EDIT.changed = false; EDIT.sliderPts = null; EDIT.drag = false; EDIT.box = null; wave = null; updateEdUI(); }
+function edReset() { EDIT.sel.clear(); EDIT.undo = []; EDIT.redo = []; EDIT.changed = false; EDIT.sliderPts = null; EDIT.drag = false; EDIT.box = EDIT.tlBox = null; wave = null; updateEdUI(); }
 const anyEdits = () => EDIT.changed || osuFiles.some(o => o.edited || o.created);
 async function edConfirmDiscard() {
   if (!anyEdits() && !annHasLocal()) return true;
@@ -171,8 +189,80 @@ function hitTest(x, y, t) {
   return spin;
 }
 const gridSnap = v => S.grid ? Math.round(v / S.grid) * S.grid : Math.round(v);
-const clampPF = (x, y) => [Math.max(0, Math.min(512, x)), Math.max(0, Math.min(384, y))];
+// Settings → Editor → "Allow objects outside the playfield" (S.edOutside, off by default) lifts the limits below, read at the moment of use. Even then
+// nothing goes past a generous sanity range (PF_SANE), so a stray value can never be written; objects already past it may only move inward.
+const pfLimited = () => S.edOutside !== true;
+const PF_FIELD = { x0: 0, y0: 0, x1: 512, y1: 384 }, PF_SANE = { x0: -512, y0: -384, x1: 1024, y1: 768 };
+const pfBox = () => pfLimited() ? PF_FIELD : PF_SANE;
+const clampPF = (x, y) => { const b = pfBox(); return [Math.max(b.x0, Math.min(b.x1, x)), Math.max(b.y0, Math.min(b.y1, y))]; };
+// ---------- playfield limits: objects can't be placed or moved outside 0..512 x 0..384 (pure helpers, tests/playfield.test.mjs) ----------
+// "Inside" = the head and every stored slider control point (saved, unstacked coordinates); a slider's curve body may bow out.
+// Objects that are already outside (old maps) stay as they are until moved: they may move inward, never further out.
+// PLAYFIELD-HELPERS-BEGIN
+const pfOut = q => { const b = pfBox(); return q[0] < b.x0 || q[0] > b.x1 || q[1] < b.y0 || q[1] > b.y1; };
+const pfPick = (d, lo, hi) => (lo > hi ? 0 : Math.min(Math.max(d, lo), hi)) + 0; // a delta limited to [lo, hi]; an empty range = no move (+ 0: never -0)
+function pfBounds(pts) { // min / max per axis of the finite points (null: none)
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const q of pts) { if (!isFinite(q[0]) || !isFinite(q[1])) continue; if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; }
+  return x0 > x1 ? null : { x0, y0, x1, y1 };
+}
+// the move (dx, dy) of a whole group of points, cut so that none ends up outside: the group keeps its shape (one delta for all).
+// Per coordinate c with limit M: delta in [c < 0 ? 0 : -c, c > M ? 0 : M - c] for every point (a point already outside may only move inward).
+// That intersection over all points is decided by the smallest and the largest coordinate.
+function pfDeltaFit(pts, dx, dy) {
+  const b = pfBounds(pts), f = pfBox(); if (!b) return { dx, dy };
+  return { dx: pfPick(dx, b.x0 < f.x0 ? 0 : f.x0 - b.x0, b.x1 > f.x1 ? 0 : f.x1 - b.x1), dy: pfPick(dy, b.y0 < f.y0 ? 0 : f.y0 - b.y0, b.y1 > f.y1 ? 0 : f.y1 - b.y1) };
+}
+// did the clamp cut a pointer drag short? req / got = the requested and the fitted { dx, dy }: on an axis the user is still pulling (got is
+// shorter than req, same direction) by more than 1 osu!px (snapping and rounding wobble stay quiet)
+const pfCut = (req, got) => ["dx", "dy"].some(k => (req[k] - got[k]) * req[k] > 0 && got[k] * req[k] >= 0 && Math.abs(req[k] - got[k]) > 1);
+// the hint about the border, told once per editor session (a page reload starts over): st = { long: shown yet?, short: time of the last short toast }.
+// -> "long" (the full hint, 4.5 s), "short" (the old short toast, arrow keys only, at most every 1.5 s) or "" (nothing); `key`: a fully blocked arrow key;
+// a drag (key false) only ever gives "long" or ""
+const PF_HINT = { long: false, short: -Infinity };
+function pfNote(st, now, key, limited = true) { // limited: "Allow objects outside the playfield" is off (with it on there is no setting to point to: only the short toast)
+  if (limited && !st.long) { st.long = true; if (key) st.short = now; return "long"; }
+  if (key && now - st.short >= 1500) { st.short = now; return "short"; }
+  return "";
+}
+// a transform's result `after` (rounded points) and the points `before` it (same order; before may be null: all new): the shift of the whole
+// result with the least movement such that, per coordinate, a point ends inside the field, or, when it was outside before, no further out than
+// it was (it may end anywhere between its old place and the inside). { dx, dy } (0, 0 when nothing needs moving), or null when no single
+// shift satisfies every point (the group is bigger than the field, or a point that was outside would have to go further out).
+function pfFitGroup(after, before) {
+  const f = pfBox(), L0 = [f.x0, f.y0], L1 = [f.x1, f.y1], r = [[-Infinity, Infinity], [-Infinity, Infinity]];
+  for (let i = 0; i < after.length; i++) for (let k = 0; k < 2; k++) {
+    const v = after[i][k]; if (!isFinite(v)) continue;
+    const o = before && before[i] ? before[i][k] : NaN; let lo = L0[k], hi = L1[k];
+    if (o < lo) lo = o; else if (o > hi) hi = o; // (a coordinate that was outside may stay where it was)
+    r[k][0] = Math.max(r[k][0], lo - v); r[k][1] = Math.min(r[k][1], hi - v);
+  }
+  return r[0][0] > r[0][1] || r[1][0] > r[1][1] ? null : { dx: pfPick(0, r[0][0], r[0][1]), dy: pfPick(0, r[1][0], r[1][1]) };
+}
+// the control points of a slider whose bezier handles were generated (circle arcs, smooth curves): `raw` are the rounded points, the head first.
+// Each is cut into the field; a generated point that the cut puts exactly on its neighbour is dropped (osu! reads two equal consecutive bezier
+// points as a red anchor), unless the two were equal before (a deliberate anchor). Of the two, a handle goes before an anchor (a point written
+// twice in a row); never the head or the last point.
+function pfClampList(raw) {
+  const out = [], same = (a, b) => a && b && a[0] === b[0] && a[1] === b[1], f = pfBox();
+  for (let i = 0; i < raw.length; i++) {
+    let q = { x: Math.max(f.x0, Math.min(f.x1, raw[i][0])), y: Math.max(f.y0, Math.min(f.y1, raw[i][1])), r: raw[i] };
+    q.moved = q.x !== raw[i][0] || q.y !== raw[i][1]; q.anchor = same(raw[i], raw[i - 1]) || same(raw[i], raw[i + 1]);
+    for (;;) {
+      const t = out[out.length - 1];
+      if (!t || t.x !== q.x || t.y !== q.y || same(t.r, raw[i])) break;
+      const dq = q.moved && i < raw.length - 1, dt = t.moved && out.length > 1; // (who may go)
+      if (dq && (!dt || !q.anchor || t.anchor)) q = null; else if (dt) out.pop(); else break;
+      if (!q) break;
+    }
+    if (q) out.push(q);
+  }
+  return out.map(q => [q.x, q.y]);
+}
+// PLAYFIELD-HELPERS-END
 const selObjs = () => map ? map.hit.filter(o => EDIT.sel.has(o.lid)) : [];
+// every point the selection would move: heads + all slider control points (saved coordinates; spinners have no position)
+function selPoints() { const out = []; for (const o of selObjs()) { if (o.kind === "spinner") continue; out.push([o.rx, o.ry]); if (o.cps) for (let i = 1; i < o.cps.length; i++) out.push(o.cps[i]); } return out; }
 function edSelectIds(ids) { EDIT.sel = new Set(ids); updateEdUI(); dirty = true; if (EDIT.tab === "hitsounds" && typeof hssDockSync === "function") hssDockSync(); }
 
 // ---------- distance snap ----------
@@ -221,7 +311,7 @@ function rebuildEdit(keepPanel) {
   rebuildHits(map);
   const ids = new Set(map.lines.map(L => L.id));
   for (const id of [...EDIT.sel]) if (!ids.has(id)) EDIT.sel.delete(id);
-  if (!LIVE.on || LIVE.host) EDIT.changed = true;
+  if (!LIVE.on || LIVE.host) { const was = EDIT.changed; EDIT.changed = true; if (!was) diffMarks(); }
   dirty = true;
   drawTimeline(); updateEdUI();
   annAfterRebuild(); draftSchedule(); cloudTouch();
@@ -244,8 +334,11 @@ function undoRedo(fromUndo) {
 const lineById = id => map.lines.find(L => L.id === id);
 function editLines(fn) { for (const id of EDIT.sel) { const L = lineById(id); if (L) { const p = L.s.split(","); fn(p, +p[3]); L.s = p.join(","); } } }
 
+const pfHint = () => tr("Stopped at the playfield border. Allow objects outside it in Settings › Editor › Playfield.");
 function moveSel(dx, dy) {
   if (!dx && !dy) return;
+  ({ dx, dy } = pfDeltaFit(selPoints(), dx, dy)); // (the drag preview is cut the same way: what you see is what is saved)
+  if (!dx && !dy) { const n = pfNote(PF_HINT, Date.now(), true, pfLimited()); return n && toast(n === "long" ? pfHint() : tr("Can't go outside the playfield"), n === "long" ? 4500 : 1200); }
   edCommit("Move objects", () => editLines((p, type) => {
     if (type & 8) return; // spinners are always centred
     p[0] = Math.round(+p[0] + dx); p[1] = Math.round(+p[1] + dy);
@@ -495,7 +588,7 @@ function addLine(label, s) {
   if (edCommit(label, () => map.lines.push(L))) { EDIT.sel = new Set([L.id]); updateEdUI(); }
 }
 function placePoint(x, y, t) {
-  const near = nearObjSnap(x, y); if (near) return near;
+  const near = nearObjSnap(x, y); if (near) return clampPF(near[0], near[1]); // (an object that sits outside is no place to snap to)
   [x, y] = dsSnap(x, y, t); return clampPF(S.ds ? Math.round(x) : gridSnap(x), S.ds ? Math.round(y) : gridSnap(y));
 }
 // osu!lazer (TrySnapToNearbyObjects): within 6.4 osu!px (a tenth of an object's radius) of a visible object's head or
@@ -559,14 +652,14 @@ function arcBeziers(s) {
 }
 // -> { curve, cps } for the file (cps includes the head)
 function placeCurve(pts) {
-  const segs = placeSegs(pts), R = p => [Math.round(p[0]), Math.round(p[1])];
-  if (segs.length === 1) { const t = segType(segs[0]); if (t !== "L" || segs[0].length === 2) return { curve: t, cps: segs[0].map(R) }; }
+  const segs = placeSegs(pts), R = p => [Math.round(p[0]), Math.round(p[1])]; // (every stored point ends in the field: the clicked ones are already, a circle arc's handles are cut by pfClampList)
+  if (segs.length === 1) { const t = segType(segs[0]); if (t !== "L" || segs[0].length === 2) return { curve: t, cps: segs[0].map(p => clampPF(...R(p))) }; }
   const out = [R(pts[0])];
   for (const s of segs) {
     const t = segType(s), pieces = t === "L" ? s.slice(1).map((p, i) => [s[i], p]) : t === "P" ? arcBeziers(s) : [s];
     for (const pc of pieces) { for (const q of pc.slice(1)) out.push(R(q)); out.push(R(pc[pc.length - 1])); } // (the repeated point = red anchor)
   }
-  out.pop(); return { curve: "B", cps: out };
+  out.pop(); return { curve: "B", cps: pfClampList(out) };
 }
 // the points so far + the cursor (lazer: the cursor counts as the next point unless it sits on the last one)
 const placingPts = () => {
@@ -615,23 +708,23 @@ function drawnCurve(raw, t) {
   if (even[even.length - 1] !== raw[raw.length - 1]) { if (acc < gap / 3 && even.length > 1) even.pop(); even.push(raw[raw.length - 1]); }
   const pts = rdp(even, 1.5);
   if (pts.length < 2 || pathLen(raw) < 8) return null;
-  const R = p => [Math.round(p[0]), Math.round(p[1])];
+  const R = p => [Math.round(p[0]), Math.round(p[1])], RC = p => clampPF(...R(p)); // (RC: points of the drawn path, already in the field; the generated handles go through pfClampList)
   if (pts.length > 2) { // one circle arc?
     const mid = raw[Math.floor(raw.length / 2)], a = arcProps(raw[0], mid, raw[raw.length - 1]);
     if (a && a.range < 2 * Math.PI && a.r < 1000) {
       const err = raw.reduce((s, p) => s + Math.abs(Math.hypot(p[0] - a.cx, p[1] - a.cy) - a.r), 0) / raw.length;
       let mono = true, prev = null; for (const p of raw) { const th = Math.atan2(p[1] - a.cy, p[0] - a.cx); if (prev != null) { let d = (th - prev) * a.dir; while (d < -Math.PI) d += 2 * Math.PI; while (d > Math.PI) d -= 2 * Math.PI; if (d < -.05) { mono = false; break; } } prev = th; }
-      if (mono && err < Math.max(2, a.r * .04)) return Object.assign({ curve: "P", cps: [raw[0], mid, raw[raw.length - 1]].map(R) }, { t });
+      if (mono && err < Math.max(2, a.r * .04)) return Object.assign({ curve: "P", cps: [raw[0], mid, raw[raw.length - 1]].map(RC) }, { t });
     }
   }
-  if (pts.length === 2) return { curve: "L", cps: pts.map(R), t };
+  if (pts.length === 2) return { curve: "L", cps: pts.map(RC), t };
   const cps = [R(pts[0])];
   for (let i = 0; i < pts.length - 1; i++) {
     const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || pts[i + 1];
     cps.push(R([p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6]), R([p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6]), R(p2));
     if (i < pts.length - 2) cps.push(R(p2));
   }
-  return { curve: "B", cps, t };
+  return { curve: "B", cps: pfClampList(cps), t };
 }
 $("edSliderDone").onclick = () => finishSlider(); // (not the click event as the drawn curve)
 
@@ -719,7 +812,9 @@ cv.addEventListener("pointermove", e => {
     let nx = a.rx + x - pdown.x, ny = a.ry + y - pdown.y;
     if (S.ds && EDIT.sel.size === 1) { [nx, ny] = dsSnap(nx, ny, a.t, a.lid); nx = Math.round(nx); ny = Math.round(ny); }
     else { nx = gridSnap(nx); ny = gridSnap(ny); }
-    EDIT.dx = nx - a.rx; EDIT.dy = ny - a.ry;
+    const rq = { dx: nx - a.rx, dy: ny - a.ry }, f = pfDeltaFit(pdown.pts || (pdown.pts = selPoints()), rq.dx, rq.dy); // the group stops at the border (shape kept)
+    EDIT.dx = f.dx; EDIT.dy = f.dy;
+    if (pfLimited() && pfCut(rq, f) && pfNote(PF_HINT, Date.now(), false)) toast(pfHint(), 4500); // (once per session: say why, and where the setting is)
   }
   dirty = true;
 });
@@ -1081,6 +1176,13 @@ function streamPlan(o, opt) {
   }
   return out;
 }
+// the stream, moved as a whole into the playfield when a note would fall outside it (the slider body may bow out); false = it can't fit.
+// A slider that itself has points outside (an old map) is converted as it is.
+function streamFit(o, opt) {
+  const plan = streamPlan(o, opt); if (!plan) return null;
+  const pts = plan.map(q => [q.x, q.y]), legacy = [[o.rx, o.ry], ...o.cps.slice(1)].some(pfOut), f = pfFitGroup(pts, legacy ? pts : null);
+  return !f ? false : f.dx || f.dy ? plan.map(q => ({ ...q, x: q.x + f.dx, y: q.y + f.dy })) : plan;
+}
 function applyStream(o, plan) {
   const L = lineById(o.lid); if (!L || !plan) return;
   const nc = S.stNC || (o.type & 4), edges = o.edgeSounds, sets = o.edgeSets;
@@ -1113,13 +1215,31 @@ function selBox() {
   for (const o of selObjs()) { if (o.kind === "spinner") continue; for (const q of o.cps || [[o.rx, o.ry]]) { x0 = Math.min(x0, q[0]); y0 = Math.min(y0, q[1]); x1 = Math.max(x1, q[0]); y1 = Math.max(y1, q[1]); } }
   return isFinite(x0) ? { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 } : null;
 }
+// the transform's result for the selection: { items: [{ L, p, type, pts }], dx, dy } (pts rounded as they are saved, dx / dy = the shift that
+// brings newly-outside points back in), or null when the result can't fit in the playfield
+function lineGeom(p, type) { const g = [[+p[0], +p[1]]]; return type & 2 && p[5] ? g.concat(p[5].split("|").slice(1).map(s => s.split(":").map(Number))) : g; }
+function trPlan(fn) {
+  const items = [], before = [], after = [];
+  for (const o of selObjs()) {
+    const L = o.kind !== "spinner" && lineById(o.lid); if (!L) continue;
+    const p = L.s.split(","), type = +p[3], g = lineGeom(p, type), pts = g.map(q => { const r = fn(q); return [Math.round(r[0]), Math.round(r[1])]; });
+    items.push({ L, p, type, pts });
+    for (let i = 0; i < g.length; i++) { before.push(g[i]); after.push(pts[i]); }
+  }
+  const fit = pfFitGroup(after, before);
+  return fit && { items, dx: fit.dx, dy: fit.dy };
+}
+// -> true (done), false (nothing done: no selection, or refused by the edit lock), null (it would not fit in the playfield)
 function transformSel(label, fn) {
-  if (!selObjs().some(o => o.kind !== "spinner")) return toast(tr("Select objects first"));
-  edCommit(label, () => editLines((p, type) => {
-    if (type & 8) return;
-    const q = fn([+p[0], +p[1]]); p[0] = Math.round(q[0]); p[1] = Math.round(q[1]);
-    if (type & 2 && p[5]) { const parts = p[5].split("|"); p[5] = [parts[0], ...parts.slice(1).map(s => { const r = fn(s.split(":").map(Number)); return Math.round(r[0]) + ":" + Math.round(r[1]); })].join("|"); }
-  }));
+  if (!selObjs().some(o => o.kind !== "spinner")) { toast(tr("Select objects first")); return false; }
+  const plan = trPlan(fn); if (!plan) { toast(tr("Can't go outside the playfield")); return null; }
+  return edCommit(label, () => {
+    for (const { L, p, type, pts } of plan.items) {
+      p[0] = pts[0][0] + plan.dx; p[1] = pts[0][1] + plan.dy;
+      if (type & 2 && p[5]) p[5] = [p[5].split("|")[0], ...pts.slice(1).map(q => (q[0] + plan.dx) + ":" + (q[1] + plan.dy))].join("|");
+      L.s = p.join(",");
+    }
+  });
 }
 function pivot() { const b = selBox(); return S.pivot === "field" || !b ? [256, 192] : [b.cx, b.cy]; }
 const rotFn = (deg, c) => { const a = deg * Math.PI / 180, cs = Math.cos(a), sn = Math.sin(a); return ([x, y]) => [c[0] + (x - c[0]) * cs - (y - c[1]) * sn, c[1] + (x - c[0]) * sn + (y - c[1]) * cs]; };
@@ -1201,7 +1321,11 @@ function openDlg(kind) {
       choice("Spacing curve", "stEase", [["linear", "Linear"], ["in", "Ease in (spreads out later)"], ["out", "Ease out (tightens later)"], ["inout", "Ease in-out"]]),
       field("Length used", "stLen", .1, 1, .05, v => Math.round(v * 100) + "%"), check("New combo on the first note", "stNC"),
       h("p", "hint", tr("End spacing 0 = the stream ends in a stack. Hitsounds of the slider head/tail go to the first/last note.")));
-    apply("Convert", () => { const o = sliderForTool(); if (o) applyStream(o, streamPlan(o, streamOpt())); closeDlg(); });
+    apply("Convert", () => {
+      const o = sliderForTool(), plan = o && streamFit(o, streamOpt());
+      if (plan === false) return toast(tr("Can't go outside the playfield")); // (the dialog stays: change the settings)
+      if (plan) applyStream(o, plan); closeDlg();
+    });
   } else if (kind === "polygon") {
     body.append(field("Points", "polyN", 3, 16, 1), field("Distance", "polyR", 20, 190, 1, v => v + "px"), field("Rotation", "polyRot", -180, 180, 5, v => v + "°"), field("Repeats", "polyRep", 1, 8, 1),
       h("p", "hint", tr("Placed from the current time, one per beat snap (1/{d}), around the selected object or the playfield centre.", { d: S.snap })));
@@ -1212,7 +1336,11 @@ function openDlg(kind) {
     const qb = (txt, fn) => { const b = h("button", "btn ghost sm", txt); b.onclick = fn; q.append(b); };
     qb("⟲ 90°", () => rotateSel(-90)); qb("⟳ 90°", () => rotateSel(90)); qb("⇋ " + tr("Flip H"), () => flipSel(true)); qb("⇵ " + tr("Flip V"), () => flipSel(false)); qb("⇄ " + tr("Reverse"), reverseSel);
     body.append(q, h("p", "hint", tr("Shortcuts: Ctrl+H / Ctrl+J flip, Ctrl+G reverse, Ctrl+Shift+R rotate, Ctrl+Shift+S scale")));
-    apply("Apply", () => { const r = S.trRot || 0, f = S.trScale || 1, c = pivot(); if (r || f !== 1) transformSel("Transform", p => scaleFn(f, c)(rotFn(r, c)(p))); S.trRot = 0; S.trScale = 1; save(); closeDlg(); });
+    apply("Apply", () => {
+      const r = S.trRot || 0, f = S.trScale || 1, c = pivot();
+      if ((r || f !== 1) && transformSel("Transform", p => scaleFn(f, c)(rotFn(r, c)(p))) === null) return; // (doesn't fit: the dialog stays, change the values)
+      S.trRot = 0; S.trScale = 1; save(); closeDlg();
+    });
   } else if (kind === "timing") { timingDialog(body, foot); }
   else if (kind === "hitsound") hitsoundDialog(body);
   btn(kind === "hitsound" ? "Close" : "Cancel", closeDlg);
@@ -1223,11 +1351,12 @@ function openDlg(kind) {
 const streamOpt = () => ({ div: S.stDiv || 4, start: S.stStart, end: S.stEnd, ease: EASES[S.stEase] ? S.stEase : "linear", len: S.stLen || 1 });
 function dlgPreview() {
   const k = EDIT.dlg; EDIT.ghost = null;
-  if (k === "stream") { const o = sliderForTool(); const p = o && streamPlan(o, streamOpt()); if (p) EDIT.ghost = { pts: p, hide: o.lid }; }
+  if (k === "stream") { const o = sliderForTool(); const p = o && streamFit(o, streamOpt()); if (p) EDIT.ghost = { pts: p, hide: o.lid }; }
   else if (k === "polygon") EDIT.ghost = { pts: polygonPlan() };
   else if (k === "transform") {
     const r = S.trRot || 0, f = S.trScale || 1, c = pivot(), fn = p => scaleFn(f, c)(rotFn(r, c)(p));
-    if (r || f !== 1) EDIT.ghost = { pts: selObjs().filter(o => o.kind !== "spinner").map(o => { const q = fn([o.rx, o.ry]); return { x: q[0], y: q[1], path: o.cps && o.cps.map(fn) }; }) };
+    const plan = (r || f !== 1) && trPlan(fn); // (the same result as Apply: fitted into the playfield, or no ghost when it can't fit)
+    if (plan) EDIT.ghost = { pts: plan.items.map(({ p, type, pts }) => { const P = pts.map(q => [q[0] + plan.dx, q[1] + plan.dy]); return { x: P[0][0], y: P[0][1], path: type & 2 && p[5] ? P : undefined }; }) };
   }
   dirty = true;
 }
@@ -1249,9 +1378,9 @@ function drawGhost() {
 // ---------- timing points: quick add/edit from Compose (Ctrl+P red, Ctrl+Shift+P green) and the Timing tab ----------
 const SAMPLE_SETS = [[0, "Auto"], [1, "Normal"], [2, "Soft"], [3, "Drum"]];
 let tpEdit = null; // { tp (copy being edited), orig (the real point or null = new) }
-function activeTp(t, red) { let r = null; for (const tp of map.timing) { if (tp.time > t + 1) break; if (!red || tp.uninherited) r = tp; } return r; }
-function newTpAt(t, red) { // prefilled from the lines active at t, like osu!
-  const cur = activeTp(t) || {}, uni = activeTp(t, true) || { beat: 500, meter: 4 };
+function activeTp(t, red, list = map.timing) { let r = null; for (const tp of list) { if (tp.time > t + 1) break; if (!red || tp.uninherited) r = tp; } return r; }
+function newTpAt(t, red, list = map.timing) { // prefilled from the lines active at t, like osu! (list: the F6 window's copy, timingwin.js)
+  const cur = activeTp(t, false, list) || {}, uni = activeTp(t, true, list) || { beat: 500, meter: 4 };
   return { time: Math.round(t), beat: red ? uni.beat : (cur.uninherited === false ? cur.beat : -100), meter: uni.meter || 4, uninherited: red, kiai: !!cur.kiai, omit: false, fx: 0,
     sampleSet: cur.sampleSet || 0, sampleIndex: cur.sampleIndex || 0, volume: cur.volume || 70 };
 }
@@ -1327,6 +1456,7 @@ function renderTimingEditor(box) {
   tb("+ Red line here", () => { tpEdit = { tp: newTpAt(snapTime(A.cur(), 16), true), orig: null }; edTab("timing"); }, "main");
   tb("+ Green line here", () => { tpEdit = { tp: newTpAt(snapTime(A.cur(), 16), false), orig: null }; edTab("timing"); });
   tb(S.metro ? "Metronome off" : "Metronome on", () => { setToggle("metro", !S.metro); edTab("timing"); });
+  tb("Timing window (F6)", () => twShow()); // (osu!stable's Timing and Control Points window, timingwin.js)
   box.append(top);
   const cols = h("div", "tpcols"), lcol = h("div", "tlist tpl"), fcol = h("div", "tpform");
   const sets = ["Auto", "Normal", "Soft", "Drum"];
@@ -1438,6 +1568,7 @@ function edKey(e) {
   if (e.key === "?" && typeof edTourStart === "function") { e.preventDefault(); edTourStart("simple", { skipWelcome: true }); return true; } // (the editor tour again)
   const tabKey = { F1: "compose", F3: "timing", F4: "setup", F2: "hitsounds" }[k]; // osu!stable: F1 Compose, F3 Timing, F4 Song setup
   if (tabKey) { e.preventDefault(); edTab(tabKey); return true; }
+  if (k === "F6" && typeof twToggle === "function") { e.preventDefault(); twToggle(); return true; } // osu!stable: F6 Timing and Control Points (timingwin.js)
   if (k === "KeyL" && e.shiftKey) { e.preventDefault(); tlLock(!S.tlLock); return true; }
   if (k === "KeyH" && LIVE.on) { liveHighlight(); return true; }
   if (k === "KeyG" && e.shiftKey) { e.preventDefault(); setGuides(!S.guides); return true; }
@@ -1459,6 +1590,7 @@ function edKey(e) {
   if (EDIT.sliderPts && k === "KeyS") { if (EDIT.hoverPt) { const l = EDIT.sliderPts[EDIT.sliderPts.length - 1]; if (Math.hypot(EDIT.hoverPt[0] - l[0], EDIT.hoverPt[1] - l[1]) >= 1) EDIT.sliderPts.push(EDIT.hoverPt.slice()); } sliderNewSegment(); return true; }
   if (EDIT.sliderPts && k === "Tab") { e.preventDefault(); sliderSegType(e.shiftKey ? -1 : 1); return true; }
   if (k === "Escape") {
+    if (typeof TW !== "undefined" && TW.el) { twClose(true); return true; } // (the F6 window first)
     if (EDIT.dlg) { closeDlg(); return true; }
     if (EDIT.tab !== "compose") { edTab("compose"); return true; }
     if (EDIT.sliderPts) { EDIT.sliderPts = null; $("edSliderDone").hidden = true; dirty = true; return true; }
@@ -1485,7 +1617,8 @@ function edDrawUnder(t) {
     for (let y = 0; y <= 384; y += S.grid) { ctx.moveTo(0, y); ctx.lineTo(512, y); }
     ctx.stroke();
   }
-  ctx.strokeStyle = "rgba(255,255,255,.35)"; ctx.strokeRect(0, 0, 512, 384);
+  // the playfield border: the 512 x 384 field itself (where an object's centre can go), a line centred on its edge
+  ctx.lineWidth = 2; ctx.strokeStyle = "rgba(255,255,255,.7)"; ctx.strokeRect(0, 0, 512, 384); ctx.lineWidth = 1.5 * px;
   // distance snap rings around the previous object, like osu!
   if (S.ds && S.guides && S.gRings && (EDIT.tool !== "select" || EDIT.sel.size === 1)) {
     const sel = EDIT.sel.size === 1 && EDIT.tool === "select" ? selObjs()[0] : null;
@@ -1702,7 +1835,11 @@ function edDrawOver(t) {
 const TL = $("edTl"), tlg = TL.getContext("2d");
 const TICK_COL = { 1: "#fff", 2: "#ff4d5e", 3: "#b35cff", 4: "#4d9bff", 6: "#d47bff", 8: "#ffd84a", 12: "#999", 16: "#777" };
 function tickDiv(k, div) { const g = gcd(k, div); return div / g; }
-let tlW = 0, tlH = 0, tlD = 1, wave = null;
+let tlW = 0, tlH = 0, tlD = 1, wave = null; const tlWave = { c: null };
+// the timeline's size, kept up to date by an observer: read in the frame, right after the time readouts change, it made the
+// page lay itself out again every frame while the editor plays (its clock shows milliseconds)
+const tlBox = { w: 0, h: 0 };
+if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => { tlBox.w = TL.clientWidth; tlBox.h = TL.clientHeight; dirty = true; }).observe(TL);
 function wavePeaks() { // one peak per 5 ms of the decoded song
   if (wave && wave.buf === A.buf) return wave;
   if (!A.buf) return null;
@@ -1714,19 +1851,35 @@ function wavePeaks() { // one peak per 5 ms of the decoded song
   return wave = { buf: b, peaks: out, per: 5 };
 }
 function edDrawTimeline(t) {
-  const d = Math.min(devicePixelRatio || 1, 2), w = TL.clientWidth, hh = TL.clientHeight; if (!w) return;
+  const d = Math.min(devicePixelRatio || 1, 2), w = tlBox.w || TL.clientWidth, hh = tlBox.h || TL.clientHeight; if (!w) return;
   if (w !== tlW || hh !== tlH || d !== tlD) { tlW = w; tlH = hh; tlD = d; TL.width = Math.round(w * d); TL.height = Math.round(hh * d); }
   const g = tlg; g.setTransform(d, 0, 0, d, 0, 0); g.clearRect(0, 0, w, hh);
   if (Math.abs(EDIT.tlScaleV - EDIT.tlScale) > EDIT.tlScale * .004) { EDIT.tlScaleV += (EDIT.tlScale - EDIT.tlScaleV) * .3; dirty = true; } else EDIT.tlScaleV = EDIT.tlScale;
   const sc = EDIT.tlScaleV, c = w / 2, X = ms => c + (ms - t) * sc, t0 = t - c / sc, t1 = t + c / sc;
   if (EDIT.tab === "hitsounds") hssSync(t, sc); // Hitsound Studio's lanes move with the timeline
   const W = wavePeaks();
-  if (W) { // waveform behind everything
-    g.fillStyle = "rgba(120,110,160,.35)";
-    for (let x = 0; x < w; x++) {
-      const a = Math.floor((t0 + x / sc) / W.per), b = Math.max(a + 1, Math.floor((t0 + (x + 1) / sc) / W.per));
-      let m = 0; for (let i = Math.max(0, a); i < Math.min(W.peaks.length, b); i++) if (W.peaks[i] > m) m = W.peaks[i];
-      if (m > .01) { const ht = m * hh * .9; g.fillRect(x, (hh - ht) / 2, 1, ht); }
+  if (W) { // waveform behind everything: drawn into a strip three timelines wide and only moved along, drawn again once it runs out
+    const L = tlWave, px = Math.round(w * d), stale = L.peaks !== W.peaks || L.sc !== sc || L.hh !== hh || L.d !== d || L.w !== w;
+    if (sc !== EDIT.tlScale) { // (zooming: the scale changes every frame, so drawn as it is until it settles)
+      g.fillStyle = "rgba(120,110,160,.35)";
+      for (let x = 0; x < w; x++) {
+        const a = Math.floor((t0 + x / sc) / W.per), b = Math.max(a + 1, Math.floor((t0 + (x + 1) / sc) / W.per));
+        let m = 0; for (let i = Math.max(0, a); i < Math.min(W.peaks.length, b); i++) if (W.peaks[i] > m) m = W.peaks[i];
+        if (m > .01) { const ht = m * hh * .9; g.fillRect(x, (hh - ht) / 2, 1, ht); }
+      }
+    } else {
+    if (stale || t0 < L.a || t1 > L.a + 3 * w / sc) {
+      const c = L.c || (L.c = document.createElement("canvas")); if (c.width !== 3 * px || c.height !== Math.round(hh * d)) { c.width = 3 * px; c.height = Math.round(hh * d); }
+      const wg = c.getContext("2d"), a0 = t0 - w / sc;
+      Object.assign(L, { peaks: W.peaks, sc, hh, d, w, a: a0 });
+      wg.setTransform(1, 0, 0, 1, 0, 0); wg.clearRect(0, 0, c.width, c.height); wg.setTransform(d, 0, 0, d, 0, 0); wg.fillStyle = "rgba(120,110,160,.35)";
+      for (let x = 0; x < 3 * w; x++) {
+        const a = Math.floor((a0 + x / sc) / W.per), b = Math.max(a + 1, Math.floor((a0 + (x + 1) / sc) / W.per));
+        let m = 0; for (let i = Math.max(0, a); i < Math.min(W.peaks.length, b); i++) if (W.peaks[i] > m) m = W.peaks[i];
+        if (m > .01) { const ht = m * hh * .9; wg.fillRect(x, (hh - ht) / 2, 1, ht); }
+      }
+    }
+    g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(L.c, -Math.round((t0 - L.a) * sc * d), 0); g.setTransform(d, 0, 0, d, 0, 0);
     }
   }
   g.fillStyle = "rgba(255,102,170,.28)"; for (const [a, b] of map.kiai) if (b > t0 && a < t1) g.fillRect(X(a), 0, X(Math.min(b, t1 + 1)) - X(a), 5);
@@ -1760,6 +1913,7 @@ function edDrawTimeline(t) {
   const tk = Math.max(1, hh / 58), H = map.hit, cy = hh * .45, r = Math.min(11 * tk, hh * .2); // (tk: a taller timeline, Settings → Editor, draws bigger)
   const hi = lastBefore(H, t1, "t"); let lo = hi; while (lo > 0 && H[lo - 1].t > t0 - 30000) lo--;
   g.textAlign = "center"; g.textBaseline = "middle"; g.font = `600 ${Math.round(r * 1.05)}px Inter,sans-serif`;
+  const nsd = [];
   for (let i = hi; i >= Math.max(0, lo); i--) {
     const o = H[i]; if (o.end < t0) continue;
     const ns = o.kind === "slider" && EDIT.tlRep && EDIT.tlRep.lid === o.lid ? EDIT.tlRep.n : o.slides; // (its tail being dragged: the new repeat count)
@@ -1775,7 +1929,7 @@ function edDrawTimeline(t) {
     g.lineWidth = (sel ? 3 : 1.5) * tk; g.strokeStyle = sel ? "#66ccff" : "#fff"; g.stroke();
     if (o.num) { g.fillStyle = "#fff"; g.fillText(o.num, x0, cy + .5); }
     const marks = (x, hs, n) => { let yy = cy + r + 4 * tk; for (const [bit, c] of [[2, "#66ccff"], [4, "#ffd84a"], [8, "#6be38a"]]) if (hs & bit) { g.fillStyle = c; g.fillRect(x - 3 * tk, yy, 6 * tk, 3 * tk); yy += 4 * tk; }
-      if (n) { g.fillStyle = "#cfc6de"; g.font = `600 ${Math.round(8 * tk)}px sans-serif`; g.fillText("NSD"[n - 1], x, cy - r - 5 * tk); g.font = `600 ${Math.round(r * 1.05)}px Inter,sans-serif`; } };
+      if (n) nsd.push(x, n); }; // (the sample set letters: drawn after the loop, with one change of font)
     if (o.kind === "slider") { let lx = -1e9; for (let k = 0; k <= o.slides; k++) { const xe = X(o.t + o.span * k + off); if (Math.abs(xe - lx) < 2 && k < o.slides) continue; lx = xe; marks(xe, edgeHs(o, k), (o.edgeSets[k] || [])[0] || (o.samp || {}).n);
       if (sel && EDIT.edgeFor === o.lid && EDIT.edge === k) { g.strokeStyle = "#ffd84a"; g.lineWidth = 2; g.beginPath(); g.arc(xe, cy, r + 3, 0, 7); g.stroke(); } } }
     else marks(x0, o.hs, (o.samp || {}).n);
@@ -1783,6 +1937,7 @@ function edDrawTimeline(t) {
       g.fillStyle = "#ffd84a"; g.font = `700 ${Math.round(10 * tk)}px sans-serif`; g.fillText(ns - 1 ? tr("{n} reverse", { n: ns - 1 }) : tr("no reverse"), x1, cy - r - 6 * tk); g.font = `600 ${Math.round(r * 1.05)}px Inter,sans-serif`;
     }
   }
+  if (nsd.length) { g.fillStyle = "#cfc6de"; g.font = `600 ${Math.round(8 * tk)}px sans-serif`; for (let i = 0; i < nsd.length; i += 2) g.fillText("NSD"[nsd[i + 1] - 1], nsd[i], cy - r - 5 * tk); g.font = `600 ${Math.round(r * 1.05)}px Inter,sans-serif`; }
   if (EDIT.anchor && EDIT.anchor.moved) { // a placed slider being reshaped: its new end, next to the old one
     const A2 = EDIT.anchor, ss = A2.o, plan = sliderPlan(Object.assign(A2.pts.slice(), { t: ss.t }), { curve: ss.curve, slides: ss.slides, except: ss.lid });
     if (plan && plan.ok) {
@@ -1808,23 +1963,39 @@ function edDrawTimeline(t) {
   if (edAdv()) annDrawTimeline(g, X, t0, t1, hh);
   if (COLLAB.on) collabDrawTimeline(g, X, t0, t1, hh);
   if (LIVE.on) liveDrawTimeline(g, X, t0, t1, hh);
+  if (EDIT.tlBox) { // the selection box being dragged
+    const [a, b] = EDIT.tlBox, xa = Math.max(-2, X(a)), xb = Math.min(w + 2, X(b));
+    g.globalAlpha = .15; g.fillStyle = "#66ccff"; g.fillRect(xa, 0, xb - xa, hh);
+    g.globalAlpha = .9; g.strokeStyle = "#66ccff"; g.lineWidth = 1.5; g.strokeRect(xa + .75, .75, xb - xa - 1.5, hh - 1.5); g.globalAlpha = 1;
+  }
   // playhead
   g.fillStyle = "#ff66aa"; g.fillRect(c - 1, 0, 2, hh);
   g.beginPath(); g.moveTo(c - 6, 0); g.lineTo(c + 6, 0); g.lineTo(c, 7); g.fill();
 }
-// timeline input: drag empty space to scrub, drag a selected object to move it in time, pinch/ctrl+wheel to zoom
+// timeline input: drag empty space to scrub (with a mouse: a selection box over a stretch of time, like osu!stable;
+// middle button or Alt scrubs), drag a selected object to move it in time, pinch/ctrl+wheel to zoom. A click or tap
+// selects (or, on empty space, clears the selection) and never moves the song
 const tlPtrs = new Map();
 let tlAct = null;
-function tlHit(xCss) {
-  const t = A.cur(), w = TL.clientWidth, sc = EDIT.tlScaleV, X = ms => w / 2 + (ms - t) * sc, r = 12;
+// the object under a point. A mouse (strict) has to be on the object's head or tail circle as drawn,
+// so a selection box can start anywhere else, also over a long slider's body or above / below the objects' row;
+// a finger gets the whole height and the bodies too.
+function tlRow() { const hh = TL.clientHeight, tk = Math.max(1, hh / 58); return { cy: hh * .45, r: Math.min(11 * tk, hh * .2) }; } // (as edDrawTimeline draws them)
+function tlHit(xCss, yCss, strict) {
+  const t = A.cur(), w = TL.clientWidth, sc = EDIT.tlScaleV, X = ms => w / 2 + (ms - t) * sc, { cy, r: rr } = tlRow(), r = strict ? rr + 2 : 12;
+  if (strict && Math.abs(yCss - cy) > r) return null;
   let best = null;
   for (const o of map.hit) {
     const x0 = X(o.t), x1 = X(o.end);
     if (x1 < -r) continue; if (x0 > w + r) break;
-    if (Math.abs(xCss - x0) <= r || (o.kind !== "circle" && xCss >= x0 && xCss <= x1)) best = o;
+    if (Math.abs(xCss - x0) <= r) { best = o; continue; }
+    if (o.kind === "circle" || xCss < x0 - r || xCss > x1 + r) continue;
+    if (!strict) best = o;
+    else if (o.kind === "slider" && Math.abs(xCss - x1) <= r) best = o; // (its tail circle; the body and the repeats leave room for a box)
   }
   return best;
 }
+const tlStrict = e => e.pointerType === "mouse" || e.pointerType === "pen";
 // the timeline at the top can be locked so a stray touch or drag doesn't move the song or objects (scroll still works)
 function tlLock(on) {
   S.tlLock = !!on; save();
@@ -1840,9 +2011,9 @@ TL.addEventListener("pointerdown", e => {
   const xr = e.clientX - TL.getBoundingClientRect().left, yr = e.clientY - TL.getBoundingClientRect().top, multi = e.shiftKey || e.ctrlKey || e.metaKey;
   if (yr < 14 && edAdv()) { const t0 = A.cur(), w = TL.clientWidth, nt = notesCached().find(n => Math.abs(w / 2 + (n.t - t0) * EDIT.tlScaleV - xr) < 9); if (nt) { seekTo(nt.t); openQuick(nt.t, [], nt); tlPtrs.delete(e.pointerId); return; } }
   // a selected slider's tail comes first (the next object often starts right where it ends)
-  const tailOf = !multi && can("editor") && map.hit.find(q => q.kind === "slider" && EDIT.sel.has(q.lid) && Math.abs(TL.clientWidth / 2 + (q.end - A.cur()) * EDIT.tlScaleV - xr) < 9);
+  const tailOf = !multi && can("editor") && (!tlStrict(e) || Math.abs(yr - tlRow().cy) <= tlRow().r + 2) && map.hit.find(q => q.kind === "slider" && EDIT.sel.has(q.lid) && Math.abs(TL.clientWidth / 2 + (q.end - A.cur()) * EDIT.tlScaleV - xr) < 9);
   if (tailOf) { EDIT.edgeFor = tailOf.lid; EDIT.edge = tailOf.slides; tlAct = { tail: tailOf, x: e.clientX }; EDIT.tlRep = { lid: tailOf.lid, n: tailOf.slides }; updateEdUI(); dirty = true; return; }
-  const o = tlHit(xr);
+  const o = tlHit(xr, yr, tlStrict(e));
   if (o) {
     if (multi) { EDIT.sel.has(o.lid) ? EDIT.sel.delete(o.lid) : EDIT.sel.add(o.lid); }
     else if (!EDIT.sel.has(o.lid)) EDIT.sel = new Set([o.lid]);
@@ -1851,22 +2022,40 @@ TL.addEventListener("pointerdown", e => {
       EDIT.edgeFor = o.lid; EDIT.edge = k;
       if (k === o.slides && can("editor")) { tlAct = { tail: o, x: e.clientX }; EDIT.tlRep = { lid: o.lid, n: o.slides }; updateEdUI(); dirty = true; return; } } // (the tail: drag it to add or remove reverses, like osu!)
     tlAct = { obj: o, x: e.clientX }; updateEdUI();
+  } else if (e.pointerType === "mouse" && e.button === 0 && !e.altKey) {
+    const ta = A.cur() + (xr - TL.clientWidth / 2) / EDIT.tlScaleV;
+    tlAct = { box: true, x: e.clientX, xr, ta, moved: false, base: multi ? new Set(EDIT.sel) : new Set() };
+    requestAnimationFrame(tlBoxTick);
   } else {
-    if (isPlaying()) pausePlayback();
     tlAct = { scrub: true, x: e.clientX, t: A.cur(), moved: false };
   }
   dirty = true;
 });
+// the selection box: every object whose head is inside it (plus the ones selected before, with Ctrl / Shift)
+function tlBoxUpdate() {
+  const b = tlAct, sc = EDIT.tlScaleV, tb = A.cur() + (b.xr - TL.clientWidth / 2) / sc, lo = Math.min(b.ta, tb), hi = Math.max(b.ta, tb);
+  EDIT.tlBox = [lo, hi];
+  const tol = 6 / sc, s = new Set(b.base);
+  for (const o of map.hit) { if (o.t > hi + tol) break; if (o.t >= lo - tol) s.add(o.lid); }
+  EDIT.sel = s; updateEdUI(); dirty = true;
+}
+function tlBoxTick() { // held near an edge: the timeline scrolls that way, faster closer to it
+  if (!tlAct || !tlAct.box) return;
+  const w = TL.clientWidth, edge = Math.min(48, w / 6), k = tlAct.xr < edge ? -(edge - tlAct.xr) / edge : tlAct.xr > w - edge ? (tlAct.xr - (w - edge)) / edge : 0;
+  if (k && tlAct.moved) { seekTo(Math.max(0, Math.min(A.dur(), A.cur() + Math.max(-1.5, Math.min(1.5, k)) * 16 / EDIT.tlScaleV))); tlBoxUpdate(); }
+  requestAnimationFrame(tlBoxTick);
+}
 TL.addEventListener("pointermove", e => {
   if (!tlAct && e.pointerType === "mouse" && map && !S.tlLock) { // over a slider's tail: it can be dragged (reverses)
-    const xr = e.clientX - TL.getBoundingClientRect().left, o = tlHit(xr);
-    TL.style.cursor = o && o.kind === "slider" && Math.abs(TL.clientWidth / 2 + (o.end - A.cur()) * EDIT.tlScaleV - xr) < 7 ? "ew-resize" : "";
+    const rc = TL.getBoundingClientRect(), xr = e.clientX - rc.left, o = tlHit(xr, e.clientY - rc.top, true);
+    TL.style.cursor = !o ? "" : o.kind === "slider" && Math.abs(TL.clientWidth / 2 + (o.end - A.cur()) * EDIT.tlScaleV - xr) < 7 ? "ew-resize" : can("editor") ? "grab" : "pointer";
   }
   if (!tlAct || !tlPtrs.has(e.pointerId)) return;
   tlPtrs.set(e.pointerId, e.clientX);
   if (tlAct.pinch) { if (tlPtrs.size === 2) { const [a, b] = [...tlPtrs.values()]; EDIT.tlScale = EDIT.tlScaleV = Math.max(.03, Math.min(2, tlAct.scale * (Math.abs(a - b) || 1) / tlAct.pinch)); S.tlZoom = EDIT.tlScale; save(); dirty = true; } return; }
   const dx = e.clientX - tlAct.x;
-  if (tlAct.scrub) { if (Math.abs(dx) > 2) tlAct.moved = true; seekTo(tlAct.t - dx / EDIT.tlScaleV); return; }
+  if (tlAct.box) { tlAct.xr = e.clientX - TL.getBoundingClientRect().left; if (Math.abs(dx) > 3 && !tlAct.moved) { tlAct.moved = true; if (isPlaying()) pausePlayback(); } if (tlAct.moved) tlBoxUpdate(); return; }
+  if (tlAct.scrub) { if (Math.abs(dx) > 2 && !tlAct.moved) { tlAct.moved = true; if (isPlaying()) pausePlayback(); tlAct.t = A.cur(); tlAct.x = e.clientX; } if (tlAct.moved) seekTo(tlAct.t - (e.clientX - tlAct.x) / EDIT.tlScaleV); return; }
   if (tlAct.tail) { // the slider's tail: the nearest whole number of slides to where it's dragged
     const o = tlAct.tail, xr = e.clientX - TL.getBoundingClientRect().left, t = A.cur() + (xr - TL.clientWidth / 2) / EDIT.tlScaleV;
     if (Math.abs(dx) > 3) tlAct.moved = true;
@@ -1881,17 +2070,16 @@ TL.addEventListener("pointermove", e => {
 function tlEnd(e) {
   tlPtrs.delete(e.pointerId);
   if (!tlAct) return;
-  if (tlAct.tail) { const o = tlAct.tail, n = EDIT.tlRep ? EDIT.tlRep.n : o.slides; EDIT.tlRep = null; if (n !== o.slides) sliderSetRepeats(o, n); else if (!tlAct.moved) seekTo(o.end); }
+  if (tlAct.tail) { const o = tlAct.tail, n = EDIT.tlRep ? EDIT.tlRep.n : o.slides; EDIT.tlRep = null; if (n !== o.slides) sliderSetRepeats(o, n); }
   else if (tlAct.obj && EDIT.tlDrag) { const dt = EDIT.tlDt; EDIT.tlDrag = false; EDIT.tlDt = 0; shiftSel(dt); }
-  else if (tlAct.obj) seekTo(tlAct.obj.t);
-  else if (tlAct.scrub && !tlAct.moved) { // tap on the timeline: jump there (snapped)
-    const xr = e.clientX - TL.getBoundingClientRect().left;
-    seekTo(snapTime(A.cur() + (xr - TL.clientWidth / 2) / EDIT.tlScaleV));
-  }
+  else if (tlAct.box && tlAct.moved) EDIT.tlBox = null;
+  else if (tlAct.box && !tlAct.base.size) { EDIT.sel = new Set(); updateEdUI(); } // a click on empty space: nothing selected (like osu!stable)
+  // (a click or tap never moves the song: only dragging, the wheel and the seek bar do)
   if (!tlPtrs.size) tlAct = null;
   dirty = true;
 }
 TL.addEventListener("pointerup", tlEnd);
+TL.addEventListener("mousedown", e => { if (e.button === 1) e.preventDefault(); }); // (middle-drag scrubs: not the browser's autoscroll)
 TL.addEventListener("pointercancel", tlEnd);
 TL.addEventListener("wheel", e => {
   e.preventDefault();
@@ -1972,7 +2160,7 @@ async function exportOsz() {
     const { blob, name } = await buildOsz();
     downloadBlob(blob, name);
     toast(tr("Downloaded the .osz"));
-    EDIT.changed = false; osuFiles.forEach(o => { o.created = false; if (o.edited) o.edited = false; });
+    EDIT.changed = false; osuFiles.forEach(o => { o.created = false; if (o.edited) o.edited = false; }); diffMarks();
     draftSchedule();
   } catch (e) { toast(tr("Couldn't build the .osz: {err}", { err: e.message })); }
   hideLoading();
@@ -2070,7 +2258,7 @@ function selectionMenu() { // everything the current selection can do
     { label: tr("Copy timestamp"), action: async () => { const s = tsFor(objs).replace(/ - $/, ""); toast(await copyText(s) ? tr("Copied {s}", { s }) : s); } },
     { label: tr("+ Note"), key: "N", action: () => $("edNote").click() },
     LIVE.on ? { label: tr("Highlight"), key: "H", action: liveHighlight } : null,
-    one && annCanCreate() ? { label: tr("Annotate…"), sub: () => [
+    one && annCanCreate() && featOn("ed_annot") ? { label: tr("Annotate…"), sub: () => [
       { label: "💬 " + tr("Comment"), action: () => annCreate("comment", one, {}) },
       { label: "◎ " + tr("Highlight"), action: () => annCreate("highlight", one, {}) },
       { label: "➚ " + tr("Arrow (drag it)"), action: () => annSetTool("arrow") }] } : null,
@@ -2100,10 +2288,10 @@ function emptyMenu() {
     { label: tr("Add a green line here"), key: "Ctrl+Shift+P", action: () => openTiming(false) },
     { label: tr(map.bookmarks.some(b => Math.abs(b - t) < 20) ? "Remove bookmark" : "Add bookmark"), key: "Ctrl+B", action: toggleBookmark },
     { label: tr("+ Note"), key: "N", action: () => $("edNote").click() },
-    annCanCreate() ? { label: tr("Annotate…"), sub: () => ["comment", "arrow", "highlight"].map(k => ({ label: `${ANN_ICON[k]} ${tr({ comment: "Comment", arrow: "Arrow", highlight: "Highlight" }[k])}`, action: () => annSetTool(k) })) } : null,
+    annCanCreate() && featOn("ed_annot") ? { label: tr("Annotate…"), sub: () => ["comment", "arrow", "highlight"].map(k => ({ label: `${ANN_ICON[k]} ${tr({ comment: "Comment", arrow: "Arrow", highlight: "Highlight" }[k])}`, action: () => annSetTool(k) })) } : null,
     { sep: 1 },
     { label: tr("Hitsounds for new objects…"), key: "H", action: () => openDlg("hitsound") },
-    { label: tr("Polygon circles…"), key: "Ctrl+Shift+D", action: () => openDlg("polygon") },
+    featOn("ed_adv") ? { label: tr("Polygon circles…"), key: "Ctrl+Shift+D", action: () => openDlg("polygon") } : null,
     ...(ONE_ROW.matches ? [{ sep: 1 }, edRowsItem()] : []),
     ...(typeof edTourStart === "function" && !document.body.classList.contains("live-watch") ? [{ sep: 1 }, { label: tr("Editor tour"), key: "?", action: () => edTourStart("simple", { skipWelcome: true }) }] : [])];
 }
@@ -2148,7 +2336,7 @@ function edContext(e, fromTimeline) {
     if (LP.last === "touch" || performance.now() - LP.fired < 1000) return;
     lpEnd(); // a pen's barrel button (or right-click) is a real right-click
   }
-  pdown = null; EDIT.box = null; EDIT.drag = false; EDIT.anchor = null; tlAct = null; // a long-press started a normal press too
+  pdown = null; EDIT.box = EDIT.tlBox = null; EDIT.drag = false; EDIT.anchor = null; tlAct = null; // a long-press started a normal press too
   if (EDIT.sliderPts) { // lazer: right-click ends slider placement, the point under the cursor being the slider's end
     const [x, y] = toOsu(e); EDIT.hoverPt = clampPF(gridSnap(x), gridSnap(y)); finishSlider(placingPts()); return;
   }
@@ -2201,16 +2389,20 @@ function renderEdSettings() {
     gs("Angle", "The angle at the previous object (180° = straight on, 90° = square, 0° = straight back)", "gAngle"),
     gs("While placing", "Distance and angle from the previous object follow the cursor with the Circle and Slider tools", "gPlace"),
     gs("Distance snap rings", "Circles around the previous object while distance snap is on", "gRings"));
-  const c3 = card();
+  const c3 = card(); // the playfield while editing
   c3.append(sw("Hit markers", "Like osu!'s editor: objects you've passed turn white and fade out where they are, with a ring when each is reached. Off: they play their hit animations like in gameplay", () => S.edHitMarkers !== false, v => { S.edHitMarkers = v; save(); dirty = true; }),
-    sw("Flash hitsounds while playing", "The hitsound buttons and the columns in Hitsound Studio light up with each hitsound", () => S.hsFlash !== false, v => { S.hsFlash = v; save(); }),
-    sw("Show sample names", "Like osu!'s editor: the name of each sample that plays shows above its object (e.g. soft-hitclap)", () => !!S.edSampleName, v => { S.edSampleName = v; save(); }),
+    sw("Allow objects outside the playfield", "Off: objects can't be placed or moved past the border. On: they can go anywhere you can click, for offscreen maps. Objects already outside are never changed.", () => S.edOutside === true, v => { S.edOutside = v; save(); dirty = true; }),
     sw("Stacking", "Objects at the same place are drawn stacked, like in gameplay. Off: each one shows where it really is", () => S.edStack !== false, v => { S.edStack = v; save(); if (map && map.mode !== 3) rebuildHits(map); dirty = true; }),
-    sw("Advanced tools", "Mod notes, annotations, stream / polygon / transform and the other mapping tools, added under osu!'s own tools (the switch in the top bar does the same)", () => S.edAdv === true, v => setEdAdv(v, true)),
-    sw("Compact top bar", "Modding's menu bar as one thin row (small buttons and tabs), so the timeline and the playfield get more room. Off: the bigger bar", () => S.edCompact === true, v => { S.edCompact = v; save(); applyEdCompact(); }),
     ...row("Playfield size", sel([["auto", edSizeAutoLabel()], ["game", tr("Same as gameplay")], ["fit", tr("Fit between the bars")]], S.edSize === "fit" || S.edSize === "game" ? S.edSize : "auto", v => { S.edSize = v; save(); bodyCache.clear(); dirty = true; }), "Auto: fit on upright phones, same as gameplay everywhere else. Same as gameplay: objects are the size they are when you play the map on this screen, smaller only when the whole field wouldn't fit between the bars (it never goes off the screen). Fit: the whole field with a margin for circles between the bars."),
-    ...row("Background dim", edDimCtl(), "How dark the background is while editing (the preview has its own, under Display)."),
-    ...row("Compare: before", cmpPctSlider("cmpBefore", 40), "How faint the other version's objects are in Compose when Compare's ghost is on."),
+    ...row("Background dim", edDimCtl(), "How dark the background is while editing (the preview has its own, under Display)."));
+  const ch = card(); // hitsounds while playing
+  ch.append(sw("Flash hitsounds while playing", "The hitsound buttons and the columns in Hitsound Studio light up with each hitsound", () => S.hsFlash !== false, v => { S.hsFlash = v; save(); }),
+    sw("Show sample names", "Like osu!'s editor: the name of each sample that plays shows above its object (e.g. soft-hitclap)", () => !!S.edSampleName, v => { S.edSampleName = v; save(); }));
+  const ci = card(); // the top bar
+  ci.append(sw("Advanced tools", "Mod notes, annotations, stream / polygon / transform and the other mapping tools, added under osu!'s own tools (the switch in the top bar does the same)", () => S.edAdv === true, v => setEdAdv(v, true)),
+    sw("Compact top bar", "Modding's menu bar as one thin row (small buttons and tabs), so the timeline and the playfield get more room. Off: the bigger bar", () => S.edCompact === true, v => { S.edCompact = v; save(); applyEdCompact(); }));
+  const cc = card(); // Compare's ghost
+  cc.append(...row("Compare: before", cmpPctSlider("cmpBefore", 40), "How faint the other version's objects are in Compose when Compare's ghost is on."),
     ...row("Compare: before colour", cmpColorCtl(), "The colour of the other version's objects in Compose (they all take this one instead of the combo colours)."),
     ...row("Compare: after", cmpPctSlider("cmpAfter", 100), "How strong this version's objects are while Compare's ghost shows (100%: as always)."));
   const cv = card(), wait = sw("Wait until I stop editing", "Checks again a moment after your last change instead of after every one, so dragging objects stays smooth", () => S.vfyWait !== false, v => { S.vfyWait = v; save(); });
@@ -2223,11 +2415,8 @@ function renderEdSettings() {
   for (const [i, k] of [[pre, "notePrefix"], [suf, "noteSuffix"]]) { i.oninput = () => { S[k] = i.value; save(); showEx(); }; i.addEventListener("keydown", e => e.stopPropagation()); }
   c4.append(...row("Prefix", pre), ...row("Suffix", suf), ex, h("p", "hint", tr("Copy format (prefix / suffix, may use {diff} {type} {cat})")));
   showEx();
-  const more = h("button", "mlink", tr("All keyboard shortcuts →")); more.onclick = () => showSetTab("keys");
-  const go = (t, l) => { const b = h("button", "mlink", tr(l)); b.onclick = () => showSetTab(t); return b; };
-  const elsewhere = h("p", "hint setwhere"); elsewhere.append(tr("Also:") + " ", go("audio", "Audio"), " " + tr("(volume, hitsounds, speed, metronome, sync)") + " · ", go("display", "Display"),
-    " " + tr("(snaking sliders, slider ends, timing overlay, storyboard)") + " · ", go("skin", "Skin"), " · ", go("general", "General"), " " + tr("(language)"));
-  box.append(...(typeof edTourSettings === "function" ? edTourSettings(sub, card, sw) : []), sub("Placing objects"), c1, sub("Timeline"), c2, sub("Mapping guides"), cg, sub("While editing"), c3, sub("Verify"), cv, sub("Mod notes"), c4, more, elsewhere);
+  box.append(...(typeof edTourSettings === "function" ? edTourSettings(sub, card, sw) : []), sub("Placing objects"), c1, sub("Timeline"), c2, sub("Mapping guides"), cg,
+    sub("Playfield"), c3, sub("Hitsounds"), ch, sub("Top bar and tools"), ci, sub("Compare"), cc, sub("Verify"), cv, sub("Mod notes"), c4);
 }
 
 // Wireless / Bluetooth headphones (Settings → Audio → Sync): hitsounds and the song stay together (audio.js); a nudge if

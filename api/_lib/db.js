@@ -38,14 +38,20 @@ const NUM_ARGS = new Set(["p_actor", "p_user", "p_id", "p_owner_id", "p_owner", 
 async function rpc(name, args) {
   if (D1.db) {
     const { F, Q } = require("./d1"), f = F[name];
-    if (!f) { console.error("d1: no function", name); throw new ApiError("db_error", 502); }
+    if (!f) { console.error("d1: no function", name); throw missing(); }
     const a = { ...(args || {}) };
     for (const k of Object.keys(a)) if (NUM_ARGS.has(k) && typeof a[k] === "string" && /^-?\d{1,16}$/.test(a[k])) a[k] = Number(a[k]); // (p_id: an osu! id, or a changelog uuid that stays text)
     try { return await f(new Q(D1.db), a); }
-    catch (e) { if (e instanceof ApiError) throw e; console.error("d1", name, e && e.message); throw new ApiError("db_error", 502); }
+    catch (e) {
+      if (e instanceof ApiError) throw e;
+      console.error("d1", name, e && e.message);
+      throw /no such table: replays\b|no such column: (\w+\.)?share_key\b/.test(String(e && e.message)) ? missing() : new ApiError("db_error", 502); // (the replays table of d1/migrations/0005_replays.sql, or its share_key column of 0006_replay_share.sql, isn't there yet: like a missing function)
+    }
   }
   return pgRpc(name, args);
 }
+// db_error for a database function that doesn't exist (yet: its migration hasn't been run); e.missing tells it from other database errors
+function missing() { const e = new ApiError("db_error", 502); e.missing = true; return e; }
 // always Supabase (the copy to D1 reads it while the site still runs there)
 async function pgRpc(name, args) {
   const c = conf(); if (!c.ok) throw new ApiError("not_configured", 503);
@@ -56,7 +62,7 @@ async function pgRpc(name, args) {
     let detail = null; try { detail = j && j.details ? JSON.parse(j.details) : null; } catch {}
     if (code) throw new ApiError(code, STATUS[code] || 400, detail);
     console.error("rpc", name, r.status, (j && j.code) || "", m.slice(0, 200)); // no arguments: they may contain user data
-    throw new ApiError("db_error", 502);
+    throw r.status === 404 && j && j.code === "PGRST202" ? missing() : new ApiError("db_error", 502);
   }
   return j;
 }

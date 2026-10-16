@@ -4,7 +4,7 @@
 // SUPABASE_SECRET_KEY, OWNER_OSU_ID, CRON_SECRET, TURN_KEY_ID + TURN_KEY_API_TOKEN (Cloudflare Realtime TURN, optional),
 // CF_ANALYTICS_TOKEN + CF_ACCOUNT_ID (TURN usage and the monthly limit, optional).
 {
-  "name": "kiki-beatmap-viewer",
+  "name": "osu-beatmap-viewer",
   "main": "worker.js",
   "compatibility_date": "2025-09-15",
   "compatibility_flags": ["nodejs_compat"],
@@ -13,25 +13,30 @@
   "assets": {
     "directory": ".",
     "binding": "ASSETS",
-    // the Worker only runs for the API and for "/" (shared links get a preview card); other files are served directly
-    "run_worker_first": ["/", "/api/*"]
+    // the Worker only runs for the API, for "/" (api/og.js fills in the page's head), for Google's verification file and for /dl/skin (a skin imported from a link, passed through from its host); other files are served directly
+    "run_worker_first": ["/", "/api/*", "/google*.html", "/dl/*"]
   },
   "triggers": { "crons": ["0 3 * * *"] },
   // project files (online saves) on R2, free tier: create the bucket first (Cloudflare → R2 → Create bucket), the
   // deploy fails while it doesn't exist. Without this binding the files stay on Supabase Storage. The site counts R2
   // operations and refuses them above the free tier (Admin → Settings), see api/_lib/db.js.
-  "r2_buckets": [{ "binding": "FILES", "bucket_name": "kiki-beatmap-viewer-files" }],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "osu-beatmap-viewer-files" }],
   // the database on D1 (d1/migrations); used only once the variable DB_BACKEND=d1 is set (worker.js), until then Supabase
-  "d1_databases": [{ "binding": "DB", "database_name": "kiki-beatmap-viewer-db", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "d1/migrations" }],
+  "d1_databases": [{ "binding": "DB", "database_name": "osu-beatmap-viewer-db", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "d1/migrations" }],
   "observability": { "enabled": true },
   // keep variables added in the dashboard: without this every deploy removes the plain-text ones (secrets stay)
   "keep_vars": true,
-  // Worker Previews (one per Git branch, "<branch>-kiki-beatmap-viewer.<account>.workers.dev"): the production D1 database
-  // and R2 bucket are left out on purpose, and OBV_PREVIEW marks them as previews. They fail closed: every /api/* answers
-  // 503 preview_backend_disabled and the plain page is served (worker.js, api/_lib/preview.js), unless PREVIEW_BACKEND=1
-  // is set for them together with a separate, non-production backend. Previews get no cron trigger. The code can't stop
-  // a malicious branch: in the Cloudflare dashboard, make sure previews don't receive production's secrets, and keep
-  // preview URLs behind Cloudflare Access.
+  // Worker Previews (npx wrangler preview, one per Git branch, "<branch>-osu-beatmap-viewer.<account>.workers.dev"): the
+  // production D1 database and R2 bucket are left out on purpose, and previews get no cron trigger. A preview runs a
+  // branch's unreviewed code, so it fails closed (api/_lib/preview.js): worker.js treats any workers.dev host other than
+  // "osu-beatmap-viewer.<account>.workers.dev" (and anything with OBV_PREVIEW=1, set below) as a preview, answers every
+  // /api/* with 503 preview_backend_disabled and serves the plain page, before any env handling: no API code runs, so no
+  // secret or binding is used (process.env is left alone; it's shared with production's requests on a version's URL).
+  // Only the static site works.
+  // PREVIEW_BACKEND=1 turns the API back on for previews: set it only together with a separate, non-production Supabase
+  // project (and its own osu! app) given to previews. The guard doesn't stop a malicious branch (it can edit worker.js):
+  // check in the Cloudflare dashboard which secrets and variables previews receive (production's must not reach them),
+  // and keep previews behind Cloudflare Access.
   "previews": {
     "placement": { "mode": "smart" },
     "vars": { "OBV_PREVIEW": "1" }

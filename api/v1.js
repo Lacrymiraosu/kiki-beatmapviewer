@@ -8,7 +8,8 @@
 // make other accounts admins (a role in the database, checked again on every admin request); only the owner changes
 // site-wide settings and who is an admin.
 const crypto = require("crypto");
-const { cfg, keys, unsign, sign, cookies, cookie, query, sameOrigin } = require("./_lib/auth");
+const { cfg, keys, unsign, sign, cookies, cookie, query, sameOrigin, validAfter, revoked } = require("./_lib/auth");
+const { FEAT_RE, routeFeature } = require("./_lib/features");
 const osu = require("./_lib/osu");
 const { limiter, clientIp } = require("./_lib/rate");
 const alt = require("./_lib/alt");
@@ -50,8 +51,6 @@ const touched = new Map(); // osu id -> { at: when the user row was last refresh
 // Ending sessions (they're stateless): every login made up to sessions_valid_after stops working. Set by "Log out
 // everywhere", unlinking Google and an admin's suspension; read with the user row in touch() (no extra query), so
 // another server instance notices within 5 minutes (actor()) or on the next /me.
-const validAfter = u => { const t = u && u.sessions_valid_after ? Date.parse(u.sessions_valid_after) : 0; return Number.isFinite(t) ? t : 0; };
-const revoked = (s, va) => va > 0 && !(+s.iat > va);
 async function revokeSessions(uid) { // -> the time (ms): sessions made up to then are over
   const at = Date.now();
   await db.rpc("obv_sessions_revoke", { p_user: uid, p_at: new Date(at).toISOString() });
@@ -137,9 +136,19 @@ async function sitePerms() {
   catch { perms.at = Date.now() - 45000; }
   return perms.v;
 }
+// Feature switches (Admin → Features, api/_lib/features.js): the keys that are off, cached briefly per server instance. If the database
+// can't be asked, the last answer stays (a switch that was off does not come back on by itself).
+let feats = { at: 0, off: [] };
+async function featuresOff() {
+  if (!db.configured()) return [];
+  if (Date.now() - feats.at < 20000) return feats.off;
+  try { const v = await db.rpc("obv_site_features", {}); feats = { at: Date.now(), off: Array.isArray(v) ? v.filter(k => typeof k === "string" && FEAT_RE.test(k)) : [] }; }
+  catch { feats.at = Date.now() - 10000; } // (not before the migration has run; else a few seconds later)
+  return feats.off;
+}
 // the part of the site a route serves (any one of them being allowed is enough)
 function routeAreas(key) {
-  if (/^osu\/(search|beatmap|set|tags)$/.test(key)) return ["listing", "player"];
+  if (/^osu\/(search|beatmap|lookup|scores|replay|set|tags)$/.test(key)) return ["listing", "player"];
   if (/^osu\/(user|beatmaps|activity)$/.test(key)) return ["mappers", "listing"];
   if (key === "link/:id") return ["player"];
   return ["online"]; // projects, saves, collab, live sessions, invites
@@ -250,6 +259,43 @@ function mergeNote(req) {
 }
 const mergeMine = (g, s) => !!(g && s && +g.to === +s.id && s.sid && g.sid === s.sid && !s.gonly && !s.via && !s.unverified);
 
+// ---------- saved replays (the "Save online" of the replay watcher, js/replayui.js) ----------
+// The .osr file as base64 text in one database row (at most 1 MiB), kept 60 days. Everything is checked here (the SQL / D1 functions
+// check it again): the file's size, its sha256 (computed again from the bytes), its first byte (the game mode) and the score info.
+const RP_MAX = 1048576, RP_B64_MAX = 4 * Math.ceil(RP_MAX / 3), RP_META_MAX = 4096, REPLAY_KEY = /^[A-Za-z0-9_-]{32}$/; // (REPLAY_KEY: a share link's key, like a project's link key)
+const rpInt = (v, lo, hi) => Number.isSafeInteger(v) && v >= lo && v <= hi ? v : undefined;
+// the score info, only the known keys; a wrong value is dropped (the replay is still fine), the rest is cut to size
+function replayMeta(m, mode) {
+  if (m == null) m = {};
+  if (typeof m !== "object" || Array.isArray(m)) throw new ApiError("bad_request", 400, { field: "meta" });
+  const o = { mode }, str = (k, n) => { if (typeof m[k] === "string") o[k] = m[k].slice(0, n); }, num = (k, lo, hi) => { const v = rpInt(m[k], lo, hi); if (v !== undefined) o[k] = v; };
+  str("player", 64); if (typeof m.mapMd5 === "string" && /^[0-9a-fA-F]{32}$/.test(m.mapMd5)) o.mapMd5 = m.mapMd5.toLowerCase();
+  for (const k of ["title", "artist", "version", "creator"]) str(k, 300);
+  for (const k of ["setId", "beatmapId"]) { if (m[k] === null) o[k] = null; else num(k, 1, 2 ** 53 - 1); }
+  num("score", 0, 2 ** 53 - 1); num("combo", 0, 1e9);
+  if (typeof m.acc === "number" && m.acc >= 0 && m.acc <= 1) o.acc = m.acc;
+  str("rank", 3); num("mods", -2147483648, 2147483647);
+  if (Array.isArray(m.modNames)) o.modNames = m.modNames.filter(x => typeof x === "string").slice(0, 20).map(x => x.slice(0, 8));
+  if (m.counts && typeof m.counts === "object" && !Array.isArray(m.counts)) {
+    o.counts = {}; for (const k of ["n300", "n100", "n50", "geki", "katu", "miss"]) { const v = rpInt(m.counts[k], 0, 1e9); if (v !== undefined) o.counts[k] = v; }
+  }
+  if (m.date === null) o.date = null; else if (Number.isFinite(m.date) && Number.isInteger(m.date) && Math.abs(m.date) <= 8.64e15) o.date = m.date;
+  if (typeof m.lazer === "boolean") o.lazer = m.lazer;
+  if (Buffer.byteLength(JSON.stringify(o)) > RP_META_MAX) throw new ApiError("bad_request", 400, { field: "meta" });
+  return o;
+}
+// the replay functions' errors the way the page expects them: replay_limit 403, storage_full 503; before the migration has run
+// (the function isn't there): 503 not_configured
+async function replayRpc(name, args) {
+  try { return await db.rpc(name, args); }
+  catch (e) {
+    if (e && e.code === "db_error" && e.missing) throw new ApiError("not_configured", 503);
+    if (e && e.code === "replay_limit") e.status = 403;
+    else if (e && e.code === "storage_full") e.status = 503;
+    throw e;
+  }
+}
+
 // ---------- routes ----------
 const routes = {
   // who am I (+ owner flag for the admin link; the server checks the id again on every admin request)
@@ -257,6 +303,7 @@ const routes = {
     const s = session(req);
     const out = { user: s ? { id: s.id, username: s.username, avatar: s.avatar, country: s.country } : null, owner: isOwner(s), admin: isOwner(s) ? "owner" : null,
       cloud: db.configured(), osu: osu.configured(), alt: alt.configured(), drive: driveConf(), status: null, limits: null, gate: null, access: isOwner(s) ? "approved" : null };
+    out.features = { off: await featuresOff() }; // (everyone gets these, logged in or not, gate or not: the page hides what is switched off)
     // one database call when logged in (obv_user_touch also says whether access is required); the switch alone otherwise
     if (s && db.configured()) {
       try {
@@ -388,6 +435,54 @@ const routes = {
     send(res, 200, r);
   },
 
+  // ----- saved replays (kept 60 days; all need a login) -----
+  // saving: false when the database function isn't there yet (its migration hasn't been run): the page then hides "Save online"
+  "GET replays": async (req, res) => {
+    const s = await actor(req); let r;
+    try { r = await db.rpc("obv_replay_list", { p_actor: s.id }); }
+    catch (e) { if (e && e.code === "db_error") return send(res, 200, { replays: [], saving: false, limits: null }, "private, no-store"); throw e; }
+    send(res, 200, { replays: r.replays, saving: true, limits: r.limits }, "private, no-store");
+  },
+  // { sha256, size, data_b64, meta } -> { replay, existed } (the same file again: the replay that is there, existed: true)
+  "POST replays": async (req, res) => {
+    const s = await actor(req), b = await body(req, 1.6e6);
+    if (typeof b.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(b.sha256) || !Number.isInteger(b.size) || b.size < 1 || typeof b.data_b64 !== "string") throw new ApiError("bad_request", 400);
+    if (b.size > RP_MAX || b.data_b64.length > RP_B64_MAX) throw new ApiError("too_large", 413, { limit: RP_MAX });
+    const d = b.data_b64;
+    if (d.length !== 4 * Math.ceil(b.size / 3) || !/^[A-Za-z0-9+/]+={0,2}$/.test(d)) throw new ApiError("bad_request", 400, { field: "data_b64" });
+    const raw = Buffer.from(d, "base64");
+    if (raw.length !== b.size || raw.toString("base64") !== d) throw new ApiError("bad_request", 400, { field: "size" }); // (the length matches the declared size; the text is the canonical encoding)
+    if (crypto.createHash("sha256").update(raw).digest("hex") !== b.sha256) throw new ApiError("bad_request", 400, { field: "sha256" });
+    if (raw[0] > 3) throw new ApiError("bad_request", 400, { field: "mode" }); // (the first byte of an .osr is the game mode)
+    const r = await replayRpc("obv_replay_save", { p_actor: s.id, p_sha256: b.sha256, p_size: b.size, p_meta: replayMeta(b.meta, raw[0]), p_data: d });
+    send(res, 200, { replay: r.replay, existed: !!r.existed }, "private, no-store");
+  },
+  "GET replays/:id": async (req, res, q, P) => {
+    const s = await actor(req), r = await replayRpc("obv_replay_get", { p_actor: s.id, p_id: P.id });
+    send(res, 200, { replay: r.replay, data_b64: r.data }, "private, no-store");
+  },
+  "DELETE replays/:id": async (req, res, q, P) => {
+    const s = await actor(req); await replayRpc("obv_replay_delete", { p_actor: s.id, p_id: P.id });
+    send(res, 200, { ok: true }, "private, no-store");
+  },
+  // sharing a saved replay by link, members only (supabase/migrations/20261011150000_obv_replay_share.sql, d1/migrations/0006_replay_share.sql):
+  // { mode: "on" | "reset" | "off" } (the owner only) -> { share_key (null when off), expires_at }; the link is ?replay=<id>&key=<share_key>.
+  // Someone else's, an expired or a missing replay: 404 not_found. Like every replays/ route: a login, the access gate, the Replays switch, RATE.rp.
+  "POST replays/:id/share": async (req, res, q, P) => {
+    const s = await actor(req), b = await body(req, 2000), mode = typeof b.mode === "string" ? b.mode : "";
+    if (!["on", "reset", "off"].includes(mode)) throw new ApiError("bad_request", 400, { field: "mode" });
+    const r = await replayRpc("obv_replay_share", { p_actor: s.id, p_id: P.id, p_mode: mode });
+    send(res, 200, { share_key: r.share_key || null, expires_at: r.expires_at }, "private, no-store");
+  },
+  // opening a shared link: a logged-in member (not a guest: the access gate) gets the file and its score info to watch it, never who saved it.
+  // A malformed, wrong, revoked or old key, an expired, deleted or missing replay: the same 404 not_found. Never cached (a revoked link ends at once).
+  "GET replays/shared/:id": async (req, res, q, P) => {
+    const s = await actor(req), key = String(q.get("key") || "");
+    if (!REPLAY_KEY.test(key)) throw new ApiError("not_found", 404); // (before the database is asked)
+    const r = await replayRpc("obv_replay_shared", { p_actor: s.id, p_id: P.id, p_key: key }), x = r.replay || {};
+    send(res, 200, { replay: { id: x.id, size: x.size, meta: x.meta, created_at: x.created_at, expires_at: x.expires_at }, data_b64: r.data }, "private, no-store");
+  },
+
   // ----- collab: a host checks a joiner's login and their role in the host's online project -----
   "POST collab/verify": async (req, res) => {
     const s = await actor(req), b = await body(req);
@@ -432,6 +527,24 @@ const routes = {
     if (!sid) return send(res, 404, { error: "not_found" }, "public, max-age=60, s-maxage=300");
     send(res, 200, { set_id: sid }, "public, max-age=3600, s-maxage=86400");
   },
+  "GET osu/lookup": async (req, res, q) => { // a difficulty by the MD5 of its .osu (to find the map of a replay)
+    const md5 = String(q.get("checksum") || "").toLowerCase(); if (!/^[0-9a-f]{32}$/.test(md5)) throw new ApiError("bad_request", 400);
+    const b = await osu.lookupByChecksum(md5);
+    if (!b) return send(res, 404, { error: "not_found" }, "public, max-age=60, s-maxage=600");
+    send(res, 200, b, "public, max-age=3600, s-maxage=86400");
+  },
+  "GET osu/replay": async (req, res, q) => { // the .osr of a score (a pasted osu! score link): the raw file; never cached, never indexed
+    const id = String(q.get("score") || ""); if (!/^\d{1,12}$/.test(id)) throw new ApiError("bad_request", 400);
+    const buf = await osu.getReplay(id, "scores");
+    if (!buf) return send(res, 404, { error: "not_found" }, "no-store");
+    res.statusCode = 200; res.setHeader("Content-Type", "application/octet-stream"); res.setHeader("Cache-Control", "no-store"); res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Disposition", `attachment; filename="score-${id}.osr"`); res.setHeader("Content-Length", String(buf.length)); res.end(buf);
+  },
+  "GET osu/scores": async (req, res, q) => { // the top 50 global scores of a replay's map (a list, never the replays); osu.js limits and caches it
+    const id = String(q.get("id") || ""); if (!/^\d{1,10}$/.test(id)) throw new ApiError("bad_request", 400);
+    const r = await osu.getScores(id, "scores");
+    send(res, 200, { beatmap_id: +id, scores: r ? r.scores : [] }, "public, max-age=300, s-maxage=600"); // (unknown map: an empty list)
+  },
   "GET osu/tags": async (req, res) => { send(res, 200, { tags: await osu.getTags() }, "public, max-age=3600, s-maxage=86400"); },
   "GET osu/set": async (req, res, q) => {
     const id = String(q.get("id") || ""); if (!/^\d{1,10}$/.test(id)) throw new ApiError("bad_request", 400);
@@ -451,7 +564,8 @@ const routes = {
   "POST live/ticket": async (req, res) => {
     const s = session(req), b = await body(req, 2000), aud = String(b.aud || "");
     if (!s) throw new ApiError("login_required", 401);
-    if (s.gonly || s.unverified || (db.configured() && !(await unverifiedOk(s)))) throw new ApiError("osu_required", 403);
+    if (s.gonly || s.unverified) throw new ApiError("osu_required", 403);
+    if (db.configured()) await actor(req, res); // (a login ended elsewhere gets no ticket: session() alone only knows what this server instance has seen)
     if (!TICKET_AUD.test(aud)) throw new ApiError("bad_request", 400);
     send(res, 200, { ticket: sessionTicket(req, s, { kind: "ticket", aud, exp: Date.now() + 10 * 60 * 1000 }) });
   },
@@ -525,7 +639,7 @@ const routes = {
   "GET me/prefs": async (req, res) => { const s = await actor(req); send(res, 200, await db.rpc("obv_account_prefs", { p_user: s.id })); },
   "GET me/export": async (req, res) => { // everything kept about you, as a file
     const s = await actor(req), d = await db.rpc("obv_account_export", { p_user: s.id });
-    res.setHeader("Content-Disposition", `attachment; filename="kiki-beatmap-viewer-my-data-${s.id}.json"`);
+    res.setHeader("Content-Disposition", `attachment; filename="beatmap-viewer-my-data-${s.id}.json"`);
     send(res, 200, d);
   },
   // Delete account: the page asks to type "Confirm", and so does the server
@@ -647,7 +761,7 @@ const routes = {
   "GET admin/projects": async (req, res, q) => {
     await admin(req);
     send(res, 200, await db.rpc("obv_admin_projects", { p_q: String(q.get("q") || "").slice(0, 60), p_status: String(q.get("status") || ""), p_limit: int(q.get("limit") || 30, 1, 100, 30),
-      p_offset: int(q.get("offset") || 0, 0, 1e6, 0), p_sort: ["size", "expires", "updated"].includes(q.get("sort")) ? q.get("sort") : "", p_owner: int(q.get("owner"), 1, 1e12, null) }));
+      p_offset: int(q.get("offset") || 0, 0, 1e6, 0), p_sort: ["size", "expires", "updated"].includes(q.get("sort")) ? q.get("sort") : "", p_owner: int(q.get("owner"), 1, 2e12, null) }));
   },
   "GET admin/projects/:id": async (req, res, q, P) => { await admin(req); send(res, 200, { project: await db.rpc("obv_admin_project_get", { p_project: P.id }) }); },
   "POST admin/projects/:id/expiry": async (req, res, q, P) => {
@@ -673,11 +787,20 @@ const routes = {
     if (db.d1on()) throw new ApiError("already_on_d1", 409); // (the copy would replace newer data with Supabase's)
     if (!db.D1.target) throw new ApiError("d1_not_bound", 409);
     const r = await require("./_lib/d1copy").copyToD1(db.pgRpc, db.D1.target, s.id);
-    perms.at = 0; gate.at = 0;
+    perms.at = 0; gate.at = 0; feats.at = 0;
     send(res, 200, r);
   },
   "GET admin/settings": async (req, res) => { await admin(req); send(res, 200, { ...await db.rpc("obv_admin_settings", {}), turn_configured: turn.configured() }); },
-  "POST admin/settings": async (req, res) => { const s = await admin(req, true), b = await body(req); perms.at = 0; gate.at = 0; send(res, 200, await db.rpc("obv_admin_settings_set", { p_actor: s.id, p_values: b.values || {} })); },
+  "POST admin/settings": async (req, res) => { const s = await admin(req, true), b = await body(req); perms.at = 0; gate.at = 0; feats.at = 0; send(res, 200, await db.rpc("obv_admin_settings_set", { p_actor: s.id, p_values: b.values || {} })); },
+  // { values: { feat_<key>: true|false } }: the feature switches, which any admin may change (the other settings are the owner's);
+  // nothing but feat_ keys goes through here, and the settings function validates them and writes the audit entry
+  "POST admin/features": async (req, res) => {
+    const s = await admin(req), b = await body(req), v = b.values;
+    if (!v || typeof v !== "object" || Array.isArray(v) || !Object.keys(v).length || Object.keys(v).some(k => !/^feat_/.test(k) || !FEAT_RE.test(k.slice(5)))) throw new ApiError("bad_request", 400);
+    const r = await db.rpc("obv_admin_settings_set", { p_actor: s.id, p_values: v });
+    feats.at = 0; // (this instance answers with the change at once; the others within a few seconds)
+    send(res, 200, r);
+  },
   "GET admin/admins": async (req, res) => { await admin(req); send(res, 200, { admins: await db.rpc("obv_admin_admins", { p_owner_id: ownerId() }), owner_id: ownerId() }); },
   // { user: "<osu name or id>" }: looked up on osu!, gets an account row if they never logged in, then made an admin
   "POST admin/admins": async (req, res) => {
@@ -757,7 +880,7 @@ function match(method, route) {
     for (let i = 0; i < segs.length && ok; i++) {
       const p = r.parts[i];
       if (p === ":id") { ok = UUID.test(segs[i]); P.id = segs[i]; }
-      else if (p === ":uid") { ok = /^\d{1,12}$/.test(segs[i]); P.uid = segs[i]; }
+      else if (p === ":uid") { ok = /^\d{1,13}$/.test(segs[i]); P.uid = segs[i]; } // (osu! ids have up to 9 digits; a Google-only account's starts at 10^12)
       else ok = p === segs[i];
     }
     if (!ok) continue;
@@ -776,11 +899,14 @@ function routeOf(req) {
 // use this site to flood osu! (and get its app key blocked) or guess share links. Per server instance, best effort.
 // osu: under the app's own osu! budget (osu.js BUDGET: 50 a minute for everyone together; osu! asks for ~60). Browsing
 // takes far less: a map's panel is 1-2 requests, a mapper page 3-4, a search or "more" 1 (most answers are cached).
+// sc: the top 50 scores of a replay's map (6 a minute per IP, instead of osu: osu.js also keeps a small budget of its own for them)
+// rp: saved replays, their share links too (logged in only; the limit is for the IP, 30 a minute is a lot for someone opening and saving files,
+// and with 24 random bytes per key it leaves nothing to guess).
 // err / fb: the error and report lists keep the newest 300 / 200, so one IP also gets an hourly cap (HOURLY) and can't
 // push genuine reports out (the same error is one row anyway, and the same report text is kept once: POST feedback).
-const RATE = { osu: 40, link: 30, live: 60, ice: 10, err: 10, fb: 5 }, HOURLY = { err: 30, fb: 10 }, over = limiter();
+const RATE = { osu: 40, link: 30, live: 60, ice: 10, err: 10, fb: 5, rp: 30, sc: 6 }, HOURLY = { err: 30, fb: 10 }, over = limiter();
 function limited(req, route) {
-  const kind = route.startsWith("osu/") ? "osu" : route.startsWith("link/") || route === "invite" || route === "invite/accept" ? "link" : route.startsWith("live/") ? "live" : route === "ice" ? "ice" : route === "errors" ? "err" : route === "feedback" ? "fb" : null; if (!kind) return false;
+  const kind = route === "osu/scores" || route === "osu/replay" ? "sc" : route.startsWith("osu/") ? "osu" : route.startsWith("link/") || route === "invite" || route === "invite/accept" ? "link" : route.startsWith("live/") ? "live" : route === "ice" ? "ice" : route === "errors" ? "err" : route === "feedback" ? "fb" : route.startsWith("replays") ? "rp" : null; if (!kind) return false;
   const ip = clientIp(req);
   return over(kind + ":" + ip, RATE[kind]) || (kind in HOURLY && over("h:" + kind + ":" + ip, HOURLY[kind], 3600000));
 }
@@ -790,12 +916,15 @@ async function handler(req, res) {
   if (limited(req, route)) { res.setHeader("Retry-After", "60"); return send(res, 429, { error: "too_many_requests" }); }
   if (req.method !== "GET" && !sameOrigin(req)) return send(res, 403, { error: "bad_origin" });
   try {
+    // a feature the admins switched off (Admin → Features): its routes answer 503 for everyone, admins included
+    const feat = routeFeature(m.key);
+    if (feat) { const off = await featuresOff(); if (feat.every(k => off.includes(k))) throw new ApiError("feature_disabled", 503, { feature: feat[0] }); }
     // invite-only: gated routes need an approved account, and their answers must not sit in a shared (CDN) cache
     if (!OPEN.has(req.method + " " + m.key) && !m.key.startsWith("admin/") && await requireAccess(req, m.key)) res.privateOnly = true;
     await m.fn(req, res, q, m.P);
   }
   catch (e) {
-    if (e instanceof ApiError || (e && e.status && e.code)) { if (e.retryAfter) res.setHeader("Retry-After", String(e.retryAfter)); return send(res, e.status, { error: e.code, detail: e.detail || undefined }); } // (osu.js: osu! busy, try again then)
+    if (e instanceof ApiError || (e && e.status && e.code)) { if (e.retryAfter) res.setHeader("Retry-After", String(e.retryAfter)); return send(res, e.status, { error: e.code, detail: e.detail || (e.retryAfter ? { retry_after: e.retryAfter } : undefined) }); } // (osu.js: osu! busy, try again then)
     console.error("api", route.replace(/[0-9a-f-]{36}/g, ":id"), e && e.message);
     send(res, 500, { error: "server_error" });
   }

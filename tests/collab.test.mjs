@@ -2,7 +2,7 @@
 // delivery, validation of what peers send.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadScripts } from "./lib/browser.mjs";
+import { loadScripts, J } from "./lib/browser.mjs";
 
 const STUBS = `
 const $ = () => ({ addEventListener() {}, set onclick(v) {}, hidden: true, append() {} });
@@ -98,4 +98,15 @@ test("duplicates are ignored and the version vector only counts gapless sequence
   P.applyOp(op(2), null);
   assert.equal(C.vv.x, 3);
   assert.deepEqual([...C.doc.o.get("1").f.h], ["3"]);
+});
+
+test("cleanPres: a peer's pointer / selection update is rebuilt with finite numbers, at most 60 ids and nothing else", () => {
+  const ok = P.cleanPres({ x: 256, y: 192, sel: ["a:1", "b:2"], time: 1234.5, playing: 1, junk: "x".repeat(1e6) });
+  assert.deepEqual(J(ok), { x: 256, y: 192, sel: ["a:1", "b:2"], time: 1234.5, playing: true });
+  for (const sel of [1, "abc", { a: 1 }, null, undefined]) assert.deepEqual(J(P.cleanPres({ sel }).sel), [], "not a list -> none");
+  assert.equal(P.cleanPres({ sel: Array.from({ length: 1e5 }, (_, i) => "p:" + i) }).sel.length, 60);
+  const odd = J(P.cleanPres({ x: "abc", y: Infinity, time: {} }));
+  assert.deepEqual(odd, { x: -999, y: -999, sel: [], time: 0, playing: false }, "junk numbers fall back");
+  assert.equal(P.cleanPres({ x: 1e9, y: -1e9 }).x, 2000); assert.equal(P.cleanPres({ x: 1e9, y: -1e9 }).y, -999);
+  assert.equal(P.cleanPres({ sel: ["x".repeat(500)] }).sel[0].length, 120, "as long as the longest op id validOp accepts");
 });

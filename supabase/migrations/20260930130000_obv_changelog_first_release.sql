@@ -10,7 +10,7 @@ values ($md$First release$md$, $md$v1.0$md$, $md$### Song select
 - Open a .osz file from your device
 ### Player
 - Watch maps with storyboard and hitsounds; objects, sliders, stacking and approach timing follow osu!
-- Skins: YUGEN Remastered (default, used with Garin's permission), osu! default, osu! retro, or your own .osk
+- Skins: osu! default, osu! retro, or your own .osk
 - Master, music and hitsound volume on every screen, metronome, playback speed and visual offset
 - Display settings: background dim, parallax, kiai effects, snaking sliders, slider end circles, timing overlay, 30–240 FPS and quality
 - Mapping tools: timing and BPM, map details and song file info

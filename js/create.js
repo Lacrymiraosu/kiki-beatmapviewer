@@ -167,6 +167,11 @@ function renderSetup(box) {
   if (st.diff.SliderTickRate == null) st.diff.SliderTickRate = 1;
   box.append(exportRow());
   const more = h("div", "btnrow"), nd = h("button", "btn ghost sm", tr("New difficulty (copies timing)")); nd.onclick = newDifficulty; more.append(nd);
+  const af = fileAccept(h("input"), ".osu,text/plain"), ab = h("button", "btn ghost sm", tr("Add .osu file…")); // a difficulty from a file, into this set (also: drop .osu files on the page)
+  af.type = "file"; af.multiple = true; af.hidden = true; ab.type = "button";
+  af.onchange = () => { const fs = [...af.files]; af.value = ""; if (fs.length) addOsuFiles(fs); };
+  ab.onclick = () => { if (addOsuAllowed()) af.click(); };
+  more.append(ab, af);
   box.append(more);
   const mg = h("div", "cgrid"); for (const [k, l] of SETUP_META) mg.append(tIn(st.meta, k, l, { ascii: k === "Artist" || k === "Title", area: k === "Tags" }));
   const dg = h("div", "cgrid"); for (const [k, l, mn, mx, s2] of SETUP_DIFF) dg.append(rIn(st.diff, k, l, mn, mx, s2, DIFF_INFO[k]));
@@ -297,3 +302,118 @@ async function newDifficulty() {
   switchDiff(osuFiles.length - 1);
   if (LIVE.on && LIVE.host) setTimeout(liveSendState, 800);
 }
+
+// ---------- add difficulties from .osu files into the open set (Setup tab button, or .osu files dropped on the page) ----------
+// planOsuAdd is the whole decision, no DOM: it takes the file's text and what the open set looks like and returns the text to store
+// (BOM gone, BeatmapID and AudioFilename fixed so it fits this set), the difficulty name and the file name in the package, or why not.
+//   ctx = { versions: [names in the set], paths: [norm()ed file names of everything in the package], setId, usedBids: [BeatmapIDs of the set's difficulties],
+//           audioName: "the set's song file" ("" = none), hasAudio(name) -> bool, meta: { Artist, Title, Creator } of the set, version: "a name picked by the user", fallbackVersion }
+// -> { ok: true, text, version, path, notes: ["meta" | "audio" | "bid"], audio }  or  { ok: false, error: "empty" | "big" | "notosu" | "mania" | "mode" | "parse" | "dupversion", version?, suggest? }
+const ADD_MAX_BYTES = 4 * 1024 * 1024, ADD_MAX_FILES = 20;
+function planOsuAdd(text, ctx) {
+  text = String(text == null ? "" : text).replace(/^\uFEFF/, "");
+  if (!text.trim()) return { ok: false, error: "empty" };
+  if (text.length > ADD_MAX_BYTES) return { ok: false, error: "big" };
+  if (text.includes("\u0000") || !/^\[HitObjects\]/m.test(text) || !(/osu file format v\d+/.test(text.slice(0, 300)) || /^\[General\]/m.test(text))) return { ok: false, error: "notosu" };
+  let P; try { P = parseOsu(text); } catch { return { ok: false, error: "parse" }; }
+  const mode = String(P.general.Mode == null || P.general.Mode === "" ? "0" : P.general.Mode).trim();
+  if (mode === "3") return { ok: false, error: "mania" };
+  if (mode !== "0") return { ok: false, error: "mode" };
+  const clean = s => String(s == null ? "" : s).replace(/[\x00-\x1f\x7f]+/g, " ").trim();
+  const taken = new Set((ctx.versions || []).map(v => String(v).trim().toLowerCase()));
+  const version = clean(ctx.version != null ? ctx.version : P.meta.Version) || clean(ctx.fallbackVersion) || "Imported";
+  if (taken.has(version.toLowerCase())) {
+    let n = 2; while (taken.has(`${version} (${n})`.toLowerCase())) n++;
+    return { ok: false, error: "dupversion", version, suggest: `${version} (${n})` };
+  }
+  const M = ctx.meta || {}, used = new Set((ctx.paths || []).map(String));
+  const stem = safeName(`${M.Artist || ""} - ${M.Title || ""} (${M.Creator || ""}) [${version}]`).replace(/[\x00-\x1f\x7f]+/g, " ").slice(0, 140).trim();
+  let path = stem + ".osu"; for (let n = 2; used.has(norm(path)); n++) path = `${stem} (${n}).osu`; // (the server refuses two names that differ only in case)
+  const notes = [], eol = /\r\n/.test(text) ? "\r\n" : "\n", L = text.split(/\r?\n/);
+  const bid = +P.meta.BeatmapID, sid = +P.meta.BeatmapSetID, keep = +ctx.setId > 0 && sid === +ctx.setId && bid > 0 && !(ctx.usedBids || []).some(b => +b === bid);
+  if (!keep && bid) notes.push("bid"); // (a link to another set's difficulty, or to one this set already has: dropped)
+  putKeys(L, "Metadata", { Version: version, BeatmapID: keep ? bid : 0 }, ":");
+  let audio = "";
+  if (ctx.audioName && !(ctx.hasAudio && ctx.hasAudio(P.general.AudioFilename || ""))) { audio = ctx.audioName; putKeys(L, "General", { AudioFilename: audio }, ": "); notes.push("audio"); }
+  const same = (a, b) => !a || !b || String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+  if (!same(P.meta.Title, M.Title) || !same(P.meta.Artist, M.Artist)) notes.push("meta");
+  return { ok: true, text: L.join(eol), version, path, notes, audio };
+}
+// may a difficulty be added right now? (says why not)
+function addOsuAllowed() {
+  if (!EDIT.on || !map || !osuFiles.length || rpLocked()) { toast(tr("Open a map in the Editor first to add a .osu file"), 3500); return false; }
+  if (LIVE.on && !LIVE.host) { toast(LIVE.watch ? tr("You're watching: only the host can do this") : tr("In a live session the host picks the difficulty"), 3000); return false; }
+  if (COLLAB.on) { toast(tr("Leave the collab session first to add a difficulty from a file"), 3500); return false; }
+  return can("editor") && featGuard("editor") && featGuard("ed_setup");
+}
+const ADD_ERR = { empty: () => tr("empty file"), big: () => tr("bigger than {n} MB", { n: ADD_MAX_BYTES / 1048576 }), notosu: () => tr("not an osu! beatmap file"), parse: () => tr("not an osu! beatmap file"),
+  mania: () => tr("osu!mania isn't supported: this site opens osu!standard difficulties only"), mode: () => tr("only osu!standard difficulties can be added"), read: () => tr("couldn't be read"), skip: () => tr("not added") };
+let addBusy = false;
+async function addOsuFiles(list) {
+  if (addBusy || !addOsuAllowed()) return;
+  let fs = [...list].filter(f => fileIs(f, ["osu"]));
+  if (!fs.length) return toast(tr("Pick an .osu file (one difficulty)"), 3000);
+  const extra = fs.length - ADD_MAX_FILES; if (extra > 0) fs = fs.slice(0, ADD_MAX_FILES);
+  addBusy = true;
+  const added = [], notes = new Set(), skipped = [];
+  try {
+    for (const f of fs) {
+      const bad = k => skipped.push(`${f.name}: ${ADD_ERR[k]()}`);
+      if (f.size > ADD_MAX_BYTES) { bad("big"); continue; }
+      let text; try { text = await f.text(); } catch { bad("read"); continue; }
+      const ctx = () => { // (the set's own metadata and song come from a difficulty that wasn't added from a file: those may be another song's)
+        const ri = Math.max(0, osuFiles.findIndex(o => !o.created)), live = ri === curDiff && map, tx = osuFiles[ri].text, rg = k => ((tx.match(new RegExp("^" + k + "[ \\t]*:[ \\t]*(.*)$", "m")) || [])[1] || "").trim();
+        const meta = live ? map.meta : { Artist: rg("Artist"), Title: rg("Title"), Creator: rg("Creator") }, song = live ? map.general.AudioFilename || "" : rg("AudioFilename");
+        return { versions: osuFiles.map((o, i) => i === curDiff && map ? map.meta.Version || "" : o.meta.version), paths: Object.keys(files).map(norm), setId: setId || onlineSet || 0,
+          usedBids: osuFiles.map((o, i) => +(i === curDiff && map ? map.meta.BeatmapID : o.meta.bid) || 0).filter(b => b > 0), meta,
+          audioName: files[norm(song)] ? song : "", hasAudio: n => !!n && !!files[norm(n)], fallbackVersion: f.name.replace(/\.osu$/i, "") };
+      };
+      let c = ctx(), plan = planOsuAdd(text, c);
+      while (!plan.ok && plan.error === "dupversion") { // the name is taken (any case): ask for another, cancel skips this file
+        const name = await askText(tr("A difficulty named [{v}] is already in this set. Name for the new one:", { v: plan.version }), plan.suggest, { title: tr("Name of the new difficulty") });
+        if (name == null) { bad("skip"); plan = null; break; }
+        c = ctx(); c.version = name.trim(); const again = c.version ? planOsuAdd(text, c) : plan;
+        if (!again.ok && again.error === "dupversion" && c.version) toast(tr("A difficulty with this name already exists"), 2500);
+        plan = again;
+      }
+      if (!plan) continue;
+      if (!plan.ok) { bad(plan.error); continue; }
+      if (quickMeta(plan.text).mode !== "0") { bad("mode"); continue; }
+      if (/aspire/i.test(((plan.text.match(/^Tags[ \t]*:(.*)$/m) || [])[1] || "") + " " + ((plan.text.match(/^Source[ \t]*:(.*)$/m) || [])[1] || "")) && typeof aspireAsk === "function") {
+        if (!(await aspireAsk({ [plan.path]: { dir: false } }, async () => plan.text, c.setId))) { bad("skip"); continue; } // (same warning as opening an Aspire set)
+      }
+      if (!addOsuAllowed()) break; // (a session started while the name was asked for)
+      files[norm(plan.path)] = blobEntry(plan.path, new Blob([plan.text], { type: "text/plain" }));
+      osuFiles.push({ text: plan.text, meta: quickMeta(plan.text), path: plan.path, created: true, stars: estimateStars(plan.text), estStars: true });
+      added.push(plan); plan.notes.forEach(n => notes.add(n)); if (plan.audio) notes.add("audio:" + plan.audio);
+    }
+  } finally { addBusy = false; }
+  if (added.length) {
+    const first = osuFiles.length - added.length;
+    fillDiffSelects();
+    switchDiff(first); // (before the note: switching may toast "kept in this browser")
+    if (typeof draftSchedule === "function") draftSchedule();
+    if (typeof cloudTouch === "function") cloudTouch();
+    if (LIVE.on && LIVE.host) setTimeout(liveSendState, 800);
+  }
+  const msg = [];
+  if (added.length) {
+    msg.push(added.length === 1 ? tr("Added [{v}] to this set.", { v: added[0].version }) : tr("Added {n} difficulties to this set.", { n: added.length }));
+    if (notes.has("meta")) msg.push(tr("Its title or artist differs from this set."));
+    const au = [...notes].find(n => n.startsWith("audio:")); if (au) msg.push(tr("Its audio file isn't in this set: it now uses {a}.", { a: au.slice(6) }));
+  }
+  if (extra > 0) msg.push(tr("Only the first {n} files were used.", { n: ADD_MAX_FILES }));
+  msg.push(...skipped);
+  if (msg.length) toast(msg.join(" "), msg.length > 1 ? 7000 : 3500);
+}
+// .osu files dropped on the page: into the open set while the Editor is open. Capture phase, so this runs before the page-wide drop handler in
+// js/app.js (it would try to open them as a package). Anything with a package or a replay in it (.osz .zip .osr .osk) is left to the old handlers.
+addEventListener("drop", e => {
+  const fs = [...((e.dataTransfer && e.dataTransfer.files) || [])];
+  if (!fs.some(f => fileIs(f, ["osu"])) || fs.some(f => fileIs(f, ["osz", "zip", "osr", "osk"]))) return;
+  if (e.target && e.target.closest && e.target.closest(".cdrop")) return; // (the new-beatmap song box)
+  if (!EDIT.on && typeof replayPending === "function" && replayPending()) return; // (a replay waits for its map: js/replayui.js)
+  e.preventDefault(); e.stopImmediatePropagation(); dragN = 0; $("drop").hidden = true;
+  if (!EDIT.on) return toast(tr("Open a map in the Editor first to add a .osu file"), 3500);
+  addOsuFiles(fs);
+}, true);

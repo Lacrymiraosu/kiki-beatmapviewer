@@ -72,8 +72,8 @@ function timingDerived(m) {
   }
   if (ks !== null) m.kiai.push([ks, Infinity]);
 }
-function diffDerived(m) {
-  const cs = +(m.diff.CircleSize ?? 5), ar = +(m.diff.ApproachRate ?? m.diff.OverallDifficulty ?? 5);
+function diffDerived(m, mod) { // mod: {cs, ar} instead of the map's own (a replay's EZ / HR)
+  const cs = mod ? mod.cs : +(m.diff.CircleSize ?? 5), ar = mod ? mod.ar : +(m.diff.ApproachRate ?? m.diff.OverallDifficulty ?? 5);
   m.radius = 64 * (1 - .7 * (cs - 5) / 5) / 2 * 1.00041; // OsuHitObject.Scale (with stable's gamefield rounding allowance)
   m.preempt = Math.trunc(ar < 5 ? 1200 + 600 * (5 - ar) / 5 : 1200 - 750 * (ar - 5) / 5); // DifficultyRangeInt
   m.fadeIn = 400 * Math.min(1, m.preempt / 450); // same as osu!
@@ -158,7 +158,7 @@ function buildObjects(m) {
       o.end = o.t + o.span * o.slides;
       o.edgeSounds = (p[8] || "").split("|").map(Number);
       o.edgeSets = (p[9] || "").split("|").map(x => x.split(":").map(Number));
-      o.samp = parseSamp(p[10]); o.sv = sv; o.vel = o.dist / o.span;
+      o.samp = parseSamp(p[10]); o.sv = sv; o.vel = o.dist / o.span; o.argc = p.length; // (argc: how many fields the line has; Verify reads edge hit sounds the way MapsetVerifier does)
       if (!isFinite(o.end) || !o.path.length) { o.kind = "circle"; o.end = o.t; delete o.path; }
     } else if (isSpin) { o.kind = "spinner"; o.x = 256; o.y = 192; o.end = Math.max(o.t + 1, Math.min(T_MAX, +p[5] || o.t + 1)); o.samp = parseSamp(p[6]); }
     else { o.kind = "circle"; o.end = o.t; o.samp = parseSamp(p[5]); }
@@ -215,14 +215,23 @@ function applyStacks(m) {
     }
   }
   if (typeof EDIT !== "undefined" && EDIT.on && S.edStack === false && !REAL_STACKS) for (const o of H) o.stack = 0; // Settings → Editor → Stacking off: where objects really are
+  placeStacks(H, off, false);
+}
+// the stack offsets onto the objects' positions and paths (up-left). A replay with Hard Rock draws the map flipped: there the vertical offset is
+// turned round (STACK_FLIPY) and the whole picture is flipped on screen, so it stacks up-left on screen as the game does. redo: place again from
+// the unstacked positions and paths that the first placement kept (rx / ry, path0), with another offset
+let STACK_FLIPY = false;
+function placeStacks(H, off, redo) {
   for (const o of H) {
+    if (redo) { if (o.rx !== undefined) { o.x = o.rx; o.y = o.ry; } if (o.path0) o.path = o.path0; }
     o.rx = o.x; o.ry = o.y; // unstacked position (what the editor moves)
-    const d = o.stack ? -o.stack * off : 0;
-    if (d) { o.x += d; o.y += d; }
+    if (o.path) o.path0 = o.path; // (the unstacked path, kept for a redo)
+    const d = o.stack ? -o.stack * off : 0, dy = STACK_FLIPY ? -d : d;
+    if (d) { o.x += d; o.y += dy; }
     if (o.path) { // drawn geometry (stacked path, lengths, Path2D), cached: most sliders don't change between edits
-      const key = o.pkey + "@" + d, g = geomCache.get(key);
+      const key = o.pkey + "@" + d + (STACK_FLIPY ? "f" : ""), g = geomCache.get(key);
       if (g) { o.path = g.path; o.cum = g.cum; o.p2d = g.p2d; continue; }
-      if (d) { const P0 = o.path; o.path = P0.map(p => [p[0] + d, p[1] + d]); o.path.dist = P0.dist; if (P0.jumps) { o.path.jumps = P0.jumps; o.path.lens = P0.lens; } }
+      if (d) { const P0 = o.path; o.path = P0.map(p => [p[0] + d, p[1] + dy]); o.path.dist = P0.dist; if (P0.jumps) { o.path.jumps = P0.jumps; o.path.lens = P0.lens; } }
       o.cum = [0]; const Ls = o.path.lens;
       for (let i = 1; i < o.path.length; i++) o.cum.push(o.cum[i - 1] + (Ls ? Ls[i] : Math.hypot(o.path[i][0] - o.path[i - 1][0], o.path[i][1] - o.path[i - 1][1])));
       o.p2d = new Path2D(); tracePath(o.p2d, o.path);
@@ -253,16 +262,17 @@ function buildSounds(m) {
   const ev = [], none = { n: 0, a: 0, i: 0, v: 0, f: "" };
   m.defSet = { normal: 1, soft: 2, drum: 3 }[(m.general.SampleSet || "Normal").toLowerCase()] || 1;
   const tickRate = +(m.diff.SliderTickRate || 1), mult = +(m.diff.SliderMultiplier || 1.4);
-  for (const o of m.hit) {
-    const sp = o.samp || none;
-    if (o.kind === "circle") ev.push({ t: o.t, hs: o.hs, n: sp.n, a: sp.a, i: sp.i, v: sp.v, f: sp.f });
-    else if (o.kind === "spinner") ev.push({ t: o.end, hs: o.hs, n: sp.n, a: sp.a, i: sp.i, v: sp.v, f: sp.f });
+  // oi = the object's index in m.hit, k = which edge of a slider (0 head, 1.. repeats, slides = tail): a replay's hitsounds (js/replayana.js rpSoundEvents) need them
+  for (let oi = 0; oi < m.hit.length; oi++) {
+    const o = m.hit[oi], sp = o.samp || none;
+    if (o.kind === "circle") ev.push({ t: o.t, hs: o.hs, n: sp.n, a: sp.a, i: sp.i, v: sp.v, f: sp.f, oi });
+    else if (o.kind === "spinner") ev.push({ t: o.end, hs: o.hs, n: sp.n, a: sp.a, i: sp.i, v: sp.v, f: sp.f, oi });
     else {
       const seen = o.span < 1 && o.slides > 1 ? new Set() : null; // an instant slider (Aspire): each distinct edge sound once, not thousands at the same moment
       for (let k = 0; k <= o.slides; k++) {
         const hs = isFinite(o.edgeSounds[k]) ? o.edgeSounds[k] : o.hs, es = o.edgeSets[k] || [];
         if (seen) { const key = hs + "|" + (es[0] || sp.n) + "|" + (es[1] || sp.a); if (seen.has(key)) continue; seen.add(key); }
-        ev.push({ t: o.t + o.span * k, hs, n: es[0] || sp.n, a: es[1] || sp.a, i: sp.i, v: sp.v, f: "" });
+        ev.push({ t: o.t + o.span * k, hs, n: es[0] || sp.n, a: es[1] || sp.a, i: sp.i, v: sp.v, f: "", oi, k });
       }
       // slider ticks: o.ticks = [[fraction along the path, time of its last hit]]
       const tickDist = 100 * mult * ((m.version || 14) < 8 ? 1 : o.sv || 1) / tickRate, len = o.dist || o.length, minD = len / o.span * 10;
@@ -274,7 +284,7 @@ function buildSounds(m) {
           let last = 0;
           for (let k = 0; k < o.slides; k++) {
             const tt = o.t + o.span * k + (k % 2 ? 1 - fr : fr) * o.span; if (tt > last) last = tt;
-            ev.push({ t: tt, tick: true, hs: 0, n: sp.n, a: 0, i: sp.i, v: sp.v, f: "" });
+            ev.push({ t: tt, tick: true, hs: 0, n: sp.n, a: 0, i: sp.i, v: sp.v, f: "", oi });
           }
           o.ticks.push([fr, last]);
         }
@@ -648,74 +658,6 @@ function ballF(o, t) {
 const ORIGINS = { TopLeft: [0, 0], Centre: [.5, .5], CentreLeft: [0, .5], TopRight: [1, 0], BottomCentre: [.5, 1], TopCentre: [.5, 0], Custom: [0, 0], CentreRight: [1, .5], BottomLeft: [0, 1], BottomRight: [1, 1] };
 const ORIGIN_IDS = ["TopLeft", "Centre", "CentreLeft", "TopRight", "BottomCentre", "TopCentre", "Custom", "CentreRight", "BottomLeft", "BottomRight"];
 const LAYERS = ["Background", "Fail", "Pass", "Foreground", "Overlay"];
-const ARITY = { F: 1, S: 1, V: 2, M: 2, MX: 1, MY: 1, R: 1, C: 3 };
-
-function parseStoryboard(text, extraVars = {}) {
-  const vars = { ...extraVars }; const sprites = []; let sec = "", cur = null, loop = null, inTrigger = false;
-  // $variables, replaced in order like osu! does (a value may hold later variables), but a line that grows past 20 000
-  // characters is dropped: chained values double each step and would take all the memory
-  const expand = raw => { for (const k in vars) { if (raw.includes(k)) raw = raw.split(k).join(vars[k]); if (raw.length > 20000) return null; } return raw; };
-  for (let raw of text.split(/\r?\n/)) {
-    if (raw.startsWith("//") || !raw.trim()) continue;
-    const h = raw.trim().match(/^\[(.+)\]$/);
-    if (h) { sec = h[1]; continue; }
-    if (sec === "Variables") { const i = raw.indexOf("="); if (i > 0) { vars[raw.slice(0, i).trim()] = raw.slice(i + 1).trim(); } continue; }
-    if (sec !== "Events") continue;
-    if (raw.includes("$")) { raw = expand(raw); if (raw == null) continue; }
-    const depth = raw.match(/^[ _]*/)[0].length;
-    const p = raw.slice(depth).split(",");
-    if (depth === 0) {
-      loop = null; inTrigger = false; cur = null;
-      if (p[0] === "Sprite" || p[0] === "4" || p[0] === "Animation" || p[0] === "6") {
-        const anim = p[0] === "Animation" || p[0] === "6";
-        const layer = isNaN(p[1]) ? p[1] : LAYERS[+p[1]];
-        const origin = ORIGINS[isNaN(p[2]) ? p[2] : ORIGIN_IDS[+p[2]]] || [.5, .5];
-        const file = norm(p[3]);
-        const frames = [];
-        if (anim) { const dot = file.lastIndexOf("."); for (let i = 0, n = Math.min(1000, +p[6] || 1); i < n; i++) frames.push(file.slice(0, dot) + i + file.slice(dot)); }
-        else frames.push(file);
-        cur = { layer, origin, frames, x: +p[4] || 0, y: +p[5] || 0, delay: +p[7] || 0, loopOnce: /LoopOnce|^\s*1\s*$/.test(p[8] || ""), cmds: [], idx: sprites.length };
-        sprites.push(cur);
-      }
-      continue;
-    }
-    if (!cur) continue;
-    if (depth === 1) { loop = null; inTrigger = false; }
-    if (inTrigger) continue;
-    const type = p[0];
-    if (type === "L") { loop = { start: +p[1], count: Math.max(1, +p[2] || 1), cmds: [] }; (cur.loops = cur.loops || []).push(loop); continue; }
-    if (type === "T") { inTrigger = true; continue; }
-    const easing = +p[1] || 0, start = +p[2], end = p[3] === "" || p[3] === undefined ? start : +p[3];
-    if (isNaN(start)) continue;
-    const target = depth >= 2 && loop ? loop.cmds : cur.cmds;
-    if (type === "P") { target.push({ type, easing, start, end, v: (p[4] || "").trim() }); continue; }
-    const n = ARITY[type]; if (!n) continue;
-    const vals = p.slice(4).map(Number);
-    if (vals.length === n) vals.push(...vals.slice(0, n));
-    const dur = end - start;
-    for (let i = 0; i + n * 2 <= vals.length; i += n) {
-      const s = start + dur * (i / n);
-      target.push({ type, easing, start: s, end: s + dur, a: vals.slice(i, i + n), b: vals.slice(i + n, i + 2 * n) });
-    }
-  }
-  let budget = 2e6; // (loops are copied out: a loop count of millions, or many of them, would take all the memory)
-  for (const s of sprites) {
-    for (const L of s.loops || []) {
-      let len = 0; for (const c of L.cmds) if (c.end > len) len = c.end;
-      const count = Math.min(L.count, Math.floor(Math.min(1e5, budget) / Math.max(1, L.cmds.length))); budget -= count * L.cmds.length;
-      for (let i = 0; i < count; i++) for (const c of L.cmds) s.cmds.push({ ...c, start: c.start + L.start + i * len, end: c.end + L.start + i * len });
-    }
-    delete s.loops;
-    s.byType = {};
-    for (const c of s.cmds) (s.byType[c.type] = s.byType[c.type] || []).push(c);
-    for (const k in s.byType) s.byType[k].sort((a, b) => a.start - b.start);
-    let st = Infinity, en = -Infinity;
-    for (const c of s.cmds) { if (c.start < st) st = c.start; if (c.end > en) en = c.end; }
-    s.start = st; s.end = en;
-  }
-  const order = { Background: 0, Fail: 1, Pass: 2, Foreground: 3, Overlay: 4 };
-  return sprites.filter(s => s.cmds.length && s.layer !== "Fail").sort((a, b) => (order[a.layer] ?? 0) - (order[b.layer] ?? 0) || a.idx - b.idx);
-}
 
 const E = (() => {
   const out = f => t => 1 - f(1 - t), io = f => t => t < .5 ? f(2 * t) / 2 : 1 - f(2 - 2 * t) / 2;
@@ -730,13 +672,207 @@ const E = (() => {
     back, out(back), io(back), out(bounceOut), bounceOut, io(out(bounceOut))];
 })();
 
-// value of a storyboard command list at time t, written into `out` (no per-frame allocations)
-function sbVal(list, t, out) {
-  const n = out.length;
-  if (t < list[0].start) { const a = list[0].a; for (let j = 0; j < n; j++) out[j] = a[j]; return out; }
-  const c = list[lastBefore(list, t, "start")];
-  if (t > c.end || c.end === c.start) { for (let j = 0; j < n; j++) out[j] = c.b[j]; return out; }
-  const k = (E[c.easing] || E[0])((t - c.start) / (c.end - c.start));
-  for (let j = 0; j < n; j++) out[j] = c.a[j] + (c.b[j] - c.a[j]) * k;
+// ---- compact storyboards ----
+// A storyboard can have tens of thousands of sprites and millions of commands (a 17 MB .osb), so it's kept as typed arrays,
+// not objects: one chunk per script (the set's .osb, and the open difficulty's own events). A sprite is an index into the
+// chunk's columns; its commands of one kind (F, S, V, M, MX, MY, R, C) sit together in that kind's columns (cs/ce start and
+// end, ez easing, va/vb the values it goes from and to), found through cb (first) and cn (count). sbParseChunk is self-contained
+// (it runs in a worker, see sbParse), the .osb is read once per set and kept across difficulties (sbLoad).
+const SB_TYPES = ["F", "S", "V", "M", "MX", "MY", "R", "C"];
+function sbParseChunk(text, extraVars = {}) {
+  const TYPES = ["F", "S", "V", "M", "MX", "MY", "R", "C"], TI = { F: 0, S: 1, V: 2, M: 3, MX: 4, MY: 5, R: 6, C: 7 }, NA = [1, 1, 2, 2, 1, 1, 1, 3];
+  const LORDER = { Background: 0, Fail: 1, Pass: 2, Foreground: 3, Overlay: 4 };
+  const vars = { ...extraVars };
+  // $variables, replaced in order like osu! does (a value may hold later variables), but a line that grows past 20 000
+  // characters is dropped: chained values double each step and would take all the memory
+  const expand = raw => { for (const k in vars) { if (raw.includes(k)) raw = raw.split(k).join(vars[k]); if (raw.length > 20000) return null; } return raw; };
+  const col = TYPES.map((_, T) => ({ n: 0, cap: 1024, cs: new Float64Array(1024), ce: new Float64Array(1024), ez: new Uint8Array(1024), va: new Float32Array(1024 * NA[T]), vb: new Float32Array(1024 * NA[T]) }));
+  const grow = (c, T) => { const cap = c.cap * 2, g = (A, k) => { const B = new A.constructor(cap * k); B.set(A); return B; }; c.cs = g(c.cs, 1); c.ce = g(c.ce, 1); c.ez = g(c.ez, 1); c.va = g(c.va, NA[T]); c.vb = g(c.vb, NA[T]); c.cap = cap; };
+  const names = [], nameId = new Map(), frameIds = [];
+  const id = n => { let k = nameId.get(n); if (k === undefined) { k = names.length; names.push(n); nameId.set(n, k); } return k; };
+  const M = { layer: [], x: [], y: [], ox: [], oy: [], delay: [], flags: [], start: [], end: [], fo: [], nf: [], cb: TYPES.map(() => []), cn: TYPES.map(() => []), pOff: [0], pD: [] };
+  let budget = 2e6; // (loops are copied out: a loop count of millions, or many of them, would take all the memory)
+  let cur = null, loop = null, inTrigger = false, sec = "", made = 0, total = 0;
+  const newCmds = () => ({ d: TYPES.map(() => []), p: [], len: 0, nc: 0 });
+  const finish = s => {
+    const loops = s.loops, fail = s.layer === "Fail";
+    const copies = loops.map(L => { const count = Math.min(L.count, Math.floor(Math.min(1e5, budget) / Math.max(1, L.nc))); budget -= count * L.nc; return count; });
+    if (fail) return;
+    let st = Infinity, en = -Infinity, nc = s.nc;
+    const note = (a, b) => { if (a < st) st = a; if (b > en) en = b; };
+    const P = s.p.slice();
+    for (let li = 0; li < loops.length; li++) { const L = loops[li], len = L.len; nc += copies[li] * L.nc;
+      for (let i = 0; i < copies[li]; i++) for (let q = 0; q < L.p.length; q += 3) P.push(L.p[q] + L.start + i * len, L.p[q + 1] + L.start + i * len, L.p[q + 2]); }
+    if (!nc) return;
+    made++;
+    M.layer.push(LORDER[s.layer] ?? 0); M.x.push(s.x); M.y.push(s.y); M.ox.push(s.origin[0]); M.oy.push(s.origin[1]); M.delay.push(s.delay); M.flags.push(s.loopOnce ? 1 : 0);
+    M.fo.push(frameIds.length); M.nf.push(s.frames.length); for (const f of s.frames) frameIds.push(id(f));
+    for (let q = 0; q < P.length; q += 3) { note(P[q], P[q + 1]); M.pD.push(P[q], P[q + 1], P[q + 2]); }
+    M.pOff.push(M.pD.length / 3);
+    for (let T = 0; T < 8; T++) {
+      const n = NA[T], w = 3 + 2 * n, rec = s.d[T].slice();
+      for (let li = 0; li < loops.length; li++) { const L = loops[li], len = L.len, src = L.d[T]; if (!src.length) continue;
+        for (let i = 0; i < copies[li]; i++) { const sh = L.start + i * len; for (let q = 0; q < src.length; q += w) { rec.push(src[q] + sh, src[q + 1] + sh); for (let j = 2; j < w; j++) rec.push(src[q + j]); } } }
+      const cnt = rec.length / w, c = col[T];
+      M.cb[T].push(c.n); M.cn[T].push(cnt);
+      let ord = null;
+      for (let r = 1; r < cnt; r++) if (rec[r * w] < rec[(r - 1) * w]) { ord = Array.from({ length: cnt }, (_, k) => k).sort((a, b) => rec[a * w] - rec[b * w] || a - b); break; }
+      while (c.n + cnt > c.cap) grow(c, T);
+      for (let r = 0; r < cnt; r++) {
+        const q = (ord ? ord[r] : r) * w, o = c.n + r;
+        c.cs[o] = rec[q]; c.ce[o] = rec[q + 1]; c.ez[o] = rec[q + 2];
+        for (let j = 0; j < n; j++) { c.va[o * n + j] = rec[q + 3 + j]; c.vb[o * n + j] = rec[q + 3 + n + j]; }
+        note(rec[q], rec[q + 1]);
+      }
+      c.n += cnt;
+    }
+    total += nc;
+    M.start.push(st); M.end.push(en);
+  };
+  for (let raw of text.split(/\r?\n/)) {
+    if (raw.startsWith("//") || !raw.trim()) continue;
+    const h = raw.trim().match(/^\[(.+)\]$/);
+    if (h) { sec = h[1]; continue; }
+    if (sec === "Variables") { const i = raw.indexOf("="); if (i > 0) { vars[raw.slice(0, i).trim()] = raw.slice(i + 1).trim(); } continue; }
+    if (sec !== "Events") continue;
+    if (raw.includes("$")) { raw = expand(raw); if (raw == null) continue; }
+    const depth = raw.match(/^[ _]*/)[0].length;
+    const p = raw.slice(depth).split(",");
+    if (depth === 0) {
+      if (cur) { finish(cur); cur = null; }
+      loop = null; inTrigger = false;
+      if (p[0] === "Sprite" || p[0] === "4" || p[0] === "Animation" || p[0] === "6") {
+        const anim = p[0] === "Animation" || p[0] === "6";
+        const layer = isNaN(p[1]) ? p[1] : LAYERS[+p[1]];
+        const origin = ORIGINS[isNaN(p[2]) ? p[2] : ORIGIN_IDS[+p[2]]] || [.5, .5];
+        const file = norm(p[3]);
+        const frames = [];
+        if (anim) { const dot = file.lastIndexOf("."); for (let i = 0, n = Math.min(1000, +p[6] || 1); i < n; i++) frames.push(file.slice(0, dot) + i + file.slice(dot)); }
+        else frames.push(file);
+        cur = Object.assign(newCmds(), { layer, origin, frames, x: +p[4] || 0, y: +p[5] || 0, delay: +p[7] || 0, loopOnce: /LoopOnce|^\s*1\s*$/.test(p[8] || ""), loops: [] });
+      }
+      continue;
+    }
+    if (!cur) continue;
+    if (depth === 1) { loop = null; inTrigger = false; }
+    if (inTrigger) continue;
+    const type = p[0];
+    if (type === "L") { loop = Object.assign(newCmds(), { start: +p[1], count: Math.max(1, +p[2] || 1) }); cur.loops.push(loop); continue; }
+    if (type === "T") { inTrigger = true; continue; }
+    const easing = +p[1] || 0, start = +p[2], end = p[3] === "" || p[3] === undefined ? start : +p[3];
+    if (isNaN(start)) continue;
+    const target = depth >= 2 && loop ? loop : cur;
+    if (type === "P") { const v = (p[4] || "").trim(); target.p.push(start, end, v === "H" ? 1 : v === "V" ? 2 : v === "A" ? 3 : 0); target.nc++; if (end > target.len) target.len = end; continue; }
+    const T = TI[type]; if (T === undefined) continue;
+    const n = NA[T], ez = easing >= 0 && easing < 35 && Number.isInteger(easing) ? easing : 255;
+    const vals = p.slice(4).map(Number);
+    if (vals.length === n) vals.push(...vals.slice(0, n));
+    const dur = end - start, d = target.d[T];
+    for (let i = 0; i + n * 2 <= vals.length; i += n) {
+      const s0 = start + dur * (i / n), e0 = s0 + dur;
+      d.push(s0, e0, ez); for (let j = 0; j < n; j++) d.push(vals[i + j]); for (let j = 0; j < n; j++) d.push(vals[i + n + j]);
+      target.nc++; if (e0 > target.len) target.len = e0;
+    }
+  }
+  if (cur) finish(cur);
+  // draw order: by layer, then as the script has them
+  const n = made, cnt = [0, 0, 0, 0, 0, 0], ord = new Int32Array(n);
+  for (let i = 0; i < n; i++) cnt[M.layer[i] + 1]++;
+  for (let k = 1; k < 6; k++) cnt[k] += cnt[k - 1];
+  for (let i = 0; i < n; i++) ord[cnt[M.layer[i]]++] = i;
+  const pick = (A, Cls) => { const o = new Cls(n); for (let i = 0; i < n; i++) o[i] = A[ord[i]]; return o; };
+  const pOff = new Int32Array(n + 1), pD = new Float64Array(M.pD.length);
+  for (let i = 0, k = 0; i < n; i++) { const a = M.pOff[ord[i]], b = M.pOff[ord[i] + 1]; for (let q = a * 3; q < b * 3; q++) pD[k++] = M.pD[q]; pOff[i + 1] = pOff[i] + (b - a); }
+  const start = pick(M.start, Float64Array), byStart = Int32Array.from({ length: n }, (_, i) => i).sort((a, b) => start[a] - start[b] || a - b);
+  let minStart = Infinity; for (let i = 0; i < n; i++) if (start[i] < minStart) minStart = start[i];
+  // the most sprites showing at once (a heavy storyboard: sbglSuggest)
+  const end = pick(M.end, Float64Array), ss = start.slice().sort(), ee = end.slice().sort();
+  let peak = 0; for (let i = 0, j = 0, cur = 0; i < n;) { if (ss[i] <= ee[j]) { if (++cur > peak) peak = cur; i++; } else { cur--; j++; } }
+  return {
+    n, total, minStart: n ? minStart : 0, peak, vars, names, frameIds: Int32Array.from(frameIds),
+    layer: pick(M.layer, Uint8Array), x: pick(M.x, Float32Array), y: pick(M.y, Float32Array), ox: pick(M.ox, Float32Array), oy: pick(M.oy, Float32Array),
+    delay: pick(M.delay, Float64Array), flags: pick(M.flags, Uint8Array), start, end, fo: pick(M.fo, Int32Array), nf: pick(M.nf, Int32Array),
+    cb: M.cb.map(A => pick(A, Int32Array)), cn: M.cn.map(A => pick(A, Int32Array)), pOff, pD, byStart,
+    cs: col.map(c => c.cs.slice(0, c.n)), ce: col.map(c => c.ce.slice(0, c.n)), ez: col.map(c => c.ez.slice(0, c.n)),
+    va: col.map((c, T) => c.va.slice(0, c.n * NA[T])), vb: col.map((c, T) => c.vb.slice(0, c.n * NA[T])),
+  };
+}
+function sbBufs(c) { const o = []; for (const k in c) { const v = c[k]; if (ArrayBuffer.isView(v)) o.push(v.buffer); else if (Array.isArray(v) && v.length && ArrayBuffer.isView(v[0])) for (const a of v) o.push(a.buffer); } return o; }
+// what the page needs besides the columns: a cursor per sprite and kind (commands are asked for in time order, so the last one is
+// nearly always still the right one), the sprites showing now, the picture of each name
+function sbPrep(c) {
+  c.cu = SB_TYPES.map(() => new Int32Array(c.n)); c.act = new Int32Array(c.n); c.tmp = new Int32Array(c.n); c.na = 0; c.sp = 0; c.lt = NaN; c.imgs = [];
+  return c;
+}
+const sbSync = (text, vars) => sbPrep(sbParseChunk(text, vars));
+const SBW = { off: typeof Worker === "undefined" || typeof Blob === "undefined" || typeof URL === "undefined", url: null };
+// big scripts are read in a worker (the page keeps running; a 17 MB .osb took two seconds on the page itself)
+function sbParse(text, vars) {
+  if (text.length < 60000 || SBW.off) return Promise.resolve(sbSync(text, vars));
+  return new Promise(res => {
+    let w = null, done = false, timer = 0;
+    const fin = f => { if (done) return; done = true; clearTimeout(timer); try { w && w.terminate(); } catch {} res(f()); };
+    try {
+      if (!SBW.url) SBW.url = URL.createObjectURL(new Blob([`"use strict";const norm=${norm};const ORIGINS=${JSON.stringify(ORIGINS)},ORIGIN_IDS=${JSON.stringify(ORIGIN_IDS)},LAYERS=${JSON.stringify(LAYERS)};${sbParseChunk}\n${sbBufs}\nonmessage=e=>{const c=sbParseChunk(e.data.text,e.data.vars);postMessage(c,sbBufs(c));};`], { type: "text/javascript" }));
+      w = new Worker(SBW.url);
+      w.onmessage = e => fin(() => sbPrep(e.data));
+      w.onerror = () => { SBW.off = true; fin(() => sbSync(text, vars)); };
+      w.postMessage({ text, vars });
+      timer = setTimeout(() => fin(() => sbSync(text, vars)), 90000); // (a worker that died without a word: read here after all)
+    } catch { SBW.off = true; fin(() => sbSync(text, vars)); }
+  });
+}
+// the open difficulty's storyboard: the set's .osb (read once, kept for the next difficulty) and the difficulty's own events
+const SBC = { text: null, vkey: "", chunk: null, pend: null }; // (pend: a read under way, so a second asker waits for it)
+async function sbLoad(osb, m) {
+  const v0 = m.vars || {}, vkey = JSON.stringify(v0), chunks = [];
+  let vars = { ...v0 };
+  if (osb) {
+    let A = SBC.chunk && SBC.text === osb && SBC.vkey === vkey ? SBC.chunk : null;
+    if (!A) {
+      let pend = SBC.pend; if (!(pend && pend.text === osb && pend.vkey === vkey)) pend = SBC.pend = { text: osb, vkey, p: sbParse(osb, v0) };
+      A = await pend.p;
+      if (SBC.pend === pend) { SBC.pend = null; SBC.chunk = A; SBC.text = osb; SBC.vkey = vkey; }
+    }
+    A.lt = NaN; A.imgs = []; vars = A.vars; if (A.n) chunks.push(A);
+  }
+  if (m.eventsRaw && /[A-Za-z0-9]/.test(m.eventsRaw)) { const B = await sbParse("[Events]\n" + m.eventsRaw, vars); if (B.n) chunks.push(B); }
+  const names = new Set(); let length = 0, minStart = 0, peak = 0;
+  for (const c of chunks) { length += c.n; peak += c.peak || 0; if (c.minStart < minStart) minStart = c.minStart; for (const nm of c.names) names.add(nm); }
+  return { chunks, length, minStart, peak, names, uses(f) { return names.has(f); } }; // (peak: at most this many showing at once)
+}
+// the sprites showing at time t, in drawing order (c.act[0 .. c.na)): a playing storyboard asks for time moving on a little each frame, so
+// only those that start and those that end are looked at; a jump back or far ahead goes through all of them once
+function sbActive(c, t) {
+  const n = c.n, st = c.start, en = c.end, act = c.act;
+  if (!(t >= c.lt && t - c.lt < 5000)) {
+    let k = 0; for (let i = 0; i < n; i++) if (st[i] <= t && t <= en[i]) act[k++] = i;
+    c.na = k; const bs = c.byStart; let lo = 0, hi = n; while (lo < hi) { const mid = (lo + hi) >> 1; if (st[bs[mid]] <= t) lo = mid + 1; else hi = mid; } c.sp = lo;
+  } else {
+    let k = 0; const na = c.na; for (let i = 0; i < na; i++) { const j = act[i]; if (en[j] >= t) act[k++] = j; }
+    const bs = c.byStart; let add = null;
+    while (c.sp < n && st[bs[c.sp]] <= t) { const j = bs[c.sp++]; if (en[j] >= t) (add || (add = [])).push(j); }
+    if (add) { // (new ones, in order, into the ones showing)
+      add.sort((a, b) => a - b); const tmp = c.tmp; let i = 0, a = 0, o = 0;
+      while (i < k || a < add.length) tmp[o++] = a >= add.length || (i < k && act[i] < add[a]) ? act[i++] : add[a++];
+      act.set(tmp.subarray(0, o)); k = o;
+    }
+    c.na = k;
+  }
+  c.lt = t;
+}
+// value of a command list at time t into `out` (as many numbers as the kind has): before the first it's that one's start value, after
+// it the last one's end value, in between eased
+function sbEv(c, T, i, t, out) {
+  const cnt = c.cn[T][i], base = c.cb[T][i], cs = c.cs[T], n = out.length, va = c.va[T], vb = c.vb[T];
+  if (t < cs[base]) { const o = base * n; for (let j = 0; j < n; j++) out[j] = va[o + j]; return out; }
+  let k = c.cu[T][i];
+  if (k >= cnt || cs[base + k] > t) { let lo = 0, hi = cnt - 1; k = 0; while (lo <= hi) { const mid = (lo + hi) >> 1; if (cs[base + mid] <= t) { k = mid; lo = mid + 1; } else hi = mid - 1; } }
+  while (k + 1 < cnt && cs[base + k + 1] <= t) k++;
+  c.cu[T][i] = k;
+  const q = base + k, e = c.ce[T][q], s = cs[q], o = q * n;
+  if (t > e || e === s) { for (let j = 0; j < n; j++) out[j] = vb[o + j]; return out; }
+  const f = (E[c.ez[T][q]] || E[0])((t - s) / (e - s));
+  for (let j = 0; j < n; j++) out[j] = va[o + j] + (vb[o + j] - va[o + j]) * f;
   return out;
 }

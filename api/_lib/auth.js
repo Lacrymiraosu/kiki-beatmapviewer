@@ -12,10 +12,10 @@ const env = k => String(process.env[k] || "").trim();
 // Host and X-Forwarded-Host are sent by the client, so a request's host is only used when it's one this site is served
 // on. SITE_URL always wins when it's set. Otherwise the host must be in ALLOWED_HOSTS (comma list, e.g.
 // "viewer.example.com,www.viewer.example.com"), localhost / 127.0.0.1 (dev, tests), or a workers.dev / vercel.app
-// deployment of this project (previews: "<x>-kiki-beatmap-viewer.<account>.workers.dev", "kiki-beatmap-viewer-<x>.vercel.app"; "osu-beatmap-viewer" too);
+// deployment of this project (previews: "<x>-osu-beatmap-viewer.<account>.workers.dev", "osu-beatmap-viewer-<x>.vercel.app");
 // anything else gets DEFAULT_SITE.
 const DEFAULT_SITE = "https://osu-beatmap-viewer.lacrymira.workers.dev";
-const DEPLOY_HOST = /^(?:[a-z0-9-]+-)?(?:kiki|osu)-beatmap-viewer(?:-[a-z0-9-]+)?\.(?:[a-z0-9-]+\.workers\.dev|vercel\.app)$/;
+const DEPLOY_HOST = /^(?:[a-z0-9-]+-)?osu-beatmap-viewer(?:-[a-z0-9-]+)?\.(?:[a-z0-9-]+\.workers\.dev|vercel\.app)$/;
 function hostOk(h) {
   if (!/^(?:[a-z0-9.-]{1,253}|\[[0-9a-f:]{2,39}\])(?::\d{1,5})?$/.test(h)) return false;
   const name = h.replace(/:\d+$/, "");
@@ -149,4 +149,9 @@ const withParam = (path, k, v) => {
   const p = safeNext(path), i = p.indexOf("#"), head = i < 0 ? p : p.slice(0, i), hash = i < 0 ? "" : p.slice(i);
   return head + (head.includes("?") ? "&" : "?") + k + "=" + encodeURIComponent(v) + hash;
 };
-module.exports = { cfg, keys, sign, unsign, cookies, cookie, query, safeNext, redirect, json, withParam, sameOrigin, siteUrl, requestHost };
+// Ending logins (they're stateless): every login made up to users.sessions_valid_after stops working ("Log out everywhere",
+// unlinking Google, an admin's suspension). validAfter(userRow) -> that time in ms (0: none); revoked(session, ms).
+const validAfter = u => { const t = u && u.sessions_valid_after ? Date.parse(u.sessions_valid_after) : 0; return Number.isFinite(t) ? t : 0; };
+const revoked = (s, va) => va > 0 && !(+s.iat > va);
+
+module.exports = { cfg, keys, sign, unsign, cookies, cookie, query, safeNext, redirect, json, withParam, sameOrigin, siteUrl, requestHost, validAfter, revoked };

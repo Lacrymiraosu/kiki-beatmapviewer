@@ -74,7 +74,7 @@ test("settings: allow_add, sync with prefs; others can't add you when it's off",
 
 test("download my data: the account, projects, shares, logins and activity", async () => {
   const r = await api("GET", "me/export", { as: A });
-  assert.equal(r.status, 200); assert.match(r.headers.get("content-disposition"), /attachment; filename="kiki-beatmap-viewer-my-data-1001\.json"/);
+  assert.equal(r.status, 200); assert.match(r.headers.get("content-disposition"), /attachment; filename="beatmap-viewer-my-data-1001\.json"/);
   assert.equal(r.body.account.osu_id, A); assert.equal(r.body.account.admin_note, undefined);
   assert.ok(r.body.own_projects.length >= 1); assert.ok(Array.isArray(r.body.activity_log));
   assert.ok((await api("GET", "me/export", { as: B })).body.shared_with_you.some(x => x.title === "T"));
@@ -267,4 +267,43 @@ test("an admin suspending an account ends its logins", async () => {
   await api("POST", `admin/users/${U}/status`, { as: OWNER, body: { status: "active" } });
   assert.equal((await raw("GET", "me/account", older)).status, 401, "and stays ended after reactivation");
   assert.equal((await raw("GET", "me/account", signed(sess(U, { iat: Date.now() + 1000 })))).status, 200);
+});
+
+test("an ended login can't get a live/collab ticket either, even on a server instance that never saw the user", async () => {
+  const U = 2107, older = signed(sess(U, { iat: Date.now() - 5000 })), aud = { aud: "live:abc123" };
+  // (the user row is made straight in the database: this process has never touched it, like a cold server instance)
+  await emu.db.query("insert into obv.users (osu_id, username, avatar_url, country) values ($1, $2, null, 'TH') on conflict do nothing", [U, "user" + U]);
+  await emu.db.query("update obv.users set sessions_valid_after = now() where osu_id = $1", [U]);
+  const r = await raw("POST", "live/ticket", older, aud);
+  assert.equal(r.status, 401, "ended before: no ticket"); assert.match(r.setCookie, /__Host-obv_s=;.*Max-Age=0/);
+  assert.equal((await raw("POST", "live/ticket", signed(sess(U, { iat: Date.now() + 1000 })), aud)).status, 200, "a login made after it gets one");
+});
+
+// saved replays (supabase/migrations/20261010090000_obv_replays.sql): listed in "Download my data" (no file), gone with the account
+test("saved replays: in the export without their file; Delete account removes them at once, also while its files can't be removed yet", async () => {
+  const E = 1051, G = 1052, iat = Date.now() - 1000;
+  const file = tag => { const b = Buffer.alloc(80, 3); b[0] = 0; b.writeUInt32LE(tag, 1); return b; };
+  const body = b => ({ sha256: require("node:crypto").createHash("sha256").update(b).digest("hex"), size: b.length, data_b64: b.toString("base64"), meta: { player: "me", title: "Song" } });
+  const rows = id => emu.db.query("select count(*)::int n from obv.replays where owner_id = $1", [id]).then(r => r.rows[0].n);
+  const post = (as, b) => api("POST", "replays", { as, iat, body: body(b) });
+  const r1 = (await post(E, file(1))).body.replay; assert.equal((await post(E, file(2))).status, 200); assert.equal((await post(G, file(1))).status, 200);
+  const ex = await api("GET", "me/export", { as: E, iat });
+  assert.equal(ex.status, 200); assert.equal(ex.body.replays.length, 2); assert.deepEqual(Object.keys(ex.body.replays[0]).sort(), ["created_at", "expires_at", "id", "meta", "shared", "size"]);
+  assert.ok(ex.body.replays.every(r => r.shared === false), "whether it is shared by link (never the key)");
+  assert.deepEqual(ex.body.replays.find(r => r.id === r1.id).meta, { mode: 0, player: "me", title: "Song" });
+  assert.ok(!JSON.stringify(ex.body).includes(file(1).toString("base64").slice(0, 30)), "no file bytes");
+  assert.deepEqual((await api("GET", "me/export", { as: 1053, iat })).body.replays, [], "nobody else's");
+  const p = await projectWithFile(E); // (an own project whose files can't be removed yet: the account row stays for now)
+  emu.fail.remove = 5; if (SRV.r2) SRV.r2.fail.remove = 5;
+  try {
+    const d = await api("POST", "me/delete", { as: E, iat, body: { confirm: "Confirm" } });
+    assert.equal(d.status, 200); assert.equal(d.body.pending, 1);
+    assert.equal((await emu.db.query("select count(*)::int n from obv.users where osu_id = $1", [E])).rows[0].n, 1, "the account row is still there");
+    assert.equal(await rows(E), 0, "but the replays are gone");
+  } finally { emu.fail.remove = 0; if (SRV.r2) SRV.r2.fail.remove = 0; }
+  assert.equal(await rows(G), 1, "another account's copy of the same file stays");
+  // without a project the account row goes at once, and the replays with it (nothing else to clean up: they are database rows)
+  const before = Date.now() - 1000; assert.equal((await api("POST", "replays", { as: 1054, iat: before, body: body(file(9)) })).status, 200);
+  const d2 = await api("POST", "me/delete", { as: 1054, iat: before, body: { confirm: "Confirm" } }); assert.equal(d2.status, 200); assert.equal(d2.body.pending, 0);
+  assert.equal(await rows(1054), 0); assert.equal((await emu.db.query("select count(*)::int n from obv.users where osu_id = 1054")).rows[0].n, 0);
 });

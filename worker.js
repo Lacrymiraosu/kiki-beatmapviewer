@@ -1,7 +1,7 @@
 // Cloudflare Workers entry (wrangler.jsonc). The same API functions as on Vercel (api/**), run through a small
 // adapter: a Fetch Request becomes the { method, url, headers, body } the handlers read, and what they write with
 // res.statusCode / setHeader / end becomes the Response. Static files (index.html, js/, assets/…) are served by Workers
-// static assets without running this code, except "/" (shared links get their preview card from api/og.js) and /api/*.
+// static assets without running this code, except "/" (api/og.js fills in the page's <head>) and /api/*.
 // Their headers come from _headers; responses made here get the same site-wide headers (from vercel.json).
 import v1 from "./api/v1.js";
 import og from "./api/og.js";
@@ -16,11 +16,11 @@ import { runCleanup } from "./api/_lib/cleanup.js";
 import db from "./api/_lib/db.js";
 import rate from "./api/_lib/rate.js";
 import preview from "./api/_lib/preview.js";
+import skinfetch from "./api/_lib/skinfetch.js";
 import vercel from "./vercel.json" with { type: "json" };
 
 const SITE_HEADERS = (vercel.routes.find(r => r.src === "/(.*)" && r.headers) || {}).headers || {};
 const AUTH = { login, callback, logout, me, verify, google };
-const SHARE_KEYS = ["s", "b", "u", "live", "collab", "project", "invite"];
 
 // secrets and vars → process.env, where the handlers read them; the R2 bucket (binding FILES) → db.js
 function useEnv(env) {
@@ -86,22 +86,37 @@ async function run(fn, request, url) {
   await fn(req, res);
   return new Response(out.body, { status: out.status, headers: out.headers });
 }
+// the API's answers are never search results (vercel.json sets the same header on /api/*)
+function apiHeaders(resp) { const r = withSiteHeaders(resp); r.headers.set("X-Robots-Tag", "noindex"); return r; }
 function withSiteHeaders(resp) {
   const r = new Response(resp.body, resp);
   for (const [k, v] of Object.entries(SITE_HEADERS)) if (!r.headers.has(k)) r.headers.set(k, v);
   return r;
 }
 
+// A skin from any direct link (Settings → Skin → Import from a link): /dl/skin?u=<https link>, only when the browser couldn't fetch it itself. Guarded in api/_lib/skinfetch.js.
+async function skinProxy(request, url) {
+  const j = (status, error, extra) => withSiteHeaders(new Response(JSON.stringify({ error }), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Robots-Tag": "noindex", ...(extra || {}) } }));
+  if (request.method !== "GET") return j(405, "method_not_allowed", { Allow: "GET" });
+  if (skinfetch.limited(request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for") || "?")) return j(429, "rate_limited", { "Retry-After": "600" });
+  const r = await skinfetch.fetchSkin(url.searchParams.get("u") || "", [url.hostname]);
+  if (!r.ok) return j(r.status, r.error);
+  const h = { "Content-Type": "application/zip", "Cache-Control": "no-store", "Content-Disposition": 'attachment; filename="skin.osk"', "X-Robots-Tag": "noindex" };
+  if (r.length) h["Content-Length"] = String(r.length);
+  return withSiteHeaders(new Response(r.body, { status: 200, headers: h }));
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url), p = url.pathname;
+    if (p === "/dl/skin") return skinProxy(request, url);
     // a Worker Preview (any workers.dev host but production's, or OBV_PREVIEW from wrangler.jsonc "previews"): no backend
     // unless PREVIEW_BACKEND=1. Decided before any env handling: a locked request runs no api/** code and leaves
     // process.env and db.js alone (shared by the whole instance, which may also serve production: a version's URL), so it
     // can't disturb other requests. See api/_lib/preview.js
     if (preview.isPreview(url.hostname, env) && !preview.backendAllowed(env)) {
       try {
-        if (p.startsWith("/api/")) { const r = withSiteHeaders(new Response(JSON.stringify({ error: preview.ERROR }), { status: 503, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } })); r.headers.set("X-Robots-Tag", "noindex"); return r; }
+        if (p.startsWith("/api/")) return apiHeaders(new Response(JSON.stringify({ error: preview.ERROR }), { status: 503, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } }));
         if (p === "/") { // the plain page (no api/og.js), never indexed
           const r = withSiteHeaders(new Response((await env.ASSETS.fetch(new Request(new URL("/index.html", url)))).body, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" } }));
           r.headers.set("X-Robots-Tag", "noindex"); return r;
@@ -111,22 +126,30 @@ export default {
     }
     useEnv(env);
     try {
-      if (p === "/api/v1/files") return withSiteHeaders(await files(request, url, ctx));
-      if (p === "/api/v1" || p.startsWith("/api/v1/")) return withSiteHeaders(await run(v1, request, url));
+      if (p === "/api/v1/files") return apiHeaders(await files(request, url, ctx));
+      if (p === "/api/v1" || p.startsWith("/api/v1/")) return apiHeaders(await run(v1, request, url));
       const a = p.match(/^\/api\/auth\/(login|callback|logout|me|verify|google)$/);
-      if (a) return withSiteHeaders(await run(AUTH[a[1]], request, url));
-      if (p === "/api/cron") return withSiteHeaders(await run(cron, request, url));
-      if (p.startsWith("/api/")) return withSiteHeaders(new Response('{"error":"not_found"}', { status: 404, headers: { "Content-Type": "application/json" } }));
-      // a shared link: the page with its preview card (api/og.js reads index.html from the static files)
-      if (p === "/" && SHARE_KEYS.some(k => url.searchParams.has(k))) {
+      if (a) return apiHeaders(await run(AUTH[a[1]], request, url));
+      if (p === "/api/cron") return apiHeaders(await run(cron, request, url));
+      if (p.startsWith("/api/")) return apiHeaders(new Response('{"error":"not_found"}', { status: 404, headers: { "Content-Type": "application/json" } }));
+      // the page: api/og.js fills in its <head> (a shared link's preview card; each public page's title, description and
+      // canonical URL; noindex for the rest), reading index.html from the static files
+      if (p === "/") {
         if (!og.hasTemplate()) og.useTemplate(await (await env.ASSETS.fetch(new Request(new URL("/index.html", url)))).text());
         return withSiteHeaders(await run(og, request, url));
       }
-      // "/" without a share link, or anything else that reached the Worker: the static file
+      // Google Search Console's verification file (googleXXXX.html in the repo root): served as it is with a 200. Static
+      // assets redirect "x.html" to "x" (307), which the check may not follow; only files that exist are served
+      if (/^\/google[0-9a-f]{8,32}\.html$/.test(p)) {
+        let r = await env.ASSETS.fetch(request);
+        if (r.status >= 300 && r.status < 400 && r.headers.get("Location")) r = await env.ASSETS.fetch(new Request(new URL(r.headers.get("Location"), url)));
+        return withSiteHeaders(r.ok ? new Response(r.body, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=3600" } }) : new Response("not found", { status: 404 }));
+      }
+      // anything else that reached the Worker: the static file
       return withSiteHeaders(await env.ASSETS.fetch(request));
     } catch (e) {
       console.error("worker", p, e && e.message);
-      return withSiteHeaders(new Response('{"error":"server_error"}', { status: 500, headers: { "Content-Type": "application/json" } }));
+      return apiHeaders(new Response('{"error":"server_error"}', { status: 500, headers: { "Content-Type": "application/json" } }));
     }
   },
   // the daily cleanup (Cron Trigger in wrangler.jsonc). The free plan allows 50 outgoing requests per run, so it takes

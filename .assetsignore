@@ -15,11 +15,10 @@ docs
 node_modules
 worker.js
 wrangler.jsonc
+wrangler.example.jsonc
 vercel.json
 .vercelignore
 .assetsignore
 .gitignore
 .gitattributes
 *.md
-wrangler.example.jsonc
-.gitleaks.toml

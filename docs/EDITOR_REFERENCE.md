@@ -58,5 +58,4 @@ stacking old/new, tick spacing, raw lines untouched).
   `osu.Game/Rulesets/Objects/Legacy/LegacyRulesetExtensions.cs`, `osu.Game/Beatmaps/IBeatmapDifficultyInfo.cs`
 * ppy/osu-framework (MIT): `osu.Framework/Utils/PathApproximator.cs`, `osu.Framework/Utils/CircularArcProperties.cs`
 * skinning docs (first combo = Combo2): skinship.xyz `skin.ini` reference
-* Parts of this code are translated into JavaScript from ppy/osu and ppy/osu-framework (stacking, slider paths and
-  curves, Auto); their MIT notice is in [THIRD_PARTY_NOTICES.txt](../THIRD_PARTY_NOTICES.txt).
+* No code was copied; the behaviour was re-implemented in JavaScript.

@@ -54,14 +54,15 @@ function playTimeOf(e) {
 
 // ---------- start / stop ----------
 function playStart(from) {
-  if (!map || !tpOn()) return;
+  if (!map || !tpOn() || !featGuard("ed_test")) return;
   if (!map.hit.length) return toast(tr("Place some objects first"));
   ensureAudioCtx();
   PLAY.ed = EDIT.on; PLAY.back = A.cur(); // (back to where it started from: the editor or the preview)
   setMode(false); // (first: leaving the editor can rebuild the objects)
   let f = from ?? (tpOpt("from") === "start" ? 0 : !PLAY.ed && startAt > 0 ? startAt : A.cur()); if (f >= map.last) f = 0; // (at the end: from the start; a shared link's time in the preview)
   PLAY.from = f; PLAY.w = playWindows(); PLAY.dm = playDiffMult();
-  Object.assign(PLAY, { st: new Map(), idx: 0, held: new Set(), spinA: null, combo: 0, max: 0, score: 0, n: { 300: 0, 100: 0, 50: 0, 0: 0 }, errs: [], hp: 1, fx: [], shake: null, disp: 0 });
+  Object.assign(PLAY, { st: new Map(), idx: 0, held: new Set(), spinA: null, combo: 0, max: 0, score: 0, n: { 300: 0, 100: 0, 50: 0, 0: 0 }, errs: [], hp: 1, fx: [], shake: null, disp: 0, rip: [], sec: new Map(), secN: [] });
+  { const H = map.hit; let sid = 0; H.forEach((o, i) => { if (o.nc && i) sid++; PLAY.sec.set(o.lid, { sid, last: i === H.length - 1 || H[i + 1].nc }); }); } // (the combos, for geki / katu: playVar)
   for (const o of map.hit) {
     const st = { skip: o.t < f, res: null, at: 0, head: null, headAt: 0, track: false, trackK: 0, ci: 0, got: 0, tot: 0, rot: 0, ang: 0 };
     if (o.kind === "slider" && !st.skip) {
@@ -114,13 +115,21 @@ async function playResults(r) {
 }
 
 // ---------- the game: what happens as time passes ----------
+// geki / katu as osu!stable gives them: judging the last object of a combo, the combo's hits all 300 = geki ("g"), no 50 or miss in it
+// but a 100 = katu ("k"). They only choose a skin's hit300g / hit300k / hit100k for the judgement image (the skin has none: hit300 / hit100)
+function playVar(o, res) {
+  const q = PLAY.sec.get(o.lid); if (!q) return "";
+  const c = PLAY.secN[q.sid] || (PLAY.secN[q.sid] = { bad: 0, ok: 0 });
+  if (res === 100) c.ok++; else if (res < 100) c.bad++;
+  return !q.last || res < 100 || c.bad ? "" : c.ok ? "k" : "g";
+}
 function playAward(o, res, x, y, t, err) {
   PLAY.n[res]++;
   if (res) { PLAY.combo++; PLAY.max = Math.max(PLAY.max, PLAY.combo); PLAY.score += res + Math.floor(res * Math.max(0, PLAY.combo - 1) * PLAY.dm / 25); }
   else PLAY.combo = 0;
   PLAY.hp = Math.max(0, Math.min(1, PLAY.hp + ({ 300: .04, 100: .015, 50: -.01, 0: -.1 })[res]));
   if (err != null) { PLAY.errs.push({ e: err, at: t, res }); if (PLAY.errs.length > 2000) PLAY.errs.shift(); }
-  PLAY.fx.push({ x, y, res, at: t }); if (PLAY.fx.length > 40) PLAY.fx.shift();
+  PLAY.fx.push({ x, y, res, at: t, v: playVar(o, res) }); if (PLAY.fx.length > 40) PLAY.fx.shift();
 }
 function playSound(tt, tick) { // the hitsound of that part of an object, now (unless they play on the map's time: Settings → Test play)
   if (!tpOpt("hsOnHit")) return;
@@ -159,7 +168,7 @@ function playUpdate(t) {
       st.res = res; st.at = t; const e = endPos(o);
       PLAY.n[res]++; if (res) PLAY.score += res + Math.floor(res * Math.max(0, PLAY.combo - 1) * PLAY.dm / 25);
       PLAY.hp = Math.max(0, Math.min(1, PLAY.hp + ({ 300: .04, 100: .015, 50: -.01, 0: -.1 })[res]));
-      PLAY.fx.push({ x: e[0], y: e[1], res, at: t }); if (PLAY.fx.length > 40) PLAY.fx.shift();
+      PLAY.fx.push({ x: e[0], y: e[1], res, at: t, v: playVar(o, res) }); if (PLAY.fx.length > 40) PLAY.fx.shift();
     }
   }
   if (t > map.last + 1500 && PLAY.idx >= H.length) playStop(true);
@@ -170,6 +179,7 @@ function playPress(id, e) {
   if (PLAY.held.has(id)) return;
   PLAY.held.add(id);
   const t = playTimeOf(e), H = map.hit, w = PLAY.w, r = map.radius;
+  if (PLAY.seen) { PLAY.rip.push({ x: PLAY.x, y: PLAY.y, at: t }); if (PLAY.rip.length > 12) PLAY.rip.shift(); } // (cursor-ripple)
   let cand = null;
   for (let i = PLAY.idx; i < H.length; i++) { // the first object still waiting for its click (notelock: nothing later counts first)
     const o = H[i], st = PLAY.st.get(o.lid);
@@ -261,12 +271,19 @@ tpApply();
 
 // ---------- drawing ----------
 function playDraw(t, beatK) {
+  const ok = objK(); // (Settings → Skin → Object opacity: the objects only, not the judgements)
+  if (ok < 1) withAlpha(ok, () => playObjects(t, beatK)); else playObjects(t, beatK);
+  for (const f of PLAY.fx) playJudge(f, t);
+}
+function playObjects(t, beatK) {
   const H = map.hit, pre = map.preempt, s = map.radius / 64;
   const hi = lastBefore(H, t + pre, "t");
   if (hi >= 0) {
     let lo = hi; while (lo > 0 && H[lo - 1].t > t - 30000) lo--;
     drawFollowPoints(t, lo, hi);
     for (let i = hi + 1; i < H.length && H[i].t < t + pre + 4000; i++) if (H[i].kind === "slider" && heavyBody(H[i])) sliderBody(H[i], palette(H[i].ci), 1);
+    prepSliders(t, hi - 16, t + pre + 1500);
+    spinBars(t, lo, hi);
     for (let i = hi; i >= lo; i--) {
       const o = H[i], st = PLAY.st.get(o.lid); if (!st || st.skip) continue;
       if (Math.max(o.end, st.at || 0) + 800 < t) continue;
@@ -276,14 +293,13 @@ function playDraw(t, beatK) {
       else playCircle(o, st, t, col, s, aIn);
     }
   }
-  for (const f of PLAY.fx) playJudge(f, t);
 }
 function shakeX(o, t) { const S2 = PLAY.shake; if (!S2 || S2.lid !== o.lid) return 0; const k = (t - S2.at) / 200; return k < 0 || k > 1 ? 0 : Math.sin(k * Math.PI * 6) * 8 * (1 - k); }
 function playCircle(o, st, t, col, s, aIn) {
   if (st.res == null) {
     const x = o.x + shakeX(o, t);
     drawHead(o, x, o.y, col, s, aIn);
-    if (t < o.t) blit(T("approachcircle", col), x, o.y, s * (1 + 3 * (o.t - t) / map.preempt), approachAlpha(o, t));
+    if (t < o.t) drawApproach(o, x, o.y, col, s, t);
   } else if (st.res) hitBurst(o, o.x, o.y, col, s, t - st.at);
   else { const k = (t - st.at) / 160; if (k < 1) drawHead(o, o.x, o.y + 6 * k, col, s, aIn * (1 - k)); }
 }
@@ -299,17 +315,18 @@ function playSlider(o, st, t, col, s, aIn, beatK) {
   if (st.head == null) {
     const x = o.x + shakeX(o, t);
     drawHead(o, x, o.y, col, s, aIn, true);
-    if (t < o.t) blit(T("approachcircle", col), x, o.y, s * (1 + 3 * (o.t - t) / map.preempt), approachAlpha(o, t));
+    if (t < o.t) drawApproach(o, x, o.y, col, s, t);
   } else if (st.head) hitBurst(o, o.x, o.y, col, s, t - st.headAt, true);
   if (t >= o.t && t <= o.end) {
     st.trackK += ((st.track ? 1 : 0) - st.trackK) * Math.min(1, frameDt / 60);
     const p = drawBall(o, t, col, s);
-    if (st.trackK > .02) blit(T("sliderfollowcircle"), p[0], p[1], s * (.5 + .5 * st.trackK), st.trackK);
+    if (st.trackK > .02) blit(followC(o, t), p[0], p[1], s * (.5 + .5 * st.trackK), st.trackK);
   }
 }
 function playJudge(f, t) {
-  const age = t - f.at; if (age < 0 || age > 600 || (f.res === 300 && !tpOpt("show300"))) return;
-  const tex = T(f.res === 300 ? "hit300" : f.res === 100 ? "hit100" : f.res === 50 ? "hit50" : "hit0"); if (!tex) return;
+  const age = t - f.at; if (age < 0 || age > 600 || (f.res === 300 && !tpOpt("show300")) || S.elBurst === false) return;
+  const base = f.res === 300 ? "hit300" : f.res === 100 ? "hit100" : f.res === 50 ? "hit50" : "hit0";
+  const tex = hitImg(f.v && SK.tex[base + f.v] ? base + f.v : base, age); if (!tex) return; // (the end of a combo that went well: the skin's hit300g / hit300k / hit100k, if it has them)
   if (f.res === 0) { const k = age / 600; blit(tex, f.x, f.y + 20 * k * k, (f.small ? .45 : .6) * (1.3 - .3 * Math.min(1, age / 80)), 1 - k * k, .2 * k); return; }
   const sc = age < 96 ? .6 + .5 * (age / 96) : age < 120 ? 1.1 - .2 * ((age - 96) / 24) : .9 + .1 * Math.min(1, (age - 120) / 100);
   blit(tex, f.x, f.y, sc * .6, age < 350 ? 1 : 1 - (age - 350) / 250);
@@ -317,9 +334,11 @@ function playJudge(f, t) {
 function playCursor() {
   if (!PLAY.seen) return;
   const own = !!SK.tex.cursor, cfg = own ? SK : DEFSK && DEFSK.tex.cursor ? DEFSK : FALLBACK, tex = n => own ? SK.tex[n] || null : texOf(n);
-  const cur = tex("cursor"), mid = tex("cursormiddle"), off = tx => tx && cfg.cursorCentre === false ? [tx.img.width / tx.hd / 2, tx.img.height / tx.hd / 2] : [0, 0];
-  const sc = PLAY.held.size ? 1.15 : 1, oc = off(cur), om = off(mid);
-  blit(cur, PLAY.x + oc[0], PLAY.y + oc[1], sc, 1); blit(mid, PLAY.x + om[0], PLAY.y + om[1], sc, 1);
+  const cur = tex("cursor"), mid = tex("cursormiddle"), off = (tx, s = 1) => tx && cfg.cursorCentre === false ? [tx.img.width / tx.hd * s / 2, tx.img.height / tx.hd * s / 2] : [0, 0];
+  const z = curZ(), sc = (PLAY.held.size ? 1.15 : 1) * z, oc = off(cur, z), om = off(mid, z); // (Settings → Skin → Cursor size; it turns only when that is set to On)
+  const now = playTimeOf(), rot = S.curRotate === "on" ? (performance.now() / 10000 % 1) * Math.PI * 2 : 0;
+  for (const r of PLAY.rip) drawRipple(r.x, r.y, now - r.at, z);
+  blit(cur, PLAY.x + oc[0], PLAY.y + oc[1], sc, 1, rot); blit(mid, PLAY.x + om[0], PLAY.y + om[1], sc, 1);
 }
 function playHUD(t, B) {
   const u = B.u, pad = 14 * u, top = B.top + pad, right = B.r - pad, left = B.l + pad, W = B.r - B.l;
@@ -327,19 +346,15 @@ function playHUD(t, B) {
   const sum = playSummary();
   ctx.textBaseline = "top"; ctx.globalAlpha = 1; ctx.textAlign = "right";
   if (tpOpt("score")) {
-    ctx.font = `600 ${34 * u}px Inter,sans-serif`; sText(String(Math.round(PLAY.disp)).padStart(8, "0"), right, top, u, "#fff");
-    ctx.font = `600 ${18 * u}px Inter,sans-serif`; sText((sum.acc * 100).toFixed(2) + "%", right, top + 40 * u, u, "#fff");
+    hudScore(String(Math.round(PLAY.disp)).padStart(8, "0"), (sum.acc * 100).toFixed(2) + "%", right, top, u); // (the skin's numbers when it has them, player.js)
   }
   ctx.font = `600 ${14 * u}px Inter,sans-serif`; sText(tr("Test") + (A.rate !== 1 ? ` ${A.rate}x` : "") + " · " + keyName(tpKey("stop")), right, top + (tpOpt("score") ? 64 : 0) * u, u, "#66ccff");
   const hbW = Math.min(W * .34, 320 * u), hbY = top + 6 * u; // HP
-  if (tpOpt("hp")) {
+  if (tpOpt("hp") && drawSkinHealth(left, top, PLAY.hp, u, W) < 0) {
     ctx.fillStyle = "rgba(0,0,0,.45)"; ctx.fillRect(left, hbY, hbW, 9 * u);
     ctx.fillStyle = PLAY.hp > .3 ? "#ff66aa" : "#ff4d5e"; ctx.fillRect(left, hbY, hbW * PLAY.hp, 9 * u);
   }
-  if (PLAY.combo > 0 && tpOpt("combo")) {
-    ctx.save(); ctx.translate(left, B.bottom - pad); ctx.textAlign = "left"; ctx.textBaseline = "bottom";
-    ctx.font = `600 ${46 * u}px Inter,sans-serif`; sText(PLAY.combo + "x", 0, 0, u, "#fff"); ctx.restore();
-  }
+  if (PLAY.combo > 0 && tpOpt("combo")) hudCombo(PLAY.combo, left, B.bottom - pad, 1, u);
   // hit error bar: 300 / 100 / 50 zones, a tick per hit (fading), the average as an arrow
   if (!tpOpt("errBar")) return;
   const w = PLAY.w, k = Math.min(W * .3, 260 * u) / (2 * w[50]), cx = (B.l + B.r) / 2, y = B.bottom - pad - 6 * u;

@@ -1,5 +1,5 @@
 // Service worker: lets the site be installed as an app and open without a connection.
-// - Pages: from the network first; offline, the last copy of the site's page (maps downloaded earlier live in the
+// - Pages: from the network first (a failed load is tried twice); offline, the last copy of the site's page (maps downloaded earlier live in the
 //   browser's own storage and still open).
 // - The site's own scripts, styles, translations, skins and icons: from this cache. Links with the site's version (?v=)
 //   never change (a new version is a new link; older copies of the same file are dropped); files without it (skins,
@@ -19,10 +19,13 @@ self.addEventListener("fetch", e => {
   const req = e.request, url = new URL(req.url);
   if (req.method !== "GET" || url.origin !== location.origin || req.headers.has("range") || url.pathname.startsWith("/api/")) return;
   if (req.mode === "navigate") {
-    e.respondWith(fetch(req).then(res => {
+    // (a failed load is tried once more before the offline copy: iOS Safari sometimes fails one for a moment, and the
+    // copy may be older than the scripts the server has now, see core.js)
+    const load = () => fetch(req).then(res => {
       if (res.ok && url.pathname === "/") { const copy = res.clone(); caches.open(CACHE).then(c => c.put("/", copy)); }
       return res;
-    }).catch(async () => (await caches.match("/")) || Response.error()));
+    });
+    e.respondWith(load().catch(() => new Promise(r => setTimeout(r, 600)).then(load)).catch(async () => (await caches.match("/")) || Response.error()));
     return;
   }
   if (!STATIC.test(url.pathname)) return;

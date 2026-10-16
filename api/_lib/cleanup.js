@@ -34,6 +34,8 @@ async function runCleanup(budgetMs = 45000, maxProjects = 50) {
     }
   }
   try { const a = await db.rpc("obv_account_gc", {}); if (a && a.removed) out.accounts_removed = a.removed; } catch {} // deleted accounts whose projects are gone (before the account migration: nothing)
+  try { const g = await db.rpc("obv_replays_gc", { p_limit: 500 }); if (g && g.deleted) out.replays_deleted = g.deleted; } // saved replays past their 60 days (before the replays migration: nothing)
+  catch (e) { if (e.code !== "db_error") out.errors.push("replays_gc"); }
   out.ms = Date.now() - t0;
   await db.rpc("obv_job_log", { p_job: "cleanup", p_ok: !out.errors.length && !out.pending, p_detail: out });
   return out;

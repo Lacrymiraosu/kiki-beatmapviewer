@@ -12,7 +12,7 @@ import { freshDb } from "../lib/pg.mjs";
 export async function startSupabaseEmu({ port = 0, key = "emu-secret-key-for-local-tests-only" } = {}) {
   const db = await freshDb();
   const blobs = new Map(), upTokens = new Map(), dlTokens = new Map(), sigs = new Map();
-  const emu = { db, key, blobs, calls: [], fail: { remove: 0 } };
+  const emu = { db, key, blobs, calls: [], fail: { remove: 0 }, forgetFunctions: () => sigs.clear() }; // (forgetFunctions: a test that drops or renames a function)
   const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS", "access-control-allow-headers": "authorization,apikey,content-type,x-upsert,cache-control,x-client-info" };
   const json = (res, code, obj) => { res.writeHead(code, { "content-type": "application/json", ...cors }); res.end(JSON.stringify(obj)); };
   const readBody = req => new Promise((ok, bad) => { const ch = []; req.on("data", c => ch.push(c)); req.on("end", () => ok(Buffer.concat(ch))); req.on("error", bad); });

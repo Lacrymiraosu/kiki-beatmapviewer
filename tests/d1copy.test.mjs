@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { freshDb, rpc, putObject, sha } from "./lib/pg.mjs";
 import { fakeD1 } from "./emu/d1-fake.mjs";
 
@@ -26,6 +28,13 @@ test("copy Supabase → D1", { skip: !sqliteOk && "needs node --experimental-sql
   for (const f of s.uploads) await putObject(pg, f.key, f.size);
   await call("obv_save_commit", { p_actor: 1, p_save: s.save_id, p_annotations: { upsert: [{ id: "6f1c3e2a-1b2c-4d3e-8f40-123456789abc", diff: "a.osu", kind: "comment", time_ms: 1000, body: "hi", data: { x: 1 } }] } });
   await call("obv_admin_settings_set", { p_actor: 1, p_values: { retention_days: 20 } });
+  // saved replays: a real file (its bytes must survive the copy) and one that has expired but is not cleaned up yet
+  const osr = readFileSync(join(root, "tests/fixtures/stable-small.osr")), osrSha = createHash("sha256").update(osr).digest("hex");
+  const rpl = await call("obv_replay_save", { p_actor: 2, p_sha256: osrSha, p_size: osr.length, p_meta: { mode: 0, player: "Tester", title: "Ünï Song", modNames: ["HD"], counts: { n300: 5 } }, p_data: osr.toString("base64") });
+  const rplKey = (await call("obv_replay_share", { p_actor: 2, p_id: rpl.replay.id, p_mode: "on" })).share_key; // (shared by link: the link must still open after the move)
+  const old = Buffer.alloc(40, 1), oldSha = createHash("sha256").update(old).digest("hex");
+  const rpl2 = await call("obv_replay_save", { p_actor: 1, p_sha256: oldSha, p_size: old.length, p_meta: {}, p_data: old.toString("base64") });
+  await pg.query("update obv.replays set expires_at = now() - interval '1 second' where id = $1", [rpl2.replay.id]);
   await call("obv_error_report", { p_message: "boom", p_source: "x.js", p_stack: "", p_page: "/", p_version: "1", p_browser: "t" });
 
   const d1 = fakeD1(root);
@@ -33,6 +42,7 @@ test("copy Supabase → D1", { skip: !sqliteOk && "needs node --experimental-sql
   const r = await copyToD1(call, d1, 1);
   assert.equal(r.ok, true, JSON.stringify(r.tables));
   assert.equal(r.tables.users.d1, 2); assert.equal(r.tables.projects.d1, 1); assert.equal(r.tables.annotations.d1, 1);
+  assert.equal(r.tables.replays.supabase, 2); assert.equal(r.tables.replays.d1, 2);
   assert.ok(r.tables.blobs.d1 >= 1 && r.tables.saves.d1 >= 1 && r.tables.members.d1 === 1);
   const counts = await d1Counts(d1); assert.equal(counts.users, 2);
 
@@ -48,6 +58,17 @@ test("copy Supabase → D1", { skip: !sqliteOk && "needs node --experimental-sql
   assert.deepEqual(viaD1.annotations.map(a => [a.id, a.body, a.data]), viaPg.annotations.map(a => [a.id, a.body, a.data]));
   const norm = o => JSON.parse(JSON.stringify(o, (k, v) => typeof v === "string" && /^\d{4}-\d\d-\d\dT/.test(v) ? Date.parse(v) : v));
   assert.deepEqual(norm(await F.obv_admin_user_get(q, { p_user: 2 })), norm(await call("obv_admin_user_get", { p_user: 2 })));
+  // the replays: same bytes, score info, dates (the expired one too, until the cleanup removes it)
+  const got = await F.obv_replay_get(q, { p_actor: 2, p_id: rpl.replay.id });
+  assert.deepEqual(Buffer.from(got.data, "base64"), osr, "the file survived the copy byte for byte");
+  assert.deepEqual(got.replay.meta, { mode: 0, player: "Tester", title: "Ünï Song", modNames: ["HD"], counts: { n300: 5 } });
+  assert.equal(got.replay.sha256, osrSha); assert.equal(got.replay.size, osr.length);
+  assert.equal(Date.parse(got.replay.expires_at), Date.parse(rpl.replay.expires_at)); assert.equal(Date.parse(got.replay.created_at), Date.parse(rpl.replay.created_at));
+  assert.deepEqual((await F.obv_replay_list(q, { p_actor: 2 })).replays.map(x => [x.id, x.share_key]), [[rpl.replay.id, rplKey]], "the share key came along");
+  assert.deepEqual(Buffer.from((await F.obv_replay_shared(q, { p_actor: 1, p_id: rpl.replay.id, p_key: rplKey })).data, "base64"), osr, "the link opens on D1");
+  assert.equal(got.replay.share_key, rplKey);
+  assert.deepEqual((await F.obv_replay_list(q, { p_actor: 1 })).replays, [], "expired: not listed");
+  assert.equal((await F.obv_replays_gc(q, { p_limit: 500 })).deleted, 1); assert.equal((await d1Counts(d1)).replays, 1);
   const raw = await d1.prepare("select invited_by from users where osu_id = 2").first(); assert.equal(raw.invited_by, 1);
   assert.equal((await d1.prepare("select count(*) n from client_errors").first()).n, 1);
   await pg.close();

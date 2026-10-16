@@ -25,13 +25,19 @@ class OsuError extends Error { constructor(code, status, retryAfter) { super(cod
 // also need one from their own smaller bucket and only get one while the main bucket keeps a reserve, so cards are
 // the first to go without, and they can't use up what the pages need (nor push osu! into answering 429).
 // Out of budget: a v1 request gets 429 + Retry-After (osu_busy) instead of asking osu!; a card shows the plain page.
-const BUDGET = { perMin: 50, burst: 20, ogPerMin: 12, ogBurst: 5, ogReserve: 10 };
-const buckets = { main: { t: BUDGET.burst, at: Date.now() }, og: { t: BUDGET.ogBurst, at: Date.now() } };
+// "scores" (a replay's top 50, api/v1.js osu/scores) is the same kind of extra: its own tiny bucket (6 a minute, 3 at once),
+// and only while the main bucket still has 12 left.
+const BUDGET = { perMin: 50, burst: 20, ogPerMin: 12, ogBurst: 5, ogReserve: 10, scoresPerMin: 6, scoresBurst: 3, scoresReserve: 12 };
+const buckets = { main: { t: BUDGET.burst, at: Date.now() }, og: { t: BUDGET.ogBurst, at: Date.now() }, scores: { t: BUDGET.scoresBurst, at: Date.now() } };
 function refill(b, perMin, burst) { const now = Date.now(); b.t = Math.min(burst, b.t + (now - b.at) * perMin / 60000); b.at = now; }
 function take(cls) {
-  const m = buckets.main, o = buckets.og;
-  refill(m, BUDGET.perMin, BUDGET.burst); refill(o, BUDGET.ogPerMin, BUDGET.ogBurst);
+  const m = buckets.main, o = buckets.og, sc = buckets.scores;
+  refill(m, BUDGET.perMin, BUDGET.burst); refill(o, BUDGET.ogPerMin, BUDGET.ogBurst); refill(sc, BUDGET.scoresPerMin, BUDGET.scoresBurst);
   const wait = (t, perMin) => Math.max(1, Math.ceil((1 - t) * 60 / perMin));
+  if (cls === "scores") {
+    if (sc.t < 1 || m.t < BUDGET.scoresReserve) throw new OsuError("osu_busy", 429, sc.t < 1 ? wait(sc.t, BUDGET.scoresPerMin) : wait(m.t - BUDGET.scoresReserve + 1, BUDGET.perMin));
+    sc.t--; m.t--; return;
+  }
   if (cls === "og") {
     if (o.t < 1 || m.t < 1 + BUDGET.ogReserve) throw new OsuError("osu_busy", 429, o.t < 1 ? wait(o.t, BUDGET.ogPerMin) : wait(m.t - BUDGET.ogReserve, BUDGET.perMin));
     o.t--; m.t--; return;
@@ -67,17 +73,22 @@ async function token() {
   return tok.pending;
 }
 // cls: whose request it is ("v1" the site's pages, "og" link-preview cards): which budget it comes out of (above)
-async function osuGet(path, ttlMs = 600000, cls = "v1") {
+// negMs: how long a 404 (null) stays cached when that is shorter than ttlMs
+// o (only the callers that need it): refused = the OsuError code for osu! still refusing us (401 after the token refresh, or 403) instead of osu_error;
+// trim = what to keep of the answer (it is cached trimmed, not the whole answer); headers = extra request headers (the scores call's x-api-version)
+async function osuGet(path, ttlMs = 600000, cls = "v1", negMs = ttlMs, o = {}) {
   const hit = cache.get(path);
-  if (hit && Date.now() - hit.at < ttlMs) return hit.data;
+  if (hit && Date.now() - hit.at < (hit.data === null ? Math.min(ttlMs, negMs) : ttlMs)) return hit.data;
   checkCool();
   take(cls);
-  let r = await fetchT(BASE() + "/api/v2" + path, { headers: { Authorization: "Bearer " + await token(), Accept: "application/json" } });
-  if (r.status === 401) { tok.value = ""; r = await fetchT(BASE() + "/api/v2" + path, { headers: { Authorization: "Bearer " + await token(), Accept: "application/json" } }); }
+  const hdr = async () => ({ ...(o.headers || {}), Authorization: "Bearer " + await token(), Accept: "application/json" });
+  let r = await fetchT(BASE() + "/api/v2" + path, { headers: await hdr() });
+  if (r.status === 401) { tok.value = ""; r = await fetchT(BASE() + "/api/v2" + path, { headers: await hdr() }); }
   if (r.status === 404) { cache.set(path, { at: Date.now(), data: null }); return null; }
   if (r.status === 429) { coolDown(r, "rate_limited", 60000); throw new OsuError("osu_rate_limited", 503); }
+  if ((r.status === 401 || r.status === 403) && o.refused) throw new OsuError(o.refused, 503);
   if (!r.ok) throw new OsuError("osu_error", 502);
-  const data = await r.json();
+  const data = o.trim ? o.trim(await r.json()) : await r.json();
   cache.set(path, { at: Date.now(), data });
   if (cache.size > 300) cache.delete(cache.keys().next().value);
   return data;
@@ -109,14 +120,23 @@ function publicUser(u) {
     last_visit: u.last_visit || null, is_online: u.is_online ?? null, support_level: u.support_level ?? 0, profile_hue: u.profile_hue ?? null,
   };
 }
+// a count osu! sent, or null when it didn't (0 is a real count: a map without spinners; "absent" must stay absent so the page can drop the column)
+const optNum = (v, max = 1e9) => typeof v === "number" && isFinite(v) ? Math.min(max, Math.max(0, v)) : null;
+const optDate = v => typeof v === "string" && v.length <= 40 ? v : null;
 function publicSet(s) {
   return {
-    id: s.id, title: s.title, artist: s.artist, creator: s.creator, user_id: s.user_id, status: s.status, play_count: s.play_count, favourite_count: s.favourite_count,
+    id: s.id, title: s.title, artist: s.artist, title_unicode: str(s.title_unicode) || null, artist_unicode: str(s.artist_unicode) || null,
+    creator: s.creator, user_id: s.user_id, status: s.status, play_count: s.play_count, favourite_count: s.favourite_count,
     submitted_date: s.submitted_date, ranked_date: s.ranked_date, video: !!s.video, storyboard: !!s.storyboard, bpm: s.bpm, source: s.source,
     genre_id: s.genre_id ?? null, language_id: s.language_id ?? null, tags: str(s.tags, 1000), nsfw: !!s.nsfw, last_updated: s.last_updated || null,
+    hype: s.hype && typeof s.hype === "object" ? { current: optNum(s.hype.current, 1e4), required: optNum(s.hype.required, 1e4) } : null, spotlight: !!s.spotlight,
     beatmaps: (s.beatmaps || []).map(b => ({ id: b.id, version: b.version, mode: b.mode, mode_int: b.mode_int, difficulty_rating: b.difficulty_rating,
-      total_length: b.total_length, hit_length: b.hit_length, bpm: b.bpm, cs: b.cs, ar: b.ar, accuracy: b.accuracy, drain: b.drain, user_id: b.user_id,
-      owners: b.owners })),
+      total_length: b.total_length, hit_length: b.hit_length, bpm: b.bpm, checksum: str(b.checksum, 32) || null, cs: b.cs, ar: b.ar, accuracy: b.accuracy, drain: b.drain, user_id: b.user_id,
+      owners: b.owners,
+      // object counts and the rest of what the website shows per difficulty (search results carry them too; absent -> null, never 0)
+      count_circles: optNum(b.count_circles), count_sliders: optNum(b.count_sliders), count_spinners: optNum(b.count_spinners), max_combo: optNum(b.max_combo),
+      status: str(b.status, 20) || null, last_updated: optDate(b.last_updated), playcount: optNum(b.playcount), passcount: optNum(b.passcount),
+      url: typeof b.url === "string" && /^https:\/\/osu\.ppy\.sh\//.test(b.url) ? b.url.slice(0, 200) : null, ranked: optNum(b.ranked, 10) })),
   };
 }
 async function getUser(u, cls) {
@@ -175,12 +195,92 @@ async function getSet(id, cls) {
   out.map_tags = (s.beatmaps || []).map(b => ({ id: b.id, tags: (b.top_tag_ids || []).map(x => ({ name: (tagName.get(x.tag_id) || {}).name || "", count: x.count || 0 })).filter(x => x.name) }));
   out.nominators = (s.current_nominations || []).map(n => { const u = users.get(n.user_id) || {}; return { id: n.user_id, username: str(u.username, 40), groups: (u.groups || []).map(g => str(g.short_name, 12)) }; });
   out.rating = Array.isArray(s.ratings) && s.ratings.length > 1 ? (() => { let n = 0, sum = 0; s.ratings.forEach((c, i) => { if (i) { n += c; sum += c * i; } }); return n ? { avg: Math.round(sum / n * 100) / 100, n } : null; })() : null;
-  out.hype = s.hype || null; out.spotlight = !!s.spotlight;
   out.creator_info = s.user ? { id: s.user.id, username: str(s.user.username, 40), groups: (s.user.groups || []).map(g => str(g.short_name, 12)) } : null;
   return out;
 }
 
 // which set a difficulty belongs to
 async function getBeatmapSetId(id, cls) { const b = await osuGet(`/beatmaps/${id}`, 86400000, cls); return b && b.beatmapset_id ? b.beatmapset_id : null; }
+// a difficulty by the MD5 of its .osu file (a replay names its map that way); null when osu! doesn't know the hash.
+// A hash never changes what it names: found for 24 h, unknown for 10 minutes (it may be uploaded meanwhile).
+// osu!'s answer is a Beatmap with a nested beatmapset (title, artist, creator live there).
+const num = (v, d = 0) => typeof v === "number" && isFinite(v) ? v : d;
+async function lookupByChecksum(md5, cls) {
+  if (!/^[0-9a-f]{32}$/.test(md5)) return null; // (never build the URL from anything else)
+  const b = await osuGet(`/beatmaps/lookup?checksum=${md5}`, 86400000, cls, 600000);
+  if (!b || !b.id) return null;
+  const bs = b.beatmapset || {};
+  return { beatmap_id: num(b.id), beatmapset_id: num(b.beatmapset_id, num(bs.id)), version: str(b.version), mode: num(b.mode_int), status: str(b.status, 20),
+    title: str(bs.title), artist: str(bs.artist), creator: str(bs.creator), cs: num(b.cs), ar: num(b.ar), od: num(b.accuracy), hp: num(b.drain),
+    stars: num(b.difficulty_rating), length: num(b.total_length), checksum: str(b.checksum, 32) || md5 };
+}
 
-module.exports = { OsuError, getBeatmapSetId, getUser, getUserSets, getUserActivity, search, getTags, getSet, USER_TYPES, BUDGET, _buckets: buckets, configured: () => !!(process.env.OSU_CLIENT_ID && process.env.OSU_CLIENT_SECRET) };
+
+// the top 50 global scores of a difficulty (osu!standard), trimmed to what the results screen lists. The answer is { scores: [...] } with either
+// the legacy shape (mods as strings, statistics count_300...) or the lazer one (mods as { acronym, settings }, statistics great/ok/meh/miss): both are read.
+// osu! answers in the lazer shape only when asked with the header x-api-version: 20220705 or higher (osu! API docs, "API Response Version":
+// "20220705 Score object with different set of fields", https://osu.ppy.sh/docs/index.html#api-response-version; osu-web ScoreTransformer:
+// legacyFormat = api_version() < 20220705). Without it a score set on lazer comes in the legacy shape with score = legacy_total_score = 0.
+// null when osu! doesn't know the map. Cached 10 minutes (an empty list and a 404 too); requests for the same map that are in flight at once share one
+// request to osu!. If osu! refuses the scores path for our app token (401/403): scores_unavailable, and we don't ask again for an hour.
+const SCORES_API_VERSION = "20220705", SCORES_MS = 600000, SCORES_OFF_MS = 3600000, GRADES = new Set(["XH", "X", "SH", "S", "A", "B", "C", "D"]);
+const scoresOff = { until: 0 }, scoresPending = new Map();
+const cnt = (v, max = 1e9) => Math.min(max, Math.max(0, Math.round(num(v))));
+// The score: one number per row on the CLASSIC scale the replay board compares with (js/replay.js rpBoardK / rpBoardList):
+// a score set on stable keeps its stable score (legacy_total_score, "score V1": the same number as a stable .osr's header and as before),
+// a score set on lazer (legacy_total_score 0) gets classic_total_score (lazer's classic display score; a lazer replay is converted to that).
+// Then the legacy shape's score, and last total_score: in the lazer shape that is lazer's STANDARDISED score (another scale, at most
+// 1 000 000 for osu!standard without mods); osu! sends classic_total_score with every solo score, so it is only reached for an answer
+// without it, where a standardised number is still better than a row left out. The order is the one the client already expects.
+const SCORE_ORDER = s => [s.legacy_total_score, s.classic_total_score, s.score, s.total_score];
+function trimScore(s, i) {
+  const u = s.user || {}, st = s.statistics || {};
+  const legacy = typeof s.legacy_score_id === "number" && s.legacy_score_id > 0; // (lazer shape: a score set on stable)
+  const mods = (Array.isArray(s.mods) ? s.mods : []).map(m => typeof m === "string" ? m : m && m.acronym).filter(m => typeof m === "string" && /^[A-Za-z0-9]{1,3}$/.test(m)).map(m => m.toUpperCase())
+    .filter(m => !(legacy && m === "CL")).slice(0, 10); // (osu! marks stable scores with the Classic mod in the lazer shape; osu-web hides it for them too)
+  const dt = s.created_at ?? s.ended_at, t = typeof dt === "string" ? Date.parse(dt) : NaN; // (lazer-style scores say ended_at)
+  const av = str(u.avatar_url, 300), cc = str(u.country_code, 8);
+  return { rank: i + 1, user: { id: cnt(u.id), name: str(u.username, 32), country: /^[A-Za-z]{2}$/.test(cc) ? cc.toUpperCase() : "", avatar: /^https:\/\/[^\s"'<>]+$/.test(av) ? av : "" },
+    score: cnt(SCORE_ORDER(s).find(v => typeof v === "number" && v > 0), 1e13), acc: Math.min(1, Math.max(0, num(s.accuracy))), combo: cnt(s.max_combo, 1e6), mods,
+    grade: GRADES.has(s.rank) ? s.rank : "", pp: typeof s.pp === "number" && isFinite(s.pp) ? Math.round(Math.min(1e5, Math.max(0, s.pp)) * 100) / 100 : null,
+    date: isNaN(t) ? "" : new Date(t).toISOString(), n300: cnt(st.count_300 ?? st.great), n100: cnt(st.count_100 ?? st.ok), n50: cnt(st.count_50 ?? st.meh), miss: cnt(st.count_miss ?? st.miss) };
+}
+const trimScores = d => (d && Array.isArray(d.scores) ? d.scores : []).filter(s => s && typeof s === "object").slice(0, 50).map(trimScore);
+async function getScores(id, cls = "scores") {
+  id = String(id);
+  if (!/^\d{1,10}$/.test(id)) return null; // (never build the URL from anything else)
+  if (Date.now() < scoresOff.until) throw new OsuError("scores_unavailable", 503);
+  let p = scoresPending.get(id);
+  if (!p) {
+    p = osuGet(`/beatmaps/${id}/scores?mode=osu&type=global`, SCORES_MS, cls, SCORES_MS, { refused: "scores_unavailable", trim: trimScores, headers: { "x-api-version": SCORES_API_VERSION } })
+      .catch(e => { if (e && e.code === "scores_unavailable") { scoresOff.until = Date.now() + SCORES_OFF_MS; console.error("osu! refuses the scores path: not asking for an hour"); } throw e; })
+      .finally(() => { scoresPending.delete(id); });
+    scoresPending.set(id, p);
+  }
+  const list = await p;
+  return list ? { beatmap_id: +id, scores: list } : null;
+}
+
+// The replay file (.osr) of a score by its id, for a pasted osu! score link (js/replayui.js rpuPasteScore). osu!'s docs list this route (undocumented there) with scope
+// "public", but whether our app token (no player signed in) may use it is osu!'s to say: a 401 / 403 is replay_needs_login, and we don't ask again for an hour. null when
+// there is no such score or it has no replay (404). At most MAX_REPLAY bytes.
+const MAX_REPLAY = 8 * 1024 * 1024, replayOff = { until: 0 };
+async function getReplay(id, cls = "scores") {
+  id = String(id);
+  if (!/^\d{1,12}$/.test(id)) return null; // (never build the URL from anything else)
+  if (Date.now() < replayOff.until) throw new OsuError("replay_needs_login", 403);
+  checkCool(); take(cls);
+  const get = async () => fetchT(BASE() + `/api/v2/scores/${id}/download`, { headers: { Authorization: "Bearer " + await token(), Accept: "application/octet-stream", "x-api-version": SCORES_API_VERSION } }, 20000);
+  let r = await get();
+  if (r.status === 401) { tok.value = ""; r = await get(); }
+  if (r.status === 404) return null;
+  if (r.status === 429) { coolDown(r, "rate_limited", 60000); throw new OsuError("osu_rate_limited", 503); }
+  if (r.status === 401 || r.status === 403) { replayOff.until = Date.now() + SCORES_OFF_MS; console.error("osu! refuses the replay download for our app token: not asking for an hour"); throw new OsuError("replay_needs_login", 403); }
+  if (!r.ok) throw new OsuError("osu_error", 502);
+  if ((+r.headers.get("content-length") || 0) > MAX_REPLAY) throw new OsuError("replay_too_big", 413);
+  const buf = Buffer.from(await r.arrayBuffer());
+  if (buf.length > MAX_REPLAY) throw new OsuError("replay_too_big", 413);
+  return buf;
+}
+
+module.exports = { OsuError, getReplay, getBeatmapSetId, lookupByChecksum, getScores, getUser, getUserSets, getUserActivity, search, getTags, getSet, USER_TYPES, BUDGET, _buckets: buckets, _replay: { off: replayOff, MAX: MAX_REPLAY }, _scores: { off: scoresOff, pending: scoresPending, apiVersion: SCORES_API_VERSION, trim: trimScores }, configured: () => !!(process.env.OSU_CLIENT_ID && process.env.OSU_CLIENT_SECRET) };

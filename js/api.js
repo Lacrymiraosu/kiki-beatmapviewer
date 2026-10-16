@@ -30,6 +30,13 @@ function orderedMirrors(prefer) {
 }
 const dlURL = id => (mirrorById(S.mirror) || MIRRORS[0]).dl(id);
 const osuDlURL = sid => `https://osu.ppy.sh/beatmapsets/${sid}/download`;
+// the file a download is saved as, like osu! names it: "<set id> <Artist> - <Title>.osz" without the characters a file name can't have (they are dropped)
+function oszFileName(id, artist, title) {
+  const c = x => String(x ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/[\\/:*?"<>|]+/g, "").replace(/\s+/g, " ").trim();
+  const a = c(artist), t = c(title);
+  const base = `${c(id)} ${a && t ? a + " - " + t : a || t}`.trim().slice(0, 150).replace(/[. ]+$/, "");
+  return (base || "beatmapset") + ".osz";
+}
 const osuSetURL = (sid, bid) => `https://osu.ppy.sh/beatmapsets/${sid}${bid ? "#osu/" + bid : ""}`;
 function fillMirrors() { const sel = $("mirrorSel"); sel.innerHTML = ""; MIRRORS.forEach(m => sel.add(new Option(m.name + (m.search ? "" : " (" + tr("download only") + ")"), m.id))); sel.value = S.mirror; }
 fillMirrors();
@@ -134,7 +141,7 @@ async function searchSets(o, signal, prefer) {
     try {
       let arr = await fetchArr(url);
       if (!arr.length && !o.page && q !== plain) arr = await fetchArr(mi.search({ ...o, q: plain, st, kwc })); // (a mirror that didn't take the keywords: its words-only results, filtered here)
-      let list = arr.map(normSet).filter(Boolean);
+      let list = arr.map(normSet).filter(Boolean); list.forEach(s => { s.src = mi.id; });
       if (o.creator) { const c = o.creator.toLowerCase(); list = list.filter(s => s.creator.toLowerCase() === c); }
       if (st) list = list.filter(s => stMatch(s.status, st));
       if (kw) list = list.filter(s => kwMatch(s, kw.terms));
@@ -146,7 +153,7 @@ async function searchSets(o, signal, prefer) {
 // map info: the mirrors first, then osu! itself through our server (new / pending maps often aren't on the mirrors yet)
 async function lookupSet(id, signal) {
   for (const mi of orderedMirrors().filter(m => m.set)) {
-    try { const s = normSet(await fetchJSON(mi.set(id), signal)); if (s) return s; }
+    try { const s = normSet(await fetchJSON(mi.set(id), signal)); if (s) { s.src = mi.id; return s; } }
     catch (e) { if (signal && signal.aborted) throw e; }
   }
   if (typeof osuSet === "function") { const s = await osuSet(id); if (s) return normSet(s); }

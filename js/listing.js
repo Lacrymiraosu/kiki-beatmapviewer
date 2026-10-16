@@ -167,25 +167,104 @@ function pillsFit(box, fresh) {
 }
 if ($("advPills") && window.ResizeObserver) new ResizeObserver(([e]) => { const w = Math.round(e.contentRect.width); if (w !== ADV.pillsW) { ADV.pillsW = w; pillsFit($("advPills")); } }).observe($("advPills"));
 
-// ---------- a map's details from osu!: genre, language, player tags, mapper tags, nominators, rating ----------
+// ---------- a set's information: the facts in rows, the rest behind "More details" ----------
+// Shown (at every width): mapper, status with its date, genre and language, plays and favourites, and in .dextra what the set includes (storyboard,
+// video), source, dates, rating and nominators. Behind "More details": the mapper's tags, the players' tags and the volume (when there are no tags at
+// all, e.g. a local file, the fold would hold only the volume: then there is no toggle and the volume is shown plainly). What the list gave is drawn at once; osu!'s own answer for the set
+// (genre, language, rating, nominators, tags, dates...) replaces it when it arrives (through our server only). A row appears only when it has
+// something to show: local files and older cached sets just have fewer rows. The toggle is built once per call, so a redraw keeps its focus.
+const SET_ST = { ranked: () => tr("Ranked"), approved: () => tr("Approved"), loved: () => tr("Loved"), qualified: () => tr("Qualified"), pending: () => tr("Pending"), wip: () => "WIP", graveyard: () => tr("Graveyard"), local: () => tr("Local file") };
+let DMORE = false, DVOL = null; // "More details" open (this visit only, not stored); the volume sliders (#dVol), which live at the end of that fold
 async function renderSetMeta(box, info) {
-  if (!box) return; box.innerHTML = "";
-  if (!info || !info.sid) return;
+  if (!box) return; DVOL = DVOL || $("dVol"); box.replaceChildren(); // (replaceChildren: #dVol is kept in DVOL, it is put back below)
+  const lab = box.previousElementSibling; if (lab && lab.classList.contains("dilabel")) lab.hidden = true;
+  if (!info) return;
+  const orig = h("div", "dorig"), main = h("dl", "dkvs"), facts = h("div", "dfacts"), extra = h("dl", "dkvs dextra"), more = h("div", "dmore"), mi = h("div", "dmorein"), mb = h("div", "dmbody"), tg = h("button", "dmorebtn");
+  let flat = false, known = !info.sid; // flat: nothing but the volume to fold (decided once osu!'s answer is in, so the toggle doesn't come and go)
+  more.id = "dMore"; more.append(mi);
+  const vw = h("div", "dmvol"); vw.append(h("div", "dml", tr("Volume"))); if (DVOL) vw.append(DVOL); mi.append(mb, vw);
+  tg.type = "button"; tg.setAttribute("aria-controls", "dMore");
+  const sync = () => {
+    const on = DMORE || flat; tg.hidden = flat; more.classList.toggle("flat", flat);
+    tg.setAttribute("aria-expanded", String(on)); more.classList.toggle("open", on); more.inert = !on;
+    tg.replaceChildren(h("span", null, DMORE ? tr("Show less") : tr("More details")), (() => { const c = document.createElementNS("http://www.w3.org/2000/svg", "svg"); c.setAttribute("viewBox", "0 0 24 24"); c.setAttribute("aria-hidden", "true"); c.innerHTML = '<path d="M7 10l5 5 5-5"/>'; return c; })());
+  };
+  tg.onclick = () => {
+    DMORE = !DMORE; sync();
+    // wide screens: the information is a column of its own that scrolls; the opened fold is brought up under the toggle
+    if (DMORE && innerWidth >= 900) setTimeout(() => { // (as far as it takes to see the end of the fold, but not past the toggle itself)
+      const sd = tg.closest(".dside"); if (!DMORE || !sd) return;
+      const sr = sd.getBoundingClientRect(), dy = Math.min(tg.getBoundingClientRect().top - sr.top - 8, more.getBoundingClientRect().bottom - sr.bottom + 36);
+      if (dy > 1) sd.scrollTo({ top: sd.scrollTop + dy, behavior: RM ? "auto" : "smooth" });
+    }, 260);
+  };
+  sync();
+  box.append(orig, main, facts, extra, tg, more);
   const draw = set => {
-    box.innerHTML = "";
+    for (const e of [orig, main, facts, extra, mb]) e.replaceChildren();
+    const pick = (a, b) => a != null && a !== "" && a !== 0 ? a : b; // (the set from osu! first, else what the list said)
+    const dt = x => x ? fmtDate(x, false) : "";
     const g = set ? set.genre && set.genre.id : info.genre, l = set ? set.language && set.language.id : info.language;
-    const row = h("div", "dmrow");
-    const link = (label, title, go) => { const b = h("button", "dmchip", label); b.type = "button"; b.title = title; b.onclick = go; return b; };
-    if (g && g !== 1) row.append(link(tr(genreName(g) || (set && set.genre.name) || "?"), tr("Genre: find more maps like this"), () => searchWith({ g })));
-    if (l && l !== 1) row.append(link(tr(langName(l) || (set && set.language.name) || "?"), tr("Language: find more maps like this"), () => searchWith({ l })));
-    if (set && set.rating) { const e = h("em", "dmrate", `★ ${set.rating.avg.toFixed(1)}`); e.title = tr("Players' rating ({n} votes)", { n: fmtInt(set.rating.n) }); row.append(e); }
-    if (info.nsfw || (set && set.nsfw)) row.append(h("em", "dmnsfw", tr("Explicit")));
-    if (row.children.length) box.append(row);
-    if (set && set.nominators && set.nominators.length) {
-      const nr = h("div", "dmnoms"); nr.append(h("span", "dml", tr("Nominated by")));
-      for (const n of set.nominators) { const a = mapperLink(n.username || "#" + n.id, "dmnom"); a.prepend(avatarEl(n.id, n.username, "cav")); if (n.groups.length) a.append(h("small", null, n.groups.join(" "))); nr.append(a); }
-      box.append(nr);
+    const row = (to, key, val, cls) => { // val: text or node(s); nothing -> no row
+      if (val == null || val === "" || (Array.isArray(val) && !val.length)) return null;
+      const r = h("div", "dkv" + (cls ? " " + cls : "")), dd = h("dd");
+      dd.append(...[].concat(val)); r.append(h("dt", null, key), dd); to.append(r); return dd;
+    };
+    const link = (label, title, go) => { const b = h("button", "dlink", label); b.type = "button"; b.title = title; b.onclick = go; return b; };
+    // the original-script title and artist, when they differ from the romanised ones on the cover
+    const same = (a, b) => !a || !b || String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+    for (const [u, r] of [[info.titleU, info.title], [info.artistU, info.artist]]) if (!same(u, r)) { const e = h("span", null, u); e.title = u; orig.append(e); }
+    // mapper (with their osu! groups once known), status with its date
+    if (info.creator) {
+      const who = h("span", "dwho"), ci = set && set.creator_info;
+      if (info.sid) who.append(avatarEl(pick(ci && ci.id, info.uid), info.creator, "cav"));
+      who.append(info.sid ? mapperLink(info.creator) : info.creator);
+      if (ci && ci.groups && ci.groups.length) who.append(h("small", "dgrp", ci.groups.join(" ")));
+      row(main, tr("Mapper"), who);
     }
+    const st = (set && set.status) || info.status;
+    if (st) {
+      const lb = SET_ST[st], v = h("span", "dst"), tx = h("span", null, lb ? lb() : st); v.dataset.st = st; v.append(h("i"), tx);
+      const rd = ["ranked", "approved", "loved", "qualified"].includes(st) ? dt(pick(set && set.ranked_date, info.ranked)) : "";
+      if (rd) tx.append(h("span", "dsd", " · " + rd));
+      row(main, tr("Status"), v);
+    }
+    // genre and language, plays and favourites: one muted line each (no labels: the words and the icons say it)
+    const gl = [];
+    if (g && g !== 1) gl.push(link(tr(genreName(g) || (set && set.genre.name) || "?"), tr("Genre: find more maps like this"), () => searchWith({ g })));
+    if (l && l !== 1) gl.push(link(tr(langName(l) || (set && set.language.name) || "?"), tr("Language: find more maps like this"), () => searchWith({ l })));
+    if (gl.length) { const e = h("div", "dfl"); gl.forEach((b, i) => { if (i) e.append(" · "); e.append(b); }); facts.append(e); }
+    const pc = pick(set && set.play_count, info.plays), fc = pick(set && set.favourite_count, info.favs);
+    if (pc || fc) {
+      const e = h("div", "dfl dnum");
+      const n = (ic, label, v) => { const x = h("span"); x.title = label; x.append(h("i", null, ic), h("span", "dsr", label + " "), fmtInt(v)); return x; };
+      if (pc) e.append(n("▶", tr("Play count"), pc)); if (fc) e.append(n("♥", tr("Favourites"), fc));
+      facts.append(e);
+    }
+    // behind "More details"
+    const inc = [info.storyboard && tr("Storyboard"), info.video && tr("Video")].filter(Boolean).join(", ");
+    const dl = h("dl", "dkvs"); mb.append(dl);
+    const dx = extra; // (always visible; only the mapper's tags below stay in the fold)
+    row(dx, tr("Includes"), inc);
+    const src = pick(set && set.source, info.source);
+    if (src) row(dx, tr("Source"), link(src, tr("Search for \"{q}\"", { q: src }), () => searchWith({}, `source="${String(src).replace(/"/g, "")}"`)));
+    row(dx, tr("Submitted"), dt(pick(set && set.submitted_date, info.submitted)));
+    row(dx, tr("Last updated"), dt(pick(set && set.last_updated, info.updated)));
+    if (set && set.rating) { const e = h("span", "dmrate"); e.append(h("b", null, `★ ${set.rating.avg.toFixed(1)}`), h("small", null, tr("Players' rating ({n} votes)", { n: fmtInt(set.rating.n) }))); row(dx, tr("Rating"), e, "dkrate"); }
+    if (set && set.nominators && set.nominators.length) {
+      const nl = h("span", "dnoms");
+      for (const n of set.nominators) { const a = mapperLink(n.username || "#" + n.id, "dmnom"); a.prepend(avatarEl(n.id, n.username, "cav")); if (n.groups.length) a.append(h("small", null, n.groups.join(" "))); nl.append(a); }
+      row(dx, tr("Nominated by"), nl, "dknom");
+    }
+    // the mapper's own search tags: plain text that searches when pressed
+    const mt = [...new Set(String((set ? set.tags : info.tags) || "").split(/\s+/).filter(Boolean))].slice(0, 40);
+    if (mt.length) {
+      const line = h("span", "dmtagrow mt");
+      for (const t of mt) { const b = h("button", "dmtag plain", t); b.type = "button"; b.title = tr("Search for \"{q}\"", { q: t }); b.onclick = () => searchWith({}, t); line.append(b); }
+      row(dl, tr("Mapper tags"), line, "tags");
+    }
+    if (!dl.children.length) dl.remove();
+    if (set && set.nsfw && !info.nsfw && !$("dChips").querySelector(".nsfw")) $("dChips").append(h("em", "nsfw", tr("Explicit")));
     // player tags: votes across the difficulties (the highest count of each tag), grouped by category
     if (set && set.related_tags && set.related_tags.length) {
       const votes = new Map(); for (const b of set.map_tags || []) for (const t of b.tags) votes.set(t.name, Math.max(votes.get(t.name) || 0, t.count));
@@ -206,20 +285,18 @@ async function renderSetMeta(box, info) {
         sec.append(line);
       }
       tip.textContent = tr("Tap a tag to find more maps with it.");
-      sec.append(tip); box.append(sec);
+      sec.append(tip); mb.append(sec);
     }
-    // the mapper's own search tags
-    const mt = [...new Set(String((set ? set.tags : info.tags) || "").split(/\s+/).filter(Boolean))].slice(0, 40);
-    if (mt.length) {
-      const sec = h("div", "dmtags"); sec.append(h("div", "dml", tr("Mapper tags")));
-      const line = h("div", "dmtagrow mt");
-      for (const t of mt) { const b = h("button", "dmtag plain", t); b.type = "button"; b.title = tr("Search for \"{q}\"", { q: t }); b.onclick = () => searchWith({}, t); line.append(b); }
-      sec.append(line); box.append(sec);
-    }
+    if (lab && lab.classList.contains("dilabel")) lab.hidden = !(main.children.length || facts.children.length || extra.children.length || orig.children.length || mb.children.length || !!DVOL);
+    flat = known && !mb.children.length; sync();
   };
   draw(null);
+  if (!info.sid) return;
   const set = await osuSet(info.sid);
+  known = true;
   if (set && detailInfo === info && !$("detail").hidden) draw(set);
+  else if (detailInfo === info) { flat = !mb.children.length; sync(); }
+  if (detailInfo === info && typeof dReveal === "function") dReveal(); // (the set information changed the height of what is above the list: the picked row is brought into view again, unless the reader has scrolled)
 }
 
 // ---------- mapper profile (osu! profile through our server) ----------
@@ -315,7 +392,7 @@ function renderUserHead(box, u) {
   osuActivity(u.id).then(a => { if (R.user === u) renderActivity(act, a); });
   const acts = h("div", "macts");
   const prof = h("a", "btn ghost sm", tr("osu! profile")); prof.href = `https://osu.ppy.sh/users/${u.id}`; prof.target = "_blank"; prof.rel = "noopener";
-  const share = h("button", "btn ghost sm", tr("Share this page")); share.onclick = () => shareLink(location.origin + listURL({ u: u.username, q: "", st: R.ctx.st }), `${u.username} · KIKI BEATMAP VIEWER`);
+  const share = h("button", "btn ghost sm", tr("Share this page")); share.onclick = () => shareLink(location.origin + listURL({ u: u.username, q: "", st: R.ctx.st }), `${u.username} · beatmap viewer`);
   const back = h("button", "btn ghost sm", tr("← All maps")); back.onclick = () => goList({ q: "", u: "", st: defSt() }, true);
   acts.append(prof, share, back);
   if (AUTH.user && AUTH.user.id === u.id && typeof cloudEnabled === "function" && cloudEnabled()) { const mine = h("a", "btn ghost sm", tr("My private projects")); mine.href = "?view=projects"; mine.dataset.go = "projects"; acts.append(mine); }

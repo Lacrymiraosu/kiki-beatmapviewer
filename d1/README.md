@@ -11,5 +11,10 @@ functions in `api/_lib/d1*.js`. Times are ISO 8601 text in UTC, JSON is text, tr
   copied from Supabase (Admin → Settings → Database).
 - `migrations/0004_session_revoke.sql`: `users.sessions_valid_after` ("Log out everywhere", unlinking Google, suspending:
   logins made up to then stop working). Same as `supabase/migrations/20261008110000_obv_session_revoke.sql`.
+- `migrations/0005_replays.sql`: the `replays` table (the replay watcher's "Save online": an .osr file as base64 text, kept
+  60 days, deleted with its owner). Same as `supabase/migrations/20261010090000_obv_replays.sql`.
+- `migrations/0006_replay_share.sql`: `replays.share_key` (a saved replay shared by a link that only logged-in members can
+  open; null = not shared; 32 characters base64url, unique). Same as `supabase/migrations/20261011150000_obv_replay_share.sql`.
+  Until it has run, the rest of the replays works and sharing answers `503 not_configured`.
 
 From the command line: `npx wrangler d1 migrations apply osu-beatmap-viewer-db --remote`

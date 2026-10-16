@@ -7,7 +7,7 @@
 //           "Web application", redirect URI https://<site>/api/auth/google)
 // Only the account's ID at Google ("sub") is used: no name, no e-mail (only "openid" is asked for).
 const crypto = require("crypto");
-const { cfg, sign, unsign, cookies, cookie, query, safeNext, redirect, withParam, siteUrl } = require("./auth");
+const { cfg, sign, unsign, cookies, cookie, query, safeNext, redirect, withParam, siteUrl, validAfter, revoked } = require("./auth");
 const db = require("./db");
 
 const env = k => String(process.env[k] || "").trim();
@@ -69,7 +69,10 @@ const handler = p => async (req, res) => {
     if (st.mode === "link") {
       const s = unsign(cookies(req).obv_s, c);
       if (!s || s.kind !== "session" || s.id !== st.uid) return done("link_login");
-      await db.rpc("obv_user_touch", { p_id: s.id, p_username: String(s.username || "").slice(0, 64), p_avatar: s.avatar || null, p_country: s.country || null });
+      const u = await db.rpc("obv_user_touch", { p_id: s.id, p_username: String(s.username || "").slice(0, 64), p_avatar: s.avatar || null, p_country: s.country || null });
+      // a login ended since ("Log out everywhere", an unlink, a suspension) or a deleted account can't link anything: a stolen cookie
+      // would otherwise get its own Google account in as a way back (this runs on any server instance, so it asks the database)
+      if ((u && u.status === "deleted") || revoked(s, validAfter(u))) return done("link_login", cookie("obv_s", "", 0));
       try { await db.rpc("obv_login_link", { p_user: s.id, p_provider: p, p_subject: String(id.sub).slice(0, 255) }); }
       catch (e) { if (e.code === "conflict") return done("linked_elsewhere"); throw e; }
       return done("linked_" + p);

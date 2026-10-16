@@ -5,7 +5,8 @@
 // the request at once; the page then shows it as pending and lets them in by itself as soon as an admin approves.
 // The server enforces it on every request (api/v1.js); this page is only what people see. Privacy, Credits and the
 // Changelog stay readable for everyone.
-const GATE = { locked: false, me: null, poll: 0, sending: false };
+// On an open site, people who aren't logged in get this page as their home page too, in "welcome" mode (see gateWelcome).
+const GATE = { locked: false, welcome: false, me: null, poll: 0, sending: false };
 const GATE_OPEN_VIEWS = new Set(["privacy", "credits", "changelog", "guide"]);
 const GATE_FEATURES = [
   ["M9 18V5l11-2v13|c6,18,3|c17,16,3", "Beatmap", "Search osu! beatmaps like on the website: status, stars, genre, language, player tags (tech, style, skill) and more. Listen to previews, download, or open a map straight away."],
@@ -61,8 +62,8 @@ function gateOpenAsGuest() { history.pushState(null, "", location.pathname); gat
 function gateBrowse() {
   gateInviteClean();
   const p = new URLSearchParams(location.search), need = routeNeeds(p);
-  if (!need || !need.some(can)) history.pushState(null, "", location.pathname + (PERM.listing ? "?view=songs" : ""));
-  gateUnlock(false);
+  if (!need || !need.some(can)) history.pushState(null, "", location.pathname + (PERM.listing ? "?view=songs" : GATE.welcome ? "?view=guide" : ""));
+  GATE.welcome ? route() : gateUnlock(false); // (welcome: route() leaves the page for the app)
 }
 permApply();
 if ($("guestReq")) $("guestReq").onclick = gateOpenAsGuest;
@@ -81,19 +82,20 @@ async function gateBoot() {
   else if (early === "locked") { GATE.me = { gate: true }; gateLock(); }
   const me = await meP;
   GATE.me = me;
+  const out0 = GATE.out; GATE.out = gateOutOf(me); if (me && me.osu != null) gateOutSet(GATE.out); // (welcome mode on the home page)
   if (me && me.user && me.merge_pending) gateMergeAsk(me.merge_pending);
-  const changed = permSet(me);
+  const pc = permSet(me), fc = featTake(), changed = pc || fc; // (permissions or feature switches differ from what this device remembered)
   const locked = isGuest(me) && (!GATE.guest || special); // guests who can browse get the app (an invite, login or request link shows this page)
   if (me && me.gate != null) gateHintSet(locked ? "locked" : "open");
   if (GATE.guest && me.access === "pending") gatePoll();
-  if (early === "open") { if (locked) gateLock(); else if (changed || GATE.guest) route(); return; }
+  if (early === "open") { if (locked) gateLock(); else if (changed || GATE.guest || GATE.out !== out0) route(); else if (GATE.welcome) gateRender(); return; } // (the answer adds the Google button)
   if (early === "locked") { if (!locked) gateUnlock(false); else { gateRefresh(); if (me.access === "pending") gatePoll(); } return; }
   if (locked) return gateLock();
   if (new URLSearchParams(location.search).has("invite")) { gateInviteClean(); if (me && me.gate && me.user) toast(tr("You already have access"), 2500); } // an invite link, but no need for it
   route();
 }
 async function gateLock() {
-  GATE.locked = true;
+  GATE.locked = true; GATE.welcome = false;
   const p = new URLSearchParams(location.search), v = p.get("view");
   if (!p.get("s") && !p.get("b") && GATE_OPEN_VIEWS.has(v)) { document.body.classList.remove("gated"); $("gate").hidden = true; route(); return; }
   document.body.classList.add("gated"); $("gate").hidden = false;
@@ -115,14 +117,32 @@ async function gateLock() {
   demoStart();
 }
 function gateUnlock(msg) {
-  permSet(GATE.me); GATE.locked = false; clearInterval(GATE.poll); GATE.poll = 0;
-  document.body.classList.remove("gated"); $("gate").hidden = true;
-  if (GATE.stage) { GATE.stage.remove(); GATE.stage = null; GATE.tell = null; } // stops the tour
-  gateTryClose();
-  const demo = $("heroDemo"); if (demo) $("homeView").querySelector(".hero").prepend(demo);
-  demoStop(); if (msg !== false) toast(msg || tr("You're in! Welcome to KIKI BEATMAP VIEWER."), 3500);
+  permSet(GATE.me); GATE.locked = GATE.welcome = false; clearInterval(GATE.poll); GATE.poll = 0;
+  gateHide(); if (msg !== false) toast(msg || tr("You're in! Welcome to beatmap viewer."), 3500);
   route();
 }
+// back to the app: the page goes, with the tour, the playable demo and the hero's beatmap
+function gateHide() {
+  document.body.classList.remove("gated"); $("gate").hidden = true;
+  gateStageDrop(); gateTryClose();
+  const demo = $("heroDemo"); if (demo) $("homeView").querySelector(".hero").prepend(demo);
+  demoStop();
+}
+// ---------- welcome mode: the home page of people who aren't logged in, on an open site ----------
+// The same page without the invite-only parts: log in, browse the beatmaps, the tour and what logging in adds. Only on
+// the plain home page: links to a map, a view or a session open the app as before, and logged-in people get the app's
+// home. route() (app.js) decides. Like "obv-gate", "obv-out" (logged out last time) paints it at once; /me corrects it.
+const GATE_DEEP = ["s", "b", "u", "q", "live", "collab", "project", "invite", "key", "login", "access", "accept", "demo", "t", "notes"];
+const gateOutOf = me => !!(me && me.osu && me.user === null && !me.gate); // (a server without osu! login: the app, as before)
+const gateOutSet = v => { try { v ? localStorage.setItem("obv-out", "1") : localStorage.removeItem("obv-out"); } catch {} };
+GATE.out = (() => { try { return localStorage.getItem("obv-out") === "1"; } catch { return false; } })();
+const gateWelcomeWants = p => GATE.out && !AUTH.user && !GATE.locked && !GATE.guest && !DEMO_TOUR && viewFromParams(p) === "home" && !GATE_DEEP.some(k => p.has(k));
+function gateWelcome() {
+  if (!GATE.welcome) scrollTo(0, 0);
+  GATE.welcome = true; document.body.classList.add("gated"); $("gate").hidden = false;
+  gateRender(); demoStart();
+}
+function gateWelcomeEnd() { if (!GATE.welcome) return; GATE.welcome = false; gateHide(); }
 function gatePoll() {
   if (GATE.poll) return;
   GATE.poll = setInterval(async () => {
@@ -201,7 +221,7 @@ function gateInviteBox() {
     return box;
   }
   const inv = I.info.inviter, who = h("div", "ginvwho"), t = h("div");
-  t.append(h("b", null, tr("{n} invited you to KIKI BEATMAP VIEWER", { n: inv.username })), h("span", null, tr("Accept with your osu! account and you're in straight away, no waiting.")));
+  t.append(h("b", null, tr("{n} invited you to beatmap viewer", { n: inv.username })), h("span", null, tr("Accept with your osu! account and you're in straight away, no waiting.")));
   who.append(avatarEl(inv.id, inv.username, "mav"), t); box.append(who);
   if (!I.info.ok) {
     box.classList.add("bad");
@@ -233,7 +253,7 @@ function gateAskBox() {
   box.id = "gateAsk";
   box.append(h("h3", null, tr("Get access")));
   if (!u) {
-    box.append(h("p", null, tr("KIKI BEATMAP VIEWER is invite-only for now. Log in to ask for access: an admin looks at every request.")));
+    box.append(h("p", null, tr("beatmap viewer is invite-only for now. Log in to ask for access: an admin looks at every request.")));
     const b = h("a", "btn main gbig"); b.href = gateLoginURL(); b.append(osuMark(), h("span", null, tr("Request access with osu!")));
     box.append(b);
     if (altOn(me).length) { const g = h("a", "btn ghost gbig"); g.href = gateLoginURL("", "google"); g.append(altMark("google"), h("span", null, tr("Request access with Google"))); box.append(g); }
@@ -269,23 +289,30 @@ function gateAskBox() {
 function gateStage() {
   if (GATE.stage) return GATE.stage;
   const st = h("section", "gstage"), head = h("div", "gshead"), box = h("div", "gsbox"), screen = h("div", "gscreen"), fr = h("iframe");
-  fr.src = location.pathname + "?demo=tour"; fr.loading = "lazy"; fr.tabIndex = -1; fr.setAttribute("aria-hidden", "true"); fr.title = "KIKI BEATMAP VIEWER";
+  fr.src = location.pathname + "?demo=tour"; fr.loading = "lazy"; fr.tabIndex = -1; fr.setAttribute("aria-hidden", "true"); fr.title = "beatmap viewer";
   const cap = h("div", "gcap"), chaps = h("ol", "gchaps");
   screen.append(fr); box.append(screen, chaps); st.append(head, box, cap);
   GATE.stage = st; GATE.frame = fr; GATE.chap = 0;
   const fit = () => { const w = screen.clientWidth; if (!w) return; const k = w / 1280; fr.style.transform = `scale(${k})`; screen.style.height = Math.round(720 * k) + "px";
     chaps.style.maxHeight = getComputedStyle(box).gridTemplateColumns.split(" ").length > 1 ? Math.round(720 * k) + "px" : ""; };
-  new ResizeObserver(fit).observe(screen);
+  const ro = new ResizeObserver(fit); ro.observe(screen);
   const tell = msg => { try { fr.contentWindow && fr.contentWindow.postMessage({ obv: "tour", ...msg }, location.origin); } catch {} };
   GATE.tell = tell;
   const vis = () => tell({ cmd: "visible", on: !!GATE.seen && !document.hidden && !$("gateTry") });
   GATE.vis = vis;
-  new IntersectionObserver(es => { GATE.seen = es[es.length - 1].isIntersecting; vis(); }, { threshold: .15 }).observe(screen);
-  document.addEventListener("visibilitychange", vis);
+  const io = new IntersectionObserver(es => { GATE.seen = es[es.length - 1].isIntersecting; vis(); }, { threshold: .15 }); io.observe(screen);
+  GATE.obs = [ro, io];
   fr.addEventListener("load", vis);
-  addEventListener("message", e => { if (e.origin === location.origin && e.source === fr.contentWindow && e.data && e.data.obv === "tour" && Number.isInteger(e.data.i)) { GATE.chap = e.data.i; gateStageText(); } });
   return st;
 }
+// leaving the page stops the tour: the frame (a whole copy of the app) goes, and is made again when the page comes back
+function gateStageDrop() {
+  if (!GATE.stage) return;
+  GATE.obs.forEach(o => o.disconnect()); GATE.stage.remove();
+  GATE.stage = GATE.frame = GATE.tell = GATE.vis = GATE.obs = null; GATE.seen = false;
+}
+document.addEventListener("visibilitychange", () => GATE.vis && GATE.vis());
+addEventListener("message", e => { if (e.origin === location.origin && GATE.frame && e.source === GATE.frame.contentWindow && e.data && e.data.obv === "tour" && Number.isInteger(e.data.i)) { GATE.chap = e.data.i; gateStageText(); } });
 // the playable demo editor, full screen (demo.js tryStart): the same editor on the same map, nothing saved
 function gateTry() {
   if ($("gateTry")) return;
@@ -293,7 +320,8 @@ function gateTry() {
   o.id = "gateTry"; o.setAttribute("role", "dialog"); o.setAttribute("aria-modal", "true"); o.setAttribute("aria-label", tr("Try the editor"));
   const info = h("div", "gtryinfo"); info.append(h("b", null, tr("Try the editor")), h("span", null, tr("The real editor on a demo map. Click, drag, place, hitsound: nothing is saved.")));
   const acts = h("div", "gacts");
-  if (me.access !== "pending") {
+  if (GATE.welcome) { const li = h("a", "btn main sm"); li.href = gateLoginHref(); li.append(osuMark(), h("span", null, tr("Log in"))); acts.append(li); }
+  else if (me.access !== "pending") {
     const req = me.user ? h("button", "btn main sm", tr("Request access")) : h("a", "btn main sm", tr("Request access"));
     if (me.user) req.onclick = () => { gateTryClose(); gateRequest(""); }; else req.href = gateLoginURL();
     acts.append(req);
@@ -305,11 +333,13 @@ function gateTry() {
   bar.append(info, acts);
   fr.src = location.pathname + "?demo=try"; fr.title = tr("Try the editor"); fr.allow = "fullscreen";
   o.append(bar, fr); document.body.append(o); document.body.classList.add("gtrying"); GATE.vis && GATE.vis(); // the tour rests meanwhile
+  if (typeof lockZoom === "function") lockZoom(true); // (the editor in the frame: no zoom, as in the app; a frame's own viewport doesn't count)
   fr.addEventListener("load", () => { try { fr.contentWindow.focus(); } catch {} });
 }
 function gateTryClose() {
   const o = $("gateTry"); if (!o) return;
   o.remove(); document.body.classList.remove("gtrying");
+  if (typeof lockZoom === "function" && UI.player.hidden) lockZoom(false);
   GATE.vis && GATE.vis(); // the tour picks up again
 }
 addEventListener("message", e => { if (e.origin === location.origin && e.data && e.data.obv === "try" && e.data.close) gateTryClose(); });
@@ -341,14 +371,16 @@ function gateLang() {
   LANGS.forEach(([c, n]) => lang.add(new Option(n, c))); lang.value = LANG; lang.onchange = () => { setLang(lang.value); GATE.tell && GATE.tell({ cmd: "lang", lang: lang.value }); };
   return lang;
 }
+const gateLoginHref = () => "/api/auth/login?next=" + encodeURIComponent(location.pathname + location.search); // (back here, logged in)
 function gateActs() {
   const me = GATE.me || {}, u = me.user, a = me.access || "none", acts = h("div", "gacts");
   if (GATE.guest) { // into the app: the page in the address bar if they may use it, else the first part they can use (on phones: the hero's button)
     const back = h("button", "btn ghost sm gback", tr(PERM.listing ? "Browse beatmaps" : "Open the site")); back.onclick = gateBrowse; acts.append(back); }
   if (!u) {
-    const login = h("a", "btn ghost sm gbtn"); login.href = "/api/auth/login?next=" + encodeURIComponent(location.pathname + location.search);
+    const login = h("a", "btn ghost sm gbtn"); login.href = gateLoginHref();
     login.append(osuMark(), h("span", null, tr("Log in"))); acts.append(login);
     if (altOn(me).length) acts.append(altButtons("gbtn", me, "short"));
+    if (GATE.welcome) { const br = h("button", "btn main sm", tr(PERM.listing ? "Browse beatmaps" : "Open the site")); br.onclick = gateBrowse; acts.append(br); return acts; } // (open site: nothing to ask for)
     const req = h("a", "btn main sm"); req.href = gateLoginURL(gateInviteOk() ? "accept" : ""); req.textContent = tr(gateInviteOk() ? "Accept the invite" : "Request access"); acts.append(req);
     return acts;
   }
@@ -376,40 +408,64 @@ function gateLiveBox() {
   };
   return f;
 }
+// welcome mode, in place of "How to get in": what logging in adds (the rest works without an account)
+const GATE_MORE = [ // [icon, title, text]
+  ["M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.2 9.2 4.4 4.4 0 0 0 7 18z|M12 15V10M9.5 12.5L12 10l2.5 2.5", "Save online", "Keep whole beatmap packages, annotations included, privately in your account and open them on any device."],
+  ["M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1|M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1", "Share your work", "Share a project with people by osu! name, or send a read-only link."],
+  ["c12,12,2.5|M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4|M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2", "Map live with friends", "Host a live session, or start a collab where everyone edits one difficulty."],
+  ["M3 5h12v9H3z|M7 18h4|M17 8h4v11h-4z", "Your settings everywhere", "Skin, editor options, language and mod note categories can follow your account to your other devices."],
+];
+// welcome mode: what logging in adds, as a panel with its own call to action (the copy and buttons, then the four perks)
+function gateMore() {
+  const s = h("section", "gmore"), copy = h("div", "gmcopy"), grid = h("ul", "gmgrid"), row = h("div", "gmacts"), login = h("a", "btn main gmlogin");
+  for (const [icon, b, t] of GATE_MORE) {
+    const li = h("li", "gmitem"), ic = h("span", "gmic"); ic.append(gateIcon(icon));
+    const tx = h("div"); tx.append(h("b", null, tr(b)), h("span", null, tr(t))); li.append(ic, tx); grid.append(li);
+  }
+  login.href = gateLoginHref(); login.append(osuMark(), h("span", null, tr("Log in with osu!"))); row.append(login);
+  if (altOn(GATE.me).length) row.append(altButtons("gmalt", GATE.me));
+  copy.append(h("span", "gmeyebrow", tr("Free with your osu! account")), h("h3", null, tr("Log in to get more")),
+    h("p", null, tr("Everything on this page works without an account. Log in with osu! and you also get:")), row,
+    h("small", "gmnote", tr("Only your public osu! profile is read. We never see your password.")));
+  s.append(copy, grid);
+  return s;
+}
 function gateRender() {
   const g = $("gate"); if (!g || g.hidden) return;
-  const keepDemo = $("heroDemo"), stage = gateStage();
+  const keepDemo = $("heroDemo"), stage = gateStage(), W = GATE.welcome; // W: welcome mode, without the invite-only parts
   for (const c of [...g.children]) if (c !== stage) c.remove();
-  const top = h("header", "gtop"), brand = h("div", "brand"); brand.append(h("div", "logo"), h("strong", "bname", "KIKI BEATMAP VIEWER"));
+  const top = h("header", "gtop"), brand = h("div", "brand"); brand.append(h("div", "logo"), h("strong", "bname", "KIKI Beatmap Viewer"));
   top.append(brand, gateLang(), gateActs()); // (phones: logo and language on top, the buttons on their own row)
   const hero = h("section", "hero ghero"); if (keepDemo) hero.append(keepDemo);
   hero.append(h("h1", null, tr("Preview, mod and map osu! beatmaps right in your browser")),
-    h("p", null, tr("KIKI BEATMAP VIEWER is invite-only for now. Here's everything it can do. Ask for access with your osu! account at the bottom of the page.")));
+    h("p", null, W ? tr("Free, nothing to install. Log in with osu! to save online, map live with friends and more.") : tr("beatmap viewer is invite-only for now. Here's everything it can do. Ask for access with your osu! account at the bottom of the page.")));
   const more = h("button", "btn ghost", tr("See what it can do") + " ↓"); more.onclick = () => stage.scrollIntoView({ behavior: "smooth" });
   const tryB = h("button", "btn main", "▶ " + tr("Try the editor")); tryB.onclick = gateTry;
   const hb = h("div", "btnrow ghbtns"); hb.append(tryB);
-  if (GATE.guest) { const br = h("button", "btn ghost", tr(PERM.listing ? "Browse beatmaps" : "Open the site") + " →"); br.onclick = gateBrowse; hb.append(br); }
+  if (GATE.guest || W) { const br = h("button", "btn ghost", tr(PERM.listing ? "Browse beatmaps" : "Open the site") + " →"); br.onclick = gateBrowse; hb.append(br); }
   hb.append(more); hero.append(hb, gateLiveBox());
   const grid = h("section", "gfeat");
   for (const [icon, title, text] of GATE_FEATURES) {
     const c = h("article", "gcard"), ic = h("span", "mic"); ic.append(gateIcon(icon));
     c.append(ic, h("b", null, tr(title)), h("span", null, tr(text))); grid.append(c);
   }
-  const how = h("section", "ghow");
-  how.append(h("h3", null, tr("How to get in")));
-  const ol = h("ol");
-  for (const t of ["Log in with osu! (only your public profile is read).", "Your request goes to the site's admins, marked pending.", "Once approved, this page opens the app by itself."]) ol.append(h("li", null, tr(t)));
-  how.append(ol);
+  const how = W ? gateMore() : h("section", "ghow");
+  if (!W) {
+    how.append(h("h3", null, tr("How to get in")));
+    const ol = h("ol");
+    for (const t of ["Log in with osu! (only your public profile is read).", "Your request goes to the site's admins, marked pending.", "Once approved, this page opens the app by itself."]) ol.append(h("li", null, tr(t)));
+    how.append(ol);
+  }
   const foot = h("footer", "foot"), nav = h("nav");
   for (const [v, l] of [["guide", "Guide"], ["credits", "Credits"], ["privacy", "Privacy"], ["changelog", "Changelog"]]) { const a = h("a", null, tr(l)); a.href = "?view=" + v; nav.append(a); }
   const rp = h("a", null, tr("Report a problem")); rp.href = "#"; rp.onclick = e => { e.preventDefault(); openReport(); }; nav.append(rp);
   const gh = h("a", null, "GitHub"); gh.href = "https://github.com/Lacrymiraosu/kiki-beatmapviewer"; gh.target = "_blank"; gh.rel = "noopener"; nav.append(gh);
-  foot.append(nav, h("small", null, tr("Not affiliated with ppy Pty Ltd. osu! is a trademark of ppy Pty Ltd.")));
+  foot.append(h("b", "footname", "KIKI Beatmap Viewer"), nav, h("small", null, tr("Not affiliated with ppy Pty Ltd. osu! is a trademark of ppy Pty Ltd.")));
   if (!stage.parentNode) g.append(stage);
-  g.insertBefore(top, stage); const ib = gateInviteBox(); if (ib) g.insertBefore(ib, stage); g.insertBefore(hero, stage);
-  stage.after(grid, how, gateAskBox(), foot);
+  g.insertBefore(top, stage); const ib = !W && gateInviteBox(); if (ib) g.insertBefore(ib, stage); g.insertBefore(hero, stage);
+  stage.after(grid, how, ...(W ? [] : [gateAskBox()]), foot);
   gateStageText();
 }
-addEventListener("langchange", () => { if (GATE.locked) gateRender(); });
-document.addEventListener("visibilitychange", () => { if (!GATE.locked || $("gate").hidden) return; if (document.hidden) demoStop(); else demoStart(); });
+addEventListener("langchange", () => { if (GATE.locked || GATE.welcome) gateRender(); });
+document.addEventListener("visibilitychange", () => { if (!(GATE.locked || GATE.welcome) || $("gate").hidden) return; if (document.hidden) demoStop(); else demoStart(); });
 homeFeatIcons();

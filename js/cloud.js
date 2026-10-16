@@ -17,6 +17,7 @@ async function cloudMe(force) {
     CLOUD.me = (r.headers.get("content-type") || "").includes("json") ? await r.json() : { cloud: false };
   } catch { CLOUD.me = { cloud: false }; }
   if (CLOUD.me.deleted && typeof AUTH !== "undefined" && AUTH.user && !AUTH.user.dev) { AUTH.user = null; if (typeof renderAccount === "function") renderAccount(); } // (a login from before the account was deleted)
+  if (typeof featSet === "function") featSet(CLOUD.me); // (feature switches: features.js)
   if (typeof prefsPull === "function") prefsPull(CLOUD.me);
   if (typeof gdButtons === "function") gdButtons();
   if (typeof renderAccount === "function" && CLOUD.me.badges) renderAccount(); // (admins: a count of people waiting / new errors)
@@ -42,6 +43,7 @@ function cloudErrText(e) {
     login_required: tr("Log in with osu! to save online"), not_configured: tr("Online saving isn't set up on this site yet"),
     too_large: tr("The project is bigger than {l} ({s}). Leave out the video or big storyboard files.", { l: cloudMB(d.limit || cloudLimits().max_project_bytes), s: cloudMB(d.size || 0) }),
     expired: tr("This project has expired and can't be opened or saved any more."),
+    feature_disabled: tr("This part of the site is switched off for now."),
     saving_disabled: tr("Online saving is paused by the site's admins right now. Your work stays on this device; try again later."),
     too_many_members: tr("This project is already shared with the most people allowed ({n}).", { n: d.limit || 20 }),
     forbidden: d.reason === "no_add" ? tr("This person doesn't let others add them to online projects") : tr("You can only view this project"),
@@ -108,7 +110,7 @@ function cloudSave(opts = {}) {
   return CLOUD.running;
 }
 async function cloudSaveRun(opts) {
-  if (!map) return;
+  if (!map || !featGuard("projects")) return;
   await cloudMe();
   if (!cloudEnabled()) return toast(tr("Online saving isn't set up on this site yet"), 3000);
   if (!AUTH.checked) await authCheck();
@@ -158,7 +160,7 @@ async function cloudSaveRun(opts) {
     await cloudSyncAnnotations(c.annotations);
     if (PKG && PKG.kind !== "cloud") { const old = DRAFT.key; draftDetach(); if (old) draftDelete({ key: old, uid: DRAFT.uid || draftUid(), pkey: old.split("|")[2] }); draftPkg("cloud", { projectId: p.id }); draftAttach(); }
     if (CLOUD.gen === gen) { // nothing changed while saving: the online copy is the current state
-      EDIT.changed = false; osuFiles.forEach(o => { if (o.edited || o.created) { o.edited = o.created = false; } });
+      EDIT.changed = false; osuFiles.forEach(o => { if (o.edited || o.created) { o.edited = o.created = false; } }); diffMarks();
       osuFiles.forEach((o, i) => { if (i !== curDiff) return; o.text = editedText(); o.ids = map.lines.map(L => L.id); });
       CLOUD.savedGen = gen; setCloud("saved");
     } else setCloud("unsaved");
@@ -352,13 +354,13 @@ $("cloudBtn").onclick = () => CLOUD.project && CLOUD.status !== "unsaved" && CLO
 $("cloudChip").onclick = cloudInfo;
 // Save (the top bar, like osu!'s File → Save; shown while Save online isn't, app.css): the map's files themselves
 if ($("edSave")) $("edSave").onclick = async () => {
-  if (cloudEnabled()) return cloudSave();
+  if (cloudEnabled() && featOn("projects")) return cloudSave(); // (with Online projects switched off, Save is the file export)
   const v = await modal({ title: tr("Save"), body: h("p", "hint", tr("Your edits also stay on this device as a draft. To keep the map, download it: the .osu replaces the difficulty in your Songs folder, the .osz is the whole set.")), dismiss: null,
     buttons: [{ label: tr("Close"), value: null, cls: "ghost" }, { label: tr("Export .osz"), value: "osz", cls: "ghost" }, { label: tr("Export .osu"), value: "osu", cls: "main" }] });
   if (v === "osu") exportOsu(); else if (v === "osz") exportOsz();
 };
 addEventListener("keydown", e => { // Ctrl+S = save online (when the site has it)
-  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "s" && EDIT.on && map && cloudEnabled() && !e.target.closest("input,textarea")) { e.preventDefault(); cloudSave(); }
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "s" && EDIT.on && map && cloudEnabled() && featOn("projects") && !e.target.closest("input,textarea")) { e.preventDefault(); cloudSave(); }
 });
 cloudMe().then(() => setCloud(CLOUD.status));
 

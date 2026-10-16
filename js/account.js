@@ -3,7 +3,7 @@
 // ---------- "Sync my settings across devices": the site's settings follow the account ----------
 // Device-specific ones stay on each device (audio offset and calibration, volumes, quality, frame rate, view) and so
 // does a skin loaded from a file (.osk lives in this browser only).
-const PREFS_LOCAL = new Set(["tlH", "edSize", "cmpDockMin", "offset", "offsetBt", "btMode", "hsDelay", "quality", "fps", "masterVol", "musVol", "hsVol", "view", "prefsAt", "acctSync", "skinDefV", "mirrorDefV", "edTourSeen", "edTourAdvSeen", "edTourSnooze", "edTourAdvSnooze", "edTray"]);
+const PREFS_LOCAL = new Set(["tlH", "edSize", "cmpDockMin", "offset", "offsetBt", "btMode", "hsDelay", "quality", "sbGL", "sbGLAsked", "fpsHud", "fps", "masterVol", "musVol", "hsVol", "view", "prefsAt", "acctSync", "skinDefV", "mirrorDefV", "edTourSeen", "edTourAdvSeen", "edTourSnooze", "edTourAdvSnooze", "edTray"]);
 function prefsOut() {
   const o = {};
   for (const [k, v] of Object.entries(S)) if (!PREFS_LOCAL.has(k) && !(k === "skin" && /^osk:/.test(v)) && v !== undefined) o[k] = v;
@@ -28,7 +28,8 @@ async function prefsPull(me) {
   if (!r.sync || !r.prefs) return;
   const keepLang = S.lang;
   prefsBusy = true;
-  for (const [k, v] of Object.entries(r.prefs)) if (!PREFS_LOCAL.has(k) && k in DEF) S[k] = v;
+  for (const [k, v] of Object.entries(r.prefs)) if (!PREFS_LOCAL.has(k) && k in DEF && !(k === "skin" && /^osk:/.test(v))) S[k] = v; // (a skin from a file lives on one device only)
+  cleanSkinOpts(S); // (Settings → Skin: whatever the server sent is checked like a saved setting: core.js)
   S.acctSync = true; S.prefsAt = r.prefs_at; writeS(); prefsBusy = false;
   if (S.lang !== keepLang && typeof setLang === "function") setLang(S.lang);
   dirty = true;

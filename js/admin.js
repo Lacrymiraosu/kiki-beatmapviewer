@@ -1,62 +1,12 @@
 "use strict";
-// ============ admin dashboard (the site owner and the admins they add) + Markdown for the changelog ============
+// ============ admin dashboard (the site owner and the admins they add) ============
 // The page only shows controls; every admin request is checked on the server against the caller's verified osu! id.
-
-// ---------- safe Markdown: builds DOM nodes (never HTML strings), so stored text can't inject markup ----------
-// Supports: # ## ### headings, - * and 1. lists, > quotes, ``` code blocks, ---, **bold**, *italic* / _italic_,
-// `code`, [links](https://…) (http/https or site-relative only). With translate, plain list items / paragraphs that
-// match a known UI string are shown in the reader's language (keeps the old built-in changelog translated).
-function mdInline(text, parent) {
-  const RE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\[[^\]\n]+\]\([^)\s]+\))|(\*[^*\n]+\*|\b_[^_\n]+_\b)/g;
-  let last = 0;
-  for (const m of text.matchAll(RE)) {
-    if (m.index > last) parent.append(text.slice(last, m.index));
-    const s = m[0];
-    if (m[1]) parent.append(h("code", null, s.slice(1, -1)));
-    else if (m[2]) { const b = h("strong"); mdInline(s.slice(2, -2), b); parent.append(b); }
-    else if (m[3]) {
-      const mm = s.match(/^\[([^\]]+)\]\(([^)\s]+)\)$/), url = mm[2];
-      if (/^https?:\/\//i.test(url) || /^[?/](?!\/)/.test(url)) { const a = h("a", null, mm[1]); a.href = url; if (/^https?:/i.test(url)) { a.target = "_blank"; a.rel = "noopener noreferrer nofollow"; } parent.append(a); }
-      else parent.append(mm[1]);
-    } else if (m[4]) { const i = h("em"); mdInline(s.slice(1, -1), i); parent.append(i); }
-    last = m.index + s.length;
-  }
-  if (last < text.length) parent.append(text.slice(last));
-}
-function mdRender(src, opts = {}) {
-  const out = document.createDocumentFragment(), lines = String(src || "").replace(/\r\n?/g, "\n").split("\n");
-  const plain = t => opts.translate && !/[`*_\[]/.test(t) ? tr(t) : t;
-  let list = null, para = null, code = null;
-  const flush = () => { list = null; if (para) { out.append(para.el); para = null; } };
-  for (const raw of lines) {
-    if (code) { if (/^```/.test(raw)) { out.append(code); code = null; } else code.firstChild.append(raw + "\n"); continue; }
-    const line = raw.replace(/\s+$/, "");
-    if (/^```/.test(line)) { flush(); code = h("pre"); code.append(h("code")); continue; }
-    if (!line.trim()) { flush(); continue; }
-    let m;
-    if ((m = line.match(/^(#{1,3})\s+(.+)$/))) { flush(); const el = h("h" + (m[1].length + 3)); mdInline(plain(m[2]), el); out.append(el); continue; }
-    if (/^(-{3,}|\*{3,})$/.test(line)) { flush(); out.append(h("hr")); continue; }
-    if ((m = line.match(/^\s*([-*]|\d{1,3}[.)])\s+(.+)$/))) {
-      if (para) { out.append(para.el); para = null; }
-      const ordered = /\d/.test(m[1]);
-      if (!list || list.ordered !== ordered) { list = { ordered, el: h(ordered ? "ol" : "ul") }; out.append(list.el); }
-      const li = h("li"); mdInline(plain(m[2]), li); list.el.append(li); continue;
-    }
-    if ((m = line.match(/^>\s?(.*)$/))) { flush(); const q = h("blockquote"); mdInline(plain(m[1]), q); out.append(q); continue; }
-    list = null;
-    if (!para) para = { el: h("p") }; else para.el.append(h("br"));
-    mdInline(plain(line.trim()), para.el);
-  }
-  if (code) out.append(code);
-  flush();
-  return out;
-}
 
 // ---------- dashboard ----------
 // Tabs: overview, users, projects, storage & cleanup, settings, admins, audit log, changelog. Details (a user, a project)
 // open in a side panel; every change is sent to the server, which checks the caller's role again.
 const ADM = { tab: "overview", role: null, users: { q: "", status: "", role: "", sort: "" }, access: { status: "pending", q: "" }, projects: { q: "", status: "", sort: "" }, audit: { action: "", q: "" }, errors: { resolved: false, kind: "error", rows: [] }, cl: null, stack: [] };
-const ADM_TABS = [["overview", "Overview"], ["users", "Users"], ["access", "Access"], ["errors", "Errors"], ["projects", "Projects"], ["storage", "Storage & cleanup"], ["turn", "TURN relay"], ["settings", "Settings"], ["admins", "Admins"], ["audit", "Audit log"], ["changelog", "Changelog"]];
+const ADM_TABS = [["overview", "Overview"], ["users", "Users"], ["access", "Access"], ["errors", "Errors"], ["projects", "Projects"], ["storage", "Storage & cleanup"], ["turn", "TURN relay"], ["settings", "Settings"], ["features", "Features"], ["admins", "Admins"], ["audit", "Audit log"], ["changelog", "Changelog"]];
 async function aapi(method, route, body) { return capi(method, "admin/" + route, body); }
 const admFail = e => toast(tr("Failed: {err}", { err: admErr(e) }), 4500);
 function admErr(e) {
@@ -132,7 +82,7 @@ function admGo(tab, patch) {
 async function admShowTab() {
   const body = $("admBody"); if (!body) return;
   body.innerHTML = ""; body.append(h("div", "card sk"), h("div", "card sk"));
-  const fn = { overview: admOverview, users: admUsers, access: admAccess, errors: admErrors, projects: admProjects, storage: admStorage, turn: admTurn, settings: admSettings, admins: admAdmins, audit: admAudit, changelog: admChangelog }[ADM.tab];
+  const fn = { overview: admOverview, users: admUsers, access: admAccess, errors: admErrors, projects: admProjects, storage: admStorage, turn: admTurn, settings: admSettings, features: admFeatures, admins: admAdmins, audit: admAudit, changelog: admChangelog }[ADM.tab];
   try { await fn(body); }
   catch (e) { body.innerHTML = ""; const d = h("div", "empty", admErr(e) + " "); const again = h("button", "btn ghost sm", tr("Try again")); again.onclick = admShowTab; d.append(again); body.append(d); }
 }
@@ -549,6 +499,8 @@ const ADM_SETTINGS = [ // key, label, unit, to shown unit, from shown unit, help
   ["retention_days", "Days a project is kept", "days", v => v, v => Math.round(v), "Counted from the first online save. Applies to projects created after the change; existing projects keep their date (change one in its panel)."],
   ["max_projects_per_user", "Online projects per user", "projects", v => v, v => Math.round(v), "Active projects one person may own at the same time."],
   ["max_members_per_project", "People per project", "people", v => v, v => Math.round(v), "How many people one project can be shared with."],
+  ["replays_per_user", "Online replays per user", "replays", v => v, v => Math.round(v), "Replays one person may keep saved online at the same time. Each is deleted automatically 60 days after saving."],
+  ["replay_budget_bytes", "Storage budget for replays", "MB", v => v / 1e6, v => Math.round(v * 1e6), "New online replays are refused above this total for the whole site. They are stored in the database (each at most 1 MB), so keep it well below its plan (Free: 500 MB for everything)."],
   ["max_annotations", "Annotations per project", "annotations", v => v, v => Math.round(v), "Comments, arrows and highlights stored with one project."],
   ["invites_per_user", "Invites per person", "people", v => v, v => Math.round(v), "How many people each person's invite link can let in (0 = no invites). People who came in with an invite can't invite anyone until you allow it in their panel. Admins have no limit. A person's own number in their panel overrides this."]];
 const PERM_ROWS = [ // area, label, help (the settings are perm_guest_<area> and perm_member_<area>)
@@ -558,6 +510,45 @@ const PERM_ROWS = [ // area, label, help (the settings are perm_guest_<area> and
   ["editor", "Editor and modding", "Editor, Hitsound Studio, Verify, mod notes and annotations, drafts"],
   ["online", "Online features", "Online projects, live sessions, collab and invite links (needs an account)"],
   ["live", "Watch live sessions", "Join a live session from its invite link and only watch: the host's playback and edits, no editing, highlights, comments or chat. Members join live sessions with Online features."]];
+// ----- feature switches: any admin can turn a function or a menu off for everyone (js/features.js, api/_lib/features.js) -----
+async function admFeatures(body) {
+  const S2 = await admSettingsCache(true); body.innerHTML = "";
+  body.append(h("p", "hint", tr("Switch off a function or a menu for everyone at once, for example when it has a serious bug. It disappears from the site within about 20 seconds (a page that is already open, on its next load). Switch it on again the same way.")));
+  if (!("feat_songs" in S2)) { body.append(h("p", "aalert", tr("Feature switches need the database update 20261009090000_obv_feature_switches.sql: run it once in Supabase."))); return; }
+  const state = h("div", "afstate"), list = h("div", "aflist"), rows = new Map();
+  const offCount = () => FEATS.filter(f => S2["feat_" + f[0]] === false).length;
+  const paint = () => {
+    const n = offCount(); state.innerHTML = "";
+    state.className = "afstate" + (n ? " off" : "");
+    state.append(h("b", null, n ? tr("{n} switched off", { n }) : tr("Everything is on")));
+    if (n) { const b = h("button", "btn sm", tr("Switch all back on")); b.onclick = () => put(FEATS.filter(f => S2["feat_" + f[0]] === false).map(f => f[0]), true); state.append(b); }
+  };
+  async function put(keys, on) {
+    const values = {}; for (const k of keys) values["feat_" + k] = on;
+    try {
+      const r = await aapi("POST", "features", { values });
+      for (const s of r.settings) S2[s.key] = s.value;
+      toast(on ? tr("Switched on") : tr("Switched off"), 1800);
+      if (typeof cloudMe === "function") cloudMe(true); // (this page follows the change too: the same answer every visitor gets)
+    } catch (e) { toast(admErr(e), 4000); }
+    for (const [k, cb] of rows) cb.checked = S2["feat_" + k] !== false;
+    paint();
+  }
+  for (const [group, title] of [["site", tr("The site")], ["editor", tr("Inside the editor")]]) {
+    const sec = h("div", "afgroup"); sec.append(h("h4", null, title));
+    for (const [k, label] of FEATS.filter(f => f[2] === group)) {
+      const row = h("label", "aswitch afrow"), cb = h("input"); cb.type = "checkbox"; cb.className = "switch"; cb.checked = S2["feat_" + k] !== false; rows.set(k, cb);
+      const t = h("span", "swt"); t.append(h("b", null, tr(label)));
+      cb.onchange = async () => {
+        if (!cb.checked && !(await ask(tr("Switch off {name} for everyone? It disappears from the site within a few seconds.", { name: tr(label) }), { ok: tr("Switch off"), danger: true }))) { cb.checked = true; return; }
+        cb.disabled = true; await put([k], cb.checked); cb.disabled = false;
+      };
+      row.append(t, cb); sec.append(row);
+    }
+    list.append(sec);
+  }
+  paint(); body.append(state, list);
+}
 async function admSettings(body) {
   const S2 = await admSettingsCache(true), raw = S2.raw, owner = ADM.role === "owner"; body.innerHTML = "";
   if (!owner) body.append(h("p", "aalert", tr("Only the site owner can change these. You can see them.")));
@@ -874,7 +865,7 @@ function admAuditText(a) {
     case "invite.limit": return tr("Changed {n}'s invites: {a} → {b}", { n, a: d.from == null ? tr("site default") : d.from, b: d.to == null ? tr("site default") : d.to });
     case "admin.add": return tr("Made {n} an admin", { n });
     case "admin.remove": return tr("Removed {n}'s admin rights", { n });
-    case "settings.change": return tr("Changed settings") + ": " + Object.entries(d).map(([k, v]) => { const s = ADM_SETTINGS.find(x => x[0] === k); const f = x => s ? `${+s[3](x).toFixed(2)} ${tr(s[2])}` : String(x); return `${s ? tr(s[1]) : k === "saving_enabled" ? tr("Online saving") : k === "access_required" ? tr("Invite-only") : k === "invitees_can_invite" ? tr("People who came in with an invite can invite") : k === "turn_enabled" ? tr("TURN relay in live sessions") : k === "turn_ping_ms" ? tr("Switch to the relay above") : k === "turn_month_gb" ? tr("Monthly limit") : k} ${f(v.from)} → ${f(v.to)}`; }).join(", ");
+    case "settings.change": return tr("Changed settings") + ": " + Object.entries(d).map(([k, v]) => { if (k.startsWith("feat_")) return `${tr("Feature: {name}", { name: featLabel(k.slice(5)) })} ${v.from === false ? tr("off") : tr("on")} → ${v.to === false ? tr("off") : tr("on")}`; const s = ADM_SETTINGS.find(x => x[0] === k); const f = x => s ? `${+s[3](x).toFixed(2)} ${tr(s[2])}` : String(x); return `${s ? tr(s[1]) : k === "saving_enabled" ? tr("Online saving") : k === "access_required" ? tr("Invite-only") : k === "invitees_can_invite" ? tr("People who came in with an invite can invite") : k === "turn_enabled" ? tr("TURN relay in live sessions") : k === "turn_ping_ms" ? tr("Switch to the relay above") : k === "turn_month_gb" ? tr("Monthly limit") : k} ${f(v.from)} → ${f(v.to)}`; }).join(", ");
     case "project.expiry": return tr("Moved the expiry of \"{t}\" to {d}", { t: n, d: fmtDate(d.to) });
     case "project.delete": return tr("Deleted the project \"{t}\"", { t: n });
     case "project.purged": return tr("Removed the files of \"{t}\" ({r})", { t: n, r: d.reason || "" });

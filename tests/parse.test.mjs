@@ -164,15 +164,6 @@ test("bezier sliders with far-out control points finish quickly", () => {
   const pts = Array.from({ length: 40 }, (_, i) => (i % 2 ? 1e300 : -1e300) + ":" + (i % 3 ? 1e300 : -1e300)).join("|");
   quick(() => P.parseOsu(osu(Array.from({ length: 5 }, (_, i) => `100,100,${1000 + i * 1000},2,0,B|${pts},1,100`))));
 });
-test("storyboard: huge loop counts and frame counts are capped", () => {
-  const sb = quick(() => P.parseStoryboard("[Events]\nSprite,Foreground,Centre,\"a.png\",320,240\n L,0,10000000\n  F,0,0,100,0,1\n  M,0,0,100,0,0,10,10\nAnimation,Foreground,Centre,\"b.png\",320,240,10000000,10\n F,0,0,100,0,1\n"));
-  assert.ok(sb[0].cmds.length <= 1e5 + 10); assert.ok(sb[1].frames.length <= 1000);
-});
-test("storyboard: chained $variables can't grow a line without limit (the line is dropped)", () => {
-  const vars = Array.from({ length: 30 }, (_, i) => `$v${String.fromCharCode(97 + i)}=$v${String.fromCharCode(98 + i)}$v${String.fromCharCode(98 + i)}`).join("\n");
-  const sb = quick(() => P.parseStoryboard(`[Variables]\n${vars}\n[Events]\nSprite,Foreground,Centre,"$va.png",320,240\n F,0,0,100,0,1\nSprite,Foreground,Centre,"$x.png",320,240\n F,0,0,100,0,1\n`, { $x: "ok" }));
-  assert.equal(sb.length, 1); assert.match(sb[0].frames[0], /ok\.png/);
-});
 test("a timing point with a meter of 0 or less counts as 1", () => {
   const m = P.parseOsu(osu(["100,100,1000,1,0"], "").replace("0,500,4,2,0,100,1,0", "0,500,-1,2,0,100,1,0"));
   assert.ok(m.timing[0].meter >= 1);

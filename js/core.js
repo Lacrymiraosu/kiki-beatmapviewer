@@ -1,4 +1,24 @@
 "use strict";
+// ============ an old copy of the page running today's scripts ============
+// The service worker keeps the last copy of the page for opening offline, and iOS Safari sometimes fails a page load
+// for a moment (then that copy is shown). The copy's scripts (?v= of its version) may no longer be cached, and the
+// server only has today's files whatever ?v= is asked for, so an old page ran new scripts and broke (e.g. "Can't find
+// variable: kbdMod": pages before v221 don't load device.js). Seen here as: no device.js, or a page older than the
+// newest version this browser has run. Then the copy is dropped and the page loaded again, once per session (a page
+// that is still that version after the reload is the real one, e.g. after a rollback: it becomes the newest seen).
+const STALE_PAGE = (() => {
+  try {
+    const s = document.querySelector('script[src*="js/core.js"]'), v = +((s && /[?&]v=(\d+)/.exec(s.getAttribute("src")) || [])[1] || 0);
+    let seen = 0; try { seen = +localStorage.getItem("obv-ver") || 0; } catch {}
+    const ver = n => { try { localStorage.setItem("obv-ver", String(n)); } catch {} };
+    if (!(typeof DEV === "undefined" || (v && seen && v < seen))) { if (v > seen) ver(v); return false; }
+    let tried = false; try { tried = sessionStorage.getItem("obv-stale") === String(v); sessionStorage.setItem("obv-stale", String(v)); } catch { tried = true; }
+    if (tried) { if (v) ver(v); return false; } // (and no reload loop when the network really is gone)
+    const go = () => location.reload();
+    (self.caches ? caches.open("obv-v1").then(c => c.delete("/")) : Promise.resolve()).then(go, go);
+    return true;
+  } catch { return false; }
+})();
 // ============ utils ============
 const $ = id => document.getElementById(id);
 const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
@@ -41,23 +61,46 @@ function fileAccept(input, accept) { if (DEV.webkitOnly) input.removeAttribute("
 const fileIs = (f, exts) => new RegExp("\\.(" + exts.join("|") + ")$", "i").test(f && f.name || "");
 
 // ============ settings ============
-const DEF = { lang: "", mirror: "osudirect", skin: "default", sb: true, notes: true, cursor: true, hsSrc: "beatmap", hud: true, fx: false, parallax: false, video: true, followPts: true,
-  judge: false, snaking: true, snakingOut: true, sliderEnd: true, offset: 0, dim: 25, masterVol: 10, hsVol: 60, musVol: 80, quality: "auto", view: "lock16", overlay: false, metro: false, btMode: false, hsDelay: 0, offsetBt: null,
-  snap: 4, grid: 0, ds: false, dsMul: 1, guides: true, sideNotes: false, sideAnns: false, gLine: true, gAngle: true, gPlace: true, gRings: true, notePrefix: "", noteSuffix: "", replyQuote: false, sliderShadow: true, edStack: true, edDim: 60, edSampleName: false, gameMode: 0, edHitMarkers: true, gdAuto: true, fps: 50, tlZoom: .25, tlLock: false,
+const DEF = { lang: "", mirror: "nerinyan", skin: "default", sb: true, notes: true, cursor: true, hsSrc: "beatmap", hud: true, liveTop50: true, hitBar: true, hitBarSize: 40, top50Size: 70, urHud: true, earlyLate: true, fx: false, parallax: false, video: true, followPts: true,
+  judge: false, snaking: true, snakingOut: true, sliderEnd: true, offset: 0, dim: 25, masterVol: 10, hsVol: 60, musVol: 80, quality: "auto", sbGL: "off", sbGLAsked: false, fpsHud: false, view: "lock16", overlay: false, metro: false, btMode: false, hsDelay: 0, offsetBt: null,
+  snap: 4, grid: 0, ds: false, dsMul: 1, guides: true, sideNotes: false, sideAnns: false, gLine: true, gAngle: true, gPlace: true, gRings: true, notePrefix: "", noteSuffix: "", replyQuote: false, sliderShadow: true, edStack: true, edOutside: false, edDim: 60, edSampleName: false, gameMode: 0, edHitMarkers: true, gdAuto: true, fps: 50, tlZoom: .25, tlLock: false,
   vfyAuto: true, vfyWait: true, cmpBefore: 40, cmpBeforeCol: "#ff4d5e", cmpAfter: 100, edAdv: false, stDiv: 4, stStart: 1, stEnd: 1, stEase: "linear", stNC: true, stLen: 1, pivot: "sel", trRot: 0, trScale: 1, polyN: 5, polyR: 100, polyRot: 0, polyRep: 1,
-  edTour: true, edTourSeen: 0, edTourAdvSeen: 0, edTourSnooze: 0, edTourAdvSnooze: 0 }; // (the editor tour, edtour.js: the switch syncs, the rest is per device)
+  edTour: true, edTourSeen: 0, edTourAdvSeen: 0, edTourSnooze: 0, edTourAdvSnooze: 0, // (the editor tour, edtour.js: the switch syncs, the rest is per device)
+  skinCombo: "map", curSize: 1, curTrail: true, curRotate: "skin", curExpand: "skin", ballTint: "skin", ballFlip: "skin", hcOverlay: "skin", hcNumbers: true, elBurst: true, elApproach: true, objOpacity: 1, homeSkin: false, skinAnim: true, skinSounds: true }; // (Settings → Skin: validated by cleanSkinOpts below)
 const FPS_OPTS = [30, 50, 60, 120, 240];
+// Settings → Skin: kind "b" = switch, "e" = one of the listed words, "n" = number clamped to min..max (and rounded to `step`).
+// Anything else (a hand-edited setting, a value synced from an account on another version) falls back to the default.
+//<skin-opts>
+const SKIN_OPTS = {
+  skinCombo: ["e", ["map", "skin"]], curSize: ["n", .5, 2, .05], curTrail: ["b"], curRotate: ["e", ["skin", "on", "off"]], curExpand: ["e", ["skin", "on", "off"]],
+  ballTint: ["e", ["skin", "on", "off"]], ballFlip: ["e", ["skin", "on", "off"]], hcOverlay: ["e", ["skin", "above", "below"]], hcNumbers: ["b"],
+  elBurst: ["b"], elApproach: ["b"], objOpacity: ["n", .3, 1, .05], homeSkin: ["b"], skinAnim: ["b"], skinSounds: ["b"],
+};
+function cleanSkinOpts(o) {
+  for (const k in SKIN_OPTS) {
+    const [kind, a, b, step] = SKIN_OPTS[k], v = o[k];
+    if (kind === "b") { if (typeof v !== "boolean") o[k] = DEF[k]; }
+    else if (kind === "e") { if (!a.includes(v)) o[k] = DEF[k]; }
+    else { const x = typeof v === "number" ? v : typeof v === "string" && v.trim() ? +v : NaN; o[k] = isFinite(x) ? Math.round(Math.max(a, Math.min(b, x)) / step) * step : DEF[k]; o[k] = +o[k].toFixed(2); }
+  }
+  return o;
+}
+//</skin-opts>
 const S = { ...DEF };
 let savedS = {};
 try { savedS = JSON.parse(localStorage.getItem("obv-settings") || "{}") || {}; } catch {}
 Object.assign(S, savedS);
+cleanSkinOpts(S);
+S.sbGL = S.sbGL === "on" ? "on" : "off"; // (Settings → Screen and performance: the storyboard drawn by WebGL, off until it's picked)
+S.top50Size = (x => isFinite(x) ? Math.max(40, Math.min(150, Math.round(x / 5) * 5)) : DEF.top50Size)(typeof S.top50Size === "number" ? S.top50Size : NaN); // (the replay's live Top 50 board's size in %)
+S.hitBarSize = (x => isFinite(x) ? Math.max(20, Math.min(150, Math.round(x / 5) * 5)) : DEF.hitBarSize)(typeof S.hitBarSize === "number" ? S.hitBarSize : NaN); // (the replay hit error bar's size in %)
 if (S.hitsound === false) S.hsSrc = "off";
 delete S.hitsound;
 delete S.gameMode; delete S.maniaSpeed; delete S.maniaEdSV; // (osu!mania is gone: the site is osu!standard only)
 if (!("parallax" in savedS) && savedS.fx === false) S.parallax = false; // the old single "effects" toggle covered both
 if (!/^(default|retro|osk:.+)$/.test(S.skin)) S.skin = "default";  // the old hand-drawn skins are gone
-if ((savedS.mirrorDefV || 0) < 1) { if (S.mirror === "nerinyan") S.mirror = "osudirect"; S.mirrorDefV = 1; } // osu.direct is the default mirror now
-if ((savedS.skinDefV || 0) < 3) { S.skinDefV = 3; } // osu! default is the site default
+if ((savedS.mirrorDefV || 0) < 2) { if (S.mirror === "osudirect") S.mirror = "nerinyan"; S.mirrorDefV = 2; } // Nerinyan is the default mirror (always the newest copy): who still had the old default moves with it; a mirror picked since stays
+if ((savedS.skinDefV || 0) < 3) S.skinDefV = 3; // osu! default is the site default
 if ((savedS.fxDefV || 0) < 1) { S.fx = false; S.parallax = false; S.fxDefV = 1; } // kiai effects and background parallax are off by default now (Settings → Display)
 if (!FPS_OPTS.includes(+S.fps)) S.fps = 50;
 if (!savedS.volV) { S.masterVol = 10; S.volV = 1; } // master volume added (10% by default)
@@ -108,7 +151,7 @@ function sfadeScan() {
 document.addEventListener("scroll", e => { const el = e.target; if (el.nodeType === 1 && el.matches(SFADE)) sfadeSet(el); }, { capture: true, passive: true });
 setInterval(sfadeScan, 1000); requestAnimationFrame(sfadeScan);
 const setStatus = t => $("status").textContent = t || "";
-const setTitle = t => document.title = t ? `${t} · KIKI BEATMAP VIEWER` : "KIKI BEATMAP VIEWER";
+const setTitle = t => document.title = t ? `${t} · KIKI Beatmap Viewer` : "KIKI Beatmap Viewer: " + tr("preview and edit osu! beatmaps online"); // (the home page; api/og.js gives the same titles)
 
 // ============ volume (music + hitsound), shared by home, detail and player ============
 const audio = $("audio");
@@ -127,9 +170,10 @@ function applyVolumes() {
   audio.volume = mv; prevAudio.volume = mv;
 }
 const VOL_KEYS = [["masterVol", "Master"], ["musVol", "Music"], ["hsVol", "Hitsound"]];
-function volControl() {
+function volControl(only) { // only: one key ("masterVol") to draw just that slider (the beatmap detail keeps Master only); none: all three
   const box = h("div", "volc");
   for (const [k, label] of VOL_KEYS) {
+    if (only && k !== only) continue;
     const row = h("label", "vrow"), inp = h("input"), out = h("output", null, S[k] + "%"), lab = h("span", null, tr(label));
     lab.dataset.i18n = label;
     inp.type = "range"; inp.min = 0; inp.max = 100; inp.value = S[k]; inp.dataset.vol = k;
@@ -155,6 +199,22 @@ addEventListener("storage", e => {
   for (const [k] of VOL_KEYS) if (typeof n[k] === "number" && n[k] !== S[k]) { S[k] = n[k]; ch = true; }
   if (ch) { syncVol(); applyVolumes(); }
 });
+
+// ============ lazy scripts (parts of the site few visitors use load on first need, e.g. the admin dashboard) ============
+// One promise per file (a second <script> would redeclare its top-level consts). The link carries the same ?v= as core.js,
+// so a new version is a new link and the service worker's copy stays in step. A failed load can be tried again.
+const LAZY = {};
+let ADM_HINT = null; // the admin tab to open first (set by the account menu, used when admin.js has loaded)
+function loadLazy(name) {
+  return LAZY[name] || (LAZY[name] = new Promise((res, rej) => {
+    const c = document.querySelector('script[src*="js/core.js"]'), v = (c && /[?&]v=(\d+)/.exec(c.getAttribute("src")) || [])[1];
+    const s = document.createElement("script");
+    s.src = `js/${name}.js` + (v ? `?v=${v}` : "");
+    s.onload = () => res();
+    s.onerror = () => { s.remove(); delete LAZY[name]; rej(new Error(tr("Couldn't load this part of the site, check your connection"))); };
+    document.head.append(s);
+  }));
+}
 
 // ============ lazy JSZip (only needed once a .osz/.osk is opened) ============
 let jszipP = null;
@@ -193,25 +253,62 @@ function downloadBlob(blob, name) {
   setTimeout(() => URL.revokeObjectURL(u), 4000);
 }
 
+// ---------- the page under an overlay stays put ----------
+// pageLock(owner, on): while any owner holds it (the beatmap detail panel, a pop-up, ...) the page (the window) doesn't scroll by wheel,
+// keys or touch. A set of owners, not a counter: saying the same thing twice changes nothing, so a state that is synced again and again
+// can't drift, and two overlays can't unlock each other. The scrollbar that goes away leaves its room (as padding: the cards don't move); scrollY,
+// the sticky search bar and the list's observers are untouched (the layout doesn't change). Touch: see the touchmove guard below.
+// pageLock:start
+function lockOwners(set, owner, on) { if (on) set.add(owner); else set.delete(owner); return set.size > 0; }
+const PLOCK = new Set();
+function pageLock(owner, on) {
+  const was = PLOCK.size > 0, now = lockOwners(PLOCK, owner, on), r = document.documentElement;
+  if (was === now) return now;
+  if (now) { const g = Math.max(0, innerWidth - r.clientWidth); r.style.setProperty("--plg", g + "px"); r.classList.toggle("plockg", g > 0); r.classList.add("plock"); } // (plockg: a classic scrollbar was there, its room is kept)
+  else { r.classList.remove("plock", "plockg"); r.style.removeProperty("--plg"); }
+  return now;
+}
+// pageLock:end
+// touch (iOS Safari can still pan a page whose overflow is hidden, and a scroller at its end hands the pan on to the page): while the page is
+// locked, a move that no scroller under the finger can take (on that axis, in that direction) is cancelled. Fields keep their own drags
+// (the volume slider), two fingers keep zooming.
+{
+  let lx = 0, ly = 0;
+  const canTake = (t, dx, dy) => {
+    const v = Math.abs(dy) >= Math.abs(dx);
+    for (let e = t && t.nodeType === 1 ? t : t && t.parentElement; e && e !== document.body && e !== document.documentElement; e = e.parentElement) {
+      const cs = getComputedStyle(e), o = v ? cs.overflowY : cs.overflowX; if (o !== "auto" && o !== "scroll") continue;
+      if (v ? (dy > 0 ? e.scrollTop > 0 : e.scrollTop + e.clientHeight < e.scrollHeight - 1) : (dx > 0 ? e.scrollLeft > 0 : e.scrollLeft + e.clientWidth < e.scrollWidth - 1)) return true;
+    }
+    return false;
+  };
+  addEventListener("touchstart", e => { if (e.touches.length) { lx = e.touches[0].clientX; ly = e.touches[0].clientY; } }, { passive: true, capture: true });
+  addEventListener("touchmove", e => {
+    if (!PLOCK.size || e.touches.length !== 1) return;
+    const x = e.touches[0].clientX, y = e.touches[0].clientY, dx = x - lx, dy = y - ly; lx = x; ly = y;
+    if (!e.cancelable || (!dx && !dy) || (e.target.closest && e.target.closest("input,select,textarea"))) return;
+    if (!canTake(e.target, dx, dy)) e.preventDefault();
+  }, { passive: false, capture: true });
+}
 // the site's own pop-up (never the browser's alert / confirm / prompt):
 // modal({ title, body: Node | text, buttons: [{ label, value, cls }], dismiss, icon, wide }) -> Promise<value>
 // Esc / tapping outside answers `dismiss` (not allowed when dismiss is undefined). A button whose value is a function
 // answers what it returns, or keeps the pop-up open when it returns undefined (e.g. a field that isn't valid yet).
 // icon: "ask" | "danger" | "edit" | "info" (a badge above the title). Enter in askText's field presses the main button.
 const MDL_ICONS = { ask: "?", danger: "!", warn: "!", edit: "✎", info: "i" };
-function modal({ title, body, buttons, dismiss, wide, icon, focus }) {
+function modal({ title, body, buttons, dismiss, wide, icon, focus, variant }) {
   return new Promise(res => {
-    const back = document.activeElement, wrap = h("div", "mdl"), panel = h("div", "mdlp" + (wide ? " wide" : "") + (icon ? " has-ic ic-" + icon : ""));
+    const back = document.activeElement, wrap = h("div", "mdl" + (variant ? " v-" + variant : "")), panel = h("div", "mdlp" + (wide ? " wide" : "") + (icon ? " has-ic ic-" + icon : ""));
     panel.setAttribute("role", icon === "danger" || icon === "warn" ? "alertdialog" : "dialog"); panel.setAttribute("aria-modal", "true");
     if (icon && MDL_ICONS[icon]) { const b = h("div", "mdlic", MDL_ICONS[icon]); b.setAttribute("aria-hidden", "true"); panel.append(b); }
     const uid = "mdl" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     if (title) { const t = h("h3", "mdlt", title); t.id = uid + "t"; panel.setAttribute("aria-labelledby", t.id); panel.append(t); }
     if (body != null) { const b = typeof body === "string" ? mdlText(body) : body; if (!b.id) b.id = uid + "b"; panel.setAttribute("aria-describedby", b.id); panel.append(b); }
     const row = h("div", "btnrow mdlbtns" + ((buttons || []).length > 2 ? " many" : ""));
-    let closed = false;
+    let closed = false; const lk = {}; pageLock(lk, true); // (the page under it doesn't scroll; its own owner: a pop-up over the detail panel doesn't unlock the panel's hold)
     const done = v => {
-      if (closed) return; closed = true; removeEventListener("keydown", key, true);
-      wrap.classList.add("out"); setTimeout(() => wrap.remove(), 160);
+      if (closed) return; closed = true; removeEventListener("keydown", key, true); pageLock(lk, false);
+      wrap.classList.add("out"); setTimeout(() => wrap.remove(), variant ? 300 : 160); // (a variant has its own way out, assets/app.css)
       if (back && back.focus && back.isConnected) try { back.focus({ preventScroll: true }); } catch {}
       res(v);
     };
@@ -275,6 +372,7 @@ const fmtDate = (d, withTime = true) => { const x = new Date(d); return isNaN(x)
 // the browser family; nothing about the person. Each error at most once a day per browser, at most 5 per page load.
 const ERR_SENT = new Set();
 function errReport(message, stack, source) {
+  if (STALE_PAGE) return; // (an old copy of the page being replaced: its errors aren't the site's)
   try {
     message = String(message || "").replace(/\s+/g, " ").trim().slice(0, 300);
     const here = location.origin, clean = t => String(t || "").split(here).join("").replace(/\?v=\d+/g, "").replace(/blob:[^\s)]+/g, "blob:…").slice(0, 2000);
@@ -304,9 +402,9 @@ function siteContext() {
 addEventListener("error", e => { if (e.error || e.message) errReport(e.message || (e.error && e.error.message), e.error && e.error.stack, e.filename ? `${e.filename}:${e.lineno}:${e.colno}` : ""); });
 addEventListener("unhandledrejection", e => { const r = e.reason; if (r instanceof Error) errReport(r.name && r.name !== "Error" ? `${r.name}: ${r.message}` : r.message, r.stack, ""); });
 
-// a preview build (Cloudflare's preview URL of a branch or version, e.g. my-branch-kiki-beatmap-viewer.….workers.dev)
+// a preview build (Cloudflare's preview URL of a branch or version, e.g. feature-x-osu-beatmap-viewer.….workers.dev)
 // says so in a corner, so it isn't mistaken for the live site
-if (/\.workers\.dev$/.test(location.hostname) && !/^(?:kiki|osu)-beatmap-viewer\./.test(location.hostname)) {
+if (/\.workers\.dev$/.test(location.hostname) && !/^osu-beatmap-viewer\./.test(location.hostname)) {
   const b = document.createElement("div"); b.className = "previewbadge"; b.textContent = "Preview";
-  b.title = location.hostname.replace(/-(?:kiki|osu)-beatmap-viewer\..*$/, ""); document.body.append(b);
+  b.title = location.hostname.replace(/-osu-beatmap-viewer\..*$/, ""); document.body.append(b);
 }

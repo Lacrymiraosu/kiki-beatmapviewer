@@ -22,7 +22,7 @@ if (existsSync(envFile)) {
 }
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
   ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".wav": "audio/wav", ".ogg": "audio/ogg",
-  ".mp3": "audio/mpeg", ".osu": "text/plain; charset=utf-8", ".webmanifest": "application/manifest+json", ".txt": "text/plain; charset=utf-8" };
+  ".mp3": "audio/mpeg", ".osu": "text/plain; charset=utf-8", ".webmanifest": "application/manifest+json", ".txt": "text/plain; charset=utf-8", ".xml": "application/xml; charset=utf-8" };
 
 function apiFile(p) {
   if (p === "/api/v1" || p.startsWith("/api/v1/")) return { file: "api/v1.js", route: p.replace(/^\/api\/v1\/?/, "") };
@@ -45,9 +45,10 @@ http.createServer(async (req, res) => {
   for (const x of SITE_HEADERS) res.setHeader(x.key, x.value);
   try {
     if (p === "/api/dev/login") return devLogin(req, res, url);
-    // like vercel.json (its routes run before the static files): shared links get their preview card from api/og.js
-    const api = p === "/" && ["s", "b", "u", "live", "collab", "project", "invite"].some(k => url.searchParams.has(k)) ? { file: "api/og.js" } : apiFile(p);
+    // like vercel.json (its routes run before the static files): api/og.js fills in the page's <head>
+    const api = p === "/" ? { file: "api/og.js" } : apiFile(p);
     if (api) {
+      if (p.startsWith("/api/")) res.setHeader("X-Robots-Tag", "noindex"); // (like vercel.json)
       if (api.route != null && !url.searchParams.has("route")) { url.searchParams.set("route", api.route); req.url = url.pathname + "?" + url.searchParams; }
       delete require.cache[require.resolve(join(root, api.file))]; // pick up edits without a restart
       const fn = require(join(root, api.file));

@@ -2,13 +2,12 @@
 // same files as Vercel (vercel.json, .vercelignore).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = f => readFileSync(join(root, f), "utf8");
-const wranglerFile = existsSync(join(root, "wrangler.jsonc")) ? "wrangler.jsonc" : "wrangler.example.jsonc"; // (the public repo ships only the example)
 const vercel = JSON.parse(read("vercel.json"));
 
 test("_headers has vercel.json's site-wide headers and cache rules", () => {
@@ -53,10 +52,10 @@ test("server code, tests and the database aren't served as static files", () => 
 });
 
 test("wrangler.jsonc runs the Worker for the API and for shared links on /", () => {
-  const w = JSON.parse(read(wranglerFile).replace(/^\s*\/\/.*$/gm, ""));
+  const w = JSON.parse(read("wrangler.example.jsonc").replace(/^\s*\/\/.*$/gm, ""));
   assert.equal(w.main, "worker.js");
   assert.ok(w.compatibility_flags.includes("nodejs_compat"));
-  assert.deepEqual(w.assets.run_worker_first, ["/", "/api/*"]);
+  assert.deepEqual(w.assets.run_worker_first, ["/", "/api/*", "/google*.html", "/dl/*"]);
   assert.deepEqual(w.triggers.crons, vercel.crons.map(c => c.schedule));
 });
 
@@ -74,6 +73,5 @@ test("LICENSE is the GPL-3.0 text, and the notices say what isn't under it", () 
   const l = read("LICENSE"), n = read("THIRD_PARTY_NOTICES.txt");
   assert.match(l, /^\s*GNU GENERAL PUBLIC LICENSE\s+Version 3, 29 June 2007/);
   assert.match(n, /released under the GNU General Public License, version 3/);
-  const notOurs = ["CC BY-NC 4.0", "demo map", "what users upload"].concat(existsSync(join(root, "skins/yugen")) ? ["YUGEN"] : []); // (the public repo has no YUGEN skin)
-  for (const x of notOurs) assert.ok(n.slice(0, n.indexOf("1. ppy/osu")).includes(x), x);
+  for (const x of ["CC BY-NC 4.0", "demo map", "what users upload"]) assert.ok(n.slice(0, n.indexOf("1. ppy/osu")).includes(x), x);
 });

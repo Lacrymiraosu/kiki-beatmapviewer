@@ -1,10 +1,13 @@
-Skin assets in this folder (skins/default, skins/retro) come from ppy/osu-resources:
-https://github.com/ppy/osu-resources (osu.Game.Resources/Skins/Legacy and /Retro)
+Skin licences
+=============
 
-Copyright (c) ppy Pty Ltd.
-Licensed under Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0):
-https://creativecommons.org/licenses/by-nc/4.0/
-Provided as-is, without warranties (section 5 of the licence).
+These folders are NOT under this project's GPL-3.0 licence (see ../THIRD_PARTY_NOTICES.txt, part B).
 
-Changes made here: large images were converted to WebP, and spinner-glow was downscaled, to load faster.
-These files are not under this project's GPL-3.0.
+skins/default and skins/retro
+  Source: ppy/osu-resources (https://github.com/ppy/osu-resources), osu.Game.Resources/Skins/Legacy and /Retro.
+  Author: ppy Pty Ltd.
+  Licence: Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0),
+           https://creativecommons.org/licenses/by-nc/4.0/ (non-commercial use, with credit).
+  Changes: large images were converted to WebP (and spinner-glow downscaled) to load faster. Nothing else.
+  Only images are stored here. The default hitsounds are not: they are loaded at run time from ppy/osu-resources
+  (same licence).

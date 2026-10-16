@@ -94,6 +94,7 @@ function autoFrames() {
 function autoFrameAt(F, t) { let lo = 0, hi = F.length; while (lo < hi) { const k = (lo + hi) >> 1; if (F[k].t <= t) lo = k + 1; else hi = k; } return lo - 1; }
 const _cp = [0, 0];
 function cursorAt(t) {
+  if (RP.on) return rpCursorAt(t);
   const F = autoFrames(); if (!F.length) { _cp[0] = 256; _cp[1] = 192; return _cp; }
   const i = autoFrameAt(F, t), a = F[Math.max(0, i)], b = i >= 0 ? F[i + 1] : null;
   if (!b) { _cp[0] = a.x; _cp[1] = a.y; return _cp; }
@@ -107,14 +108,132 @@ function cursorAt(t) {
   _cp[0] = a.x + (b.x - a.x) * k; _cp[1] = a.y + (b.y - a.y) * k; return _cp;
 }
 // the button Auto holds at t (0 none, 1 left, 2 right)
-function autoKeyAt(t) { const F = autoFrames(), i = autoFrameAt(F, t); return i >= 0 ? F[i].b : 0; }
+function autoKeyAt(t) {
+  if (RP.on) { const k = rpKeysAt(t); return k & 5 ? 1 : k & 10 ? 2 : 0; } // (a replay: M1/K1 left, M2/K2 right)
+  const F = autoFrames(), i = autoFrameAt(F, t); return i >= 0 ? F[i].b : 0;
+}
 // the cursor's size while Auto clicks, like lazer's OsuCursor: up to 1.2× on a press (400 ms, elastic), back on release (400 ms)
 const outElasticHalf = k => k >= 1 ? 1 : Math.pow(2, -10 * k) * Math.sin((.5 * k - .075) * (2 * Math.PI / .3)) + 1;
 function autoCursorScale(t) {
+  if (RP.on) return rpKeysAt(t) & 15 ? 1.15 : 1; // (a replay: like the test play cursor)
   const F = autoFrames(), i = autoFrameAt(F, t); if (i < 0) return 1;
   const f = F[i], grow = d => 1 + .2 * outElasticHalf(Math.min(1, Math.max(0, d) / 400));
   if (f.b > 0) return grow(t - f.since);
   if (f.press == null) return 1;
   const s = grow(f.since - f.press), k = Math.min(1, Math.max(0, t - f.since) / 400);
   return s + (1 - s) * easeOutQ(k);
+}
+
+// ============ replay playback (a .osr's frames instead of Auto's cursor; the player and the editor read them through cursorAt) ============
+const RP = { on: false, data: null, mods: null, flipY: false, onEnd: null, onCancel: null, ended: false, mapKey: "", keep: null };
+const _rp = [0, 0];
+// opts: { mods: replayMods(...), mapKey?, onEnd?, onCancel? (Cancel on the loading cover while a DT / HT song copy is made: audio.js kpCancel; the replay is stopped first), from? }. Starts playing at max(map.first - 1800, 0) (or opts.from)
+function rpStart(data, opts = {}) {
+  if (!map || !data || !data.frames) return;
+  if (typeof RPH !== "undefined") { // (the hit effects were off for this replay: try once more at every start; rpHitsPrepare, run just before this start, has tried already)
+    if (RPH.failed && RPH.fresh !== data) { RPH.data = RPH.hit = null; RPH.failed = false; }
+    RPH.fresh = null;
+  }
+  if (RP.on) rpStop(); // (a restart: put the map back first, so the originals below are the real ones)
+  const mods = opts.mods || { rate: 1, hr: false, ez: false };
+  RP.keep = { m: map, radius: map.radius, preempt: map.preempt, fadeIn: map.fadeIn, rate: A.rate };
+  if ((mods.ez || mods.hr) && typeof replayDiff === "function") {
+    const d = map.diff, d2 = replayDiff({ CircleSize: +(d.CircleSize ?? 5), ApproachRate: +(d.ApproachRate ?? d.OverallDifficulty ?? 5), OverallDifficulty: +(d.OverallDifficulty ?? 5), HPDrainRate: +(d.HPDrainRate ?? 5) }, mods);
+    diffDerived(map, d2); // (radius, preempt and fadeIn from the mods' CS and AR; the stack heights are not redone)
+    STACK_FLIPY = !!mods.hr; placeStacks(map.hit, map.radius / 10, true); RP.keep.restack = true; if (typeof bodyCache !== "undefined") bodyCache.clear(); // (the stack step is the modded radius / 10, like the game; Hard Rock stacks up-left on the flipped picture)
+  }
+  RP.data = data; RP.mods = mods; RP.flipY = !!mods.hr; RP.onEnd = opts.onEnd || null; RP.onCancel = opts.onCancel || null; RP.ended = false; RP.mapKey = opts.mapKey || ""; RP.on = true;
+  document.body.classList.add("replay");
+  setRate(mods.rate || 1); A.setRate(mods.rate || 1, { keepPitch: !mods.pitch }); // (the speed menu's rate, then the pitch: DT / HT keep the song's pitch, NC / DC follow the speed)
+  const from = opts.from != null ? opts.from : Math.max(map.first - 1800, 0);
+  UI.tapStart.hidden = true; needTapResume = false; clock.pre = false; ensureAudioCtx();
+  A.seek(from); A.play().catch(onPlayBlocked);
+  lastT = null; cardStart = performance.now(); keepAwake(true); showUI(); dirty = true;
+}
+function rpStop() {
+  if (!RP.on) return;
+  const k = RP.keep;
+  RP.on = false; RP.data = RP.mods = RP.onEnd = RP.onCancel = RP.keep = null; RP.flipY = false; RP.ended = false; RP.mapKey = "";
+  document.body.classList.remove("replay");
+  if (typeof rpPopShow === "function") rpPopShow(false); // (the eye button's switches: closed with the replay)
+  if (k && k.m === map) {
+    map.radius = k.radius; map.preempt = k.preempt; map.fadeIn = k.fadeIn;
+    if (k.restack) { STACK_FLIPY = false; placeStacks(map.hit, map.radius / 10, true); if (typeof bodyCache !== "undefined") bodyCache.clear(); } // (the stacks as the map has them)
+  }
+  A.want = false; // (a song waiting for its pitch-kept copy doesn't start)
+  if (A.rate !== 1) setRate(1); // (rate 1 and the pitch as always: the song itself again)
+  else if (A.keep !== null) { A.keep = null; try { audio.preservesPitch = true; } catch {} } // (already rate 1: only the pitch setting back, the song plays on untouched)
+  dirty = true;
+}
+// the last frame + 500 ms
+function rpEnd() { const F = RP.data && RP.data.frames; return F && F.n ? F.t[F.n - 1] + 500 : 500; }
+// the last frame at or before t (-1: none yet)
+function rpIndex(F, t) { let lo = 0, hi = F.n; while (lo < hi) { const k = (lo + hi) >> 1; if (F.t[k] <= t) lo = k + 1; else hi = k; } return lo - 1; }
+function rpCursorAt(t) {
+  const F = RP.data && RP.data.frames; if (!F || !F.n) { _rp[0] = 256; _rp[1] = 192; return _rp; }
+  const i = rpIndex(F, t); let x, y;
+  if (i < 0) { x = F.x[0]; y = F.y[0]; }
+  else if (i >= F.n - 1) { x = F.x[i]; y = F.y[i]; }
+  else { const t0 = F.t[i], t1 = F.t[i + 1], k = t1 > t0 ? (t - t0) / (t1 - t0) : 1; x = F.x[i] + (F.x[i + 1] - F.x[i]) * k; y = F.y[i] + (F.y[i + 1] - F.y[i]) * k; }
+  _rp[0] = x; _rp[1] = RP.flipY ? 384 - y : y; return _rp;
+}
+function rpKeysAt(t) { const F = RP.data && RP.data.frames; if (!F || !F.n) return 0; const i = rpIndex(F, t); return i >= 0 ? F.k[i] : 0; }
+// the health bar at t (0..1) from the replay's life graph [[ms, hp], ...] (full when it has none)
+function rpHpAt(t) {
+  const L = RP.data && RP.data.lifeBar; if (!L || !L.length) return 1;
+  let lo = 0, hi = L.length; while (lo < hi) { const k = (lo + hi) >> 1; if (L[k][0] <= t) lo = k + 1; else hi = k; }
+  const a = L[Math.max(0, lo - 1)], b = L[lo]; if (!b || t <= a[0]) return Math.max(0, Math.min(1, a[1]));
+  return Math.max(0, Math.min(1, a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0] || 1)));
+}
+// ---- the replay's Flashlight (osu!lazer's OsuModFlashlight / ModFlashlight): where the light is and how big, both worked out
+// from t alone, so a paused or seeked frame always looks the same. The light follows the cursor 120 ms behind: on each move of
+// the cursor it goes outQuad(min(dt, 120) / 120) of the way to it (lazer: per frame, OnMouseMove; here in 1/60 s steps over the
+// last 600 ms), and it stays where it is while the cursor doesn't move. Reduced motion: it sits on the cursor
+const RP_FL = { delay: 120, step: 1000 / 60, back: 36, hit: null, br: null, pre: 0, ev: [] }, _rpfl = [0, 0];
+function rpFlPos(t) {
+  let p = rpCursorAt(t);
+  if (RM) { _rpfl[0] = p[0]; _rpfl[1] = p[1]; return _rpfl; }
+  const h = RP_FL.step, f = easeOutQ(h / RP_FL.delay), k1 = Math.floor(t / h);
+  p = rpCursorAt((k1 - RP_FL.back) * h);
+  let x = p[0], y = p[1], cx = x, cy = y;
+  for (let k = k1 - RP_FL.back + 1; k <= k1; k++) { p = rpCursorAt(k * h); if (p[0] !== cx || p[1] !== cy) { cx = p[0]; cy = p[1]; x += (cx - x) * f; y += (cy - y) * f; } }
+  const dt = t - k1 * h; p = rpCursorAt(t); // (the part of a step up to t)
+  if (dt > 0 && (p[0] !== cx || p[1] !== cy)) { const g = easeOutQ(Math.min(dt, RP_FL.delay) / RP_FL.delay); x += (p[0] - x) * g; y += (p[1] - y) * g; }
+  _rpfl[0] = x; _rpfl[1] = y; return _rpfl;
+}
+// its size (x 125 osu!px): 2.5 before the gameplay starts (first object - max(2000, preempt), shrinking 325 ms later), in breaks of
+// 650 ms or more (growing at the start, shrinking at the end) and once the last object is over; otherwise by combo: 1, 0.8125 from
+// 100, 0.625 from 200. A change runs linearly at 0.1875 per 100 ms (lazer, as stable). The combo is not in the replay: here it is
+// the number of objects already reached (no misses, no slider ticks). Reduced motion: changes at once
+const rpFlCombo = n => n >= 200 ? .625 : n >= 100 ? .8125 : 1;
+function rpFlEvents() {
+  const H = map.hit, B = map.breaks || [];
+  if (RP_FL.hit === H && RP_FL.br === B && RP_FL.pre === map.preempt) return RP_FL.ev;
+  const ev = [], n = t => lastBefore(H, t, "t") + 1;
+  if (H.length) {
+    const gs = H[0].t - Math.max(2000, map.preempt);
+    ev.push({ t: gs + 325, to: 1 });
+    if (H.length >= 100) ev.push({ t: H[99].t, to: rpFlCombo(100) });
+    if (H.length >= 200) ev.push({ t: H[199].t, to: rpFlCombo(200) });
+    for (const b of B) if (b[1] - b[0] >= 650) ev.push({ t: b[0], to: 2.5 }, { t: b[1], to: rpFlCombo(n(b[1])) });
+    let end = -Infinity; for (const o of H) if (o.end > end) end = o.end;
+    ev.push({ t: end, to: 2.5 });
+  }
+  ev.sort((a, b) => a.t - b.t);
+  let v = 2.5, prev = null;
+  for (const e of ev) { if (prev) v = rpFlLerp(prev, e.t); e.v = v; e.d = Math.abs(e.to - v) / .001875; prev = e; }
+  RP_FL.hit = H; RP_FL.br = B; RP_FL.pre = map.preempt; RP_FL.ev = ev;
+  return ev;
+}
+const rpFlLerp = (e, t) => RM || !(e.d > 0) ? e.to : e.v + (e.to - e.v) * clamp01((t - e.t) / e.d);
+function rpFlScale(t) {
+  const ev = rpFlEvents(); let e = null;
+  for (let i = 0; i < ev.length && ev[i].t <= t; i++) e = ev[i];
+  return e ? rpFlLerp(e, t) : 2.5;
+}
+// once, when the replay (or the song) is over: the last frame stays on screen
+function rpFinish() {
+  if (!RP.on || RP.ended) return;
+  RP.ended = true; pausePlayback();
+  const f = RP.onEnd; if (f) try { f(); } catch (e) { console.error(e); }
 }

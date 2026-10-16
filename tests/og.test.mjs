@@ -37,7 +37,7 @@ async function api(route, ip = "10.0.0.1") {
   return { status: res.statusCode, headers: out.headers, body: JSON.parse(out.body) };
 }
 const osuCalls = () => calls.filter(c => c.startsWith("/api/v2/")).length;
-const HOME = "KIKI BEATMAP VIEWER"; // (the page title without a card)
+const HOME = "KIKI Beatmap Viewer: preview and edit osu! beatmaps online";
 const fill = () => { const b = osu._buckets; b.main.t = osu.BUDGET.burst; b.og.t = osu.BUDGET.ogBurst; b.main.at = b.og.at = Date.now(); };
 
 test("a map's card: the same id again comes from the cache, not osu!", async () => {

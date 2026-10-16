@@ -9,19 +9,16 @@
 // reviewed) works as usual.
 // Not a defence against a malicious branch, which can change this file: only the secrets a preview is given can be.
 
-// production on workers.dev is exactly "<worker>.<account>.workers.dev" (the worker named in wrangler.jsonc:
-// "kiki-beatmap-viewer" as in wrangler.example.jsonc, or "osu-beatmap-viewer"), or the host of SITE_URL; any other
-// workers.dev host that reaches this Worker is a preview (a branch or a version), look-alikes included. A Worker with
-// another name: set SITE_URL to its address (or change this pattern).
-const PROD_WORKERS_DEV = /^(?:kiki|osu)-beatmap-viewer\.[a-z0-9-]+\.workers\.dev$/;
+// production on workers.dev is exactly "osu-beatmap-viewer.<account>.workers.dev"; any other workers.dev host that
+// reaches this Worker is a preview (a branch or a version), look-alikes included
+const PROD_WORKERS_DEV = /^osu-beatmap-viewer\.[a-z0-9-]+\.workers\.dev$/;
 const yes = v => /^(1|true|yes|on)$/i.test(String(v == null ? "" : v).trim());
-function siteHost(env) { try { return new URL(String(env.SITE_URL || "").trim()).hostname.toLowerCase(); } catch { return ""; } }
-function previewHost(host, env = {}) {
+function previewHost(host) {
   const h = String(host || "").trim().toLowerCase().replace(/:\d+$/, "").replace(/\.$/, "");
-  return /\.workers\.dev$/.test(h) && !PROD_WORKERS_DEV.test(h) && h !== siteHost(env);
+  return /\.workers\.dev$/.test(h) && !PROD_WORKERS_DEV.test(h);
 }
 // env: the Worker's env (OBV_PREVIEW: a variable wrangler.jsonc sets for previews only) or process.env (Vercel)
-const isPreview = (host, env = {}) => yes(env.OBV_PREVIEW) || env.VERCEL_ENV === "preview" || previewHost(host, env);
+const isPreview = (host, env = {}) => yes(env.OBV_PREVIEW) || env.VERCEL_ENV === "preview" || previewHost(host);
 const backendAllowed = (env = {}) => String(env.PREVIEW_BACKEND || "").trim() === "1";
 
 // what a preview never gets: database and storage keys, osu!/Google OAuth secrets, session/cron secrets, the owner's

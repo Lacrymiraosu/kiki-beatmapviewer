@@ -2,19 +2,23 @@
 // ============ mapping tools panel (preview mode) + shared panel renderers (editor tabs) ============
 const TABS = [["overview", "Overview"], ["timing", "Timing"], ["audio", "Song file"], ["verify", "Verify"], ["notes", "Mod notes"], ["compare", "Compare"]];
 let toolsTab = "overview";
+const TABS_FEAT = { timing: "ed_timing", verify: "ed_verify", notes: "ed_notes", compare: "ed_compare" }; // (feature switches, features.js)
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.5];
 for (const r of SPEEDS) { const b = h("button", r === 1 ? "on" : "", r + "x"); b.dataset.r = r; b.onclick = () => setRate(r); $("speed").append(b); }
 const LIVE_FIELDS = [["time", "Time"], ["bpm", "BPM"], ["sv", "SV"], ["beat", "Bar:beat"], ["kiai", "Kiai"], ["next", "Next object"]];
 for (const [k, label] of LIVE_FIELDS) { const d = h("div"), l = h("small", null, label); l.dataset.i18n = label; d.append(l, h("b", null, "–")); d.lastChild.id = "lv-" + k; $("live").append(d); }
 // Verify is for members (and everyone while the site is open); guests browsing the preview don't get it
 const vfyAllowed = () => !(typeof GATE !== "undefined" && GATE.guest);
+const tabAllowed = k => !(k === "verify" && !vfyAllowed()) && !(TABS_FEAT[k] && !featOn(TABS_FEAT[k]));
 function buildToolTabs() {
   $("tTabs").innerHTML = "";
-  for (const [k, label] of TABS) { if (k === "verify" && !vfyAllowed()) continue; const b = h("button", "tab", tr(label)); b.dataset.tab = k; b.setAttribute("role", "tab"); b.onclick = () => { toolsTab = k; renderTools(); }; $("tTabs").append(b); }
+  if (!tabAllowed(toolsTab)) toolsTab = "overview";
+  for (const [k, label] of TABS) { if (!tabAllowed(k)) continue; const b = h("button", "tab", tr(label)); b.dataset.tab = k; b.setAttribute("role", "tab"); b.onclick = () => { toolsTab = k; renderTools(); }; $("tTabs").append(b); }
 }
 buildToolTabs();
 
 function openTools() {
+  if (!featGuard("ed_tools")) return;
   closeSheet(); closeLive();
   UI.tools.hidden = false; clearTimeout(uiTimer);
   document.querySelectorAll("#tools [data-k]").forEach(i => i.checked = !!S[i.dataset.k]);
@@ -44,8 +48,8 @@ function exportRow() {
 }
 function renderTools() {
   if (UI.tools.hidden || !map) return;
-  if (!$("tTabs").querySelector('[data-tab="verify"]') !== !vfyAllowed()) buildToolTabs(); // (permissions changed)
-  if (toolsTab === "verify" && !vfyAllowed()) toolsTab = "overview";
+  if ([...$("tTabs").querySelectorAll("[data-tab]")].map(b => b.dataset.tab).join() !== TABS.filter(t => tabAllowed(t[0])).map(t => t[0]).join()) buildToolTabs(); // (permissions or feature switches changed)
+  if (!tabAllowed(toolsTab)) toolsTab = "overview";
   $("tTabs").querySelectorAll(".tab").forEach(b => { const on = b.dataset.tab === toolsTab; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
   renderPanel(toolsTab, $("tBody"));
   timingRow = -1;
@@ -117,7 +121,7 @@ function overviewHTML() {
     ["Breaks", m.breaks.length ? m.breaks.map(b => seekLink(b[0])).join(" ") : "–"], ["Kiai", m.kiai.length ? m.kiai.map(k => seekLink(k[0])).join(" ") : "–"],
     ["Bookmarks", m.bookmarks.length ? m.bookmarks.map(b => seekLink(b)).join(" ") : "–"],
   ]) + `<h3>${esc(tr("Other"))}</h3>` + kv([
-    ["Storyboard", sb.length ? `${sb.length} sprite${osbText ? " (.osb)" : ""}` : "–"], ["Video", esc(m.video || "–")],
+    ["Storyboard", sb.length ? `${sb.length} sprite${osbText ? " (.osb)" : ""}${S.sbGL === "on" ? (GLS.used ? " · WebGL" : " · WebGL ✗") : ""}` : "–"], ["Video", esc(m.video || "–")],
     ["Background", m.bg ? `${esc(m.bg)}${bgImg ? ` <small>(${bgImg.width}×${bgImg.height})</small>` : ""}` : "–"],
     ["Custom hitsounds", tr("{n} files", { n: Object.keys(mapBank).length })], ["Sample set", esc(m.general.SampleSet || "Normal")],
     ["Audio lead-in", esc(m.general.AudioLeadIn || 0) + " ms"], ["Preview time", +(m.general.PreviewTime ?? -1) > 0 ? seekLink(+m.general.PreviewTime) : esc(tr("Not set"))],
@@ -262,7 +266,7 @@ function parseWav(u, info) {
   const dv = new DataView(u.buffer, u.byteOffset, u.byteLength); info.fmt = "WAV";
   for (let p = 12; p + 8 < u.length;) {
     const id = String.fromCharCode(...u.subarray(p, p + 4)), sz = dv.getUint32(p + 4, true);
-    if (id === "fmt ") { info.ch = dv.getUint16(p + 10, true); info.sr = dv.getUint32(p + 12, true); info.kbps = dv.getUint32(p + 16, true) * 8 / 1000; info.cbr = true; }
+    if (id === "fmt ") { info.wfmt = dv.getUint16(p + 8, true); info.ch = dv.getUint16(p + 10, true); info.sr = dv.getUint32(p + 12, true); info.kbps = dv.getUint32(p + 16, true) * 8 / 1000; info.cbr = true; }
     if (id === "data") { info.dur = sz / (info.kbps * 125 || 1); break; }
     p += 8 + sz + (sz & 1);
   }
@@ -348,16 +352,22 @@ function exportNotesFile(what = "notes") {
 }
 const tsToMs = s => { const m = String(s).match(/(\d+):(\d{2}):(\d{3})/); return m ? +m[1] * 60000 + +m[2] * 1000 + +m[3] : null; };
 // accepts our JSON, a bare array of notes, or osu!-style lines "00:12:345 (1,2) - text"
+const NOTES_MAX = 2e6; // bytes a #n= link may unpack to (it's from someone else, and real notes are a few tens of KB; compact JSON)
+const NOTES_FILE_MAX = 2e7; // chars of notes text from a file / paste / URL you chose yourself (an exported file is pretty-printed)
+const NOTES_LINE = 2300; // longer lines are cut: a note keeps 2000 characters (cleanNote), plus the time / type in front of it
 function parseNotes(text) {
-  text = String(text).trim();
+  text = String(text);
+  if (text.length > NOTES_FILE_MAX) throw new Error(tr("These notes are too big to import"));
+  text = text.trim();
   if (/^(\{|\[\s*[[{\]])/.test(text)) { // (not "[Visual]", a category heading in text)
     const j = JSON.parse(text), arr = Array.isArray(j) ? j : Array.isArray(j.notes) ? j.notes : null, anns = j && Array.isArray(j.annotations) ? j.annotations : [];
     if (!arr && !anns.length) throw new Error(tr("No notes found in this data"));
     return { map: j.map || null, notes: arr || [], annotations: anns };
   }
   const notes = []; let cat = "";
-  for (const line of text.split(/\r?\n/)) {
-    const hd = line.match(/^\s*(?:#+\s*)?\[([^\]]{1,40})\]\s*:?\s*$/); if (hd) { cat = hd[1].trim(); continue; } // "[Visual]" heads the notes under it
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.length > NOTES_LINE ? raw.slice(0, NOTES_LINE) : raw;
+    const hd = line.trim().match(/^(?:#+\s*)?\[([^\]]{1,40})\]\s*:?$/); if (hd) { cat = hd[1].trim(); continue; } // "[Visual]" heads the notes under it
     const m = line.match(/^\s*(?:[-*•]\s*)?(?:\[(\w+)\]\s*)?(\d{2,}:\d{2}:\d{3})\s*(\([^)]*\))?\s*-?\s*(.*)$/);
     if (m) notes.push({ t: tsToMs(m[2]), ts: m[2] + (m[3] ? " " + m[3] : ""), type: (m[1] || "note").toLowerCase(), cat, text: m[4] });
   }
@@ -417,11 +427,22 @@ async function packNotes(obj) {
   const buf = await new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream("deflate-raw"))).arrayBuffer();
   return "z." + b64u(new Uint8Array(buf));
 }
+// (a link is untrusted: a tiny deflate stream can inflate to gigabytes, so the output is counted and stopped at NOTES_MAX
+// before anything is parsed or asked)
 async function unpackNotes(s) {
-  const [kind, data] = [s.slice(0, 2), s.slice(2)], bytes = unb64u(data);
-  if (kind === "j.") return new TextDecoder().decode(bytes);
-  const buf = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer();
-  return new TextDecoder().decode(buf);
+  const big = () => new Error(tr("These notes are too big to import"));
+  const [kind, data] = [s.slice(0, 2), s.slice(2)];
+  if (data.length > NOTES_MAX) throw big();
+  const bytes = unb64u(data);
+  if (kind === "j.") { if (bytes.length > NOTES_MAX) throw big(); return new TextDecoder().decode(bytes); }
+  const rd = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw")).getReader(), parts = []; let n = 0;
+  for (;;) {
+    const { done, value } = await rd.read(); if (done) break;
+    n += value.length; if (n > NOTES_MAX) { rd.cancel().catch(() => {}); throw big(); }
+    parts.push(value);
+  }
+  const all = new Uint8Array(n); let at = 0; for (const x of parts) { all.set(x, at); at += x.length; }
+  return new TextDecoder().decode(all);
 }
 async function copyNotesLink() {
   const list = loadNotes().sort((a, b) => a.t - b.t), anns = annPayload();

@@ -8,13 +8,12 @@ values
 - Mapper pages and downloads from mirrors$md$, 'published', null, 2),
   ($md$Version 3$md$, $md$v3$md$, $md$- Split into separate JS/CSS files with long-term caching$md$, 'published', null, 3),
   ($md$Version 4$md$, $md$v4$md$, $md$- Modding mode: select, move and place objects, copy timestamps$md$, 'published', null, 4),
-  ($md$Version 5$md$, $md$v5$md$, $md$- Recommended mapping skins (osu! default, YUGEN) and objects drawn like the osu! client
+  ($md$Version 5$md$, $md$v5$md$, $md$- Recommended mapping skins (osu! default) and objects drawn like the osu! client
 - Languages: English, ไทย, Bahasa Melayu, Bahasa Indonesia, 한국어, 日本語$md$, 'published', null, 5),
   ($md$Version 6$md$, $md$v6$md$, $md$- Editor layout like osu!'s (Compose / Timing / Verify / Setup)
 - Verify checks modelled on MapsetVerifier
 - Your own prefix/suffix for copied mod notes$md$, 'published', null, 6),
-  ($md$Version 7$md$, $md$v7$md$, $md$- YUGEN Remastered becomes the default skin (with Garin's permission)
-- Hitsound buttons flash with what is playing
+  ($md$Version 7$md$, $md$v7$md$, $md$- Hitsound buttons flash with what is playing
 - Sliders can be reshaped; quick mod notes with markers on the timeline$md$, 'published', null, 7),
   ($md$Version 8$md$, $md$v8$md$, $md$- Rhythm comparison of all difficulties and many more MapsetVerifier-style checks
 - Difficulty switcher in the top bar

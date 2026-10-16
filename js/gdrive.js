@@ -127,7 +127,7 @@ function gdSave(opts = {}) {
   return GD.saving;
 }
 async function gdSaveRun({ manual }) {
-  if (!map || !gdOn()) return false;
+  if (!map || !gdOn() || !featOn("drive")) return false;
   if (manual && Date.now() - GD.lastSave < GD_MIN_MS && !GD.dirty && GD.folder) { toast(tr("Already saved to Drive"), 1500); return true; }
   if (manual && Date.now() - GD.lastSave < GD_MIN_MS) { toast(tr("Saved to Drive a moment ago; try again in a few seconds"), 2000); return false; }
   GD.pct = 0; gdStatus("saving");
@@ -194,6 +194,7 @@ async function gdExportOsz() {
 // ---------- open from Drive ----------
 async function gdDownload(id) { return (await gdFetch(`${GD_API}/files/${id}?alt=media`, {}, true)).blob(); }
 async function gdOpenFolder(f) {
+  if (!featGuard("drive")) return;
   try {
     showLoading(tr("Downloading from Google Drive…"), 0);
     const list = (await gdList(`'${f.id}' in parents and trashed=false`, true)).filter(x => x.mimeType !== GD_FOLDER);
@@ -207,6 +208,7 @@ async function gdOpenFolder(f) {
   } catch (e) { hideLoading(); toast(gdErrText(e), 4500); }
 }
 async function gdOpenFile(f) {
+  if (!featGuard("drive")) return;
   try {
     showLoading(tr("Downloading from Google Drive…"), -1);
     const b = await gdDownload(f.id);

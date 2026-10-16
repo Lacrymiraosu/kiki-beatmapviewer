@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { startSupabaseEmu } from "./emu/supabase-emu.mjs";
-import { startOsuMock } from "./emu/osu-mock.mjs";
+import { startOsuMock, calls as osuCalls, hits as osuHits, apiVersions as osuApiVersions, LOOKUP_MD5, SCORES_LEGACY, SCORES_LAZER, SCORES_MANY, SCORES_DENIED, SCORES_EMPTY, SCORES_VERSIONED } from "./emu/osu-mock.mjs";
 import { startApi } from "./lib/server.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -37,7 +37,7 @@ async function api(method, route, { as, body, headers = {} } = {}) {
   if (body !== undefined) { h["content-type"] = "application/json"; h["sec-fetch-site"] = h["sec-fetch-site"] || "same-origin"; }
   const r = await fetch(base + "/api/v1/" + route, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) });
   const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch {}
-  return { status: r.status, body: j };
+  return { status: r.status, body: j, headers: r.headers };
 }
 const sha = async bytes => Buffer.from(await crypto.subtle.digest("SHA-256", bytes)).toString("hex");
 const bytes = (n, fill) => new Uint8Array(n).fill(fill);
@@ -242,6 +242,13 @@ test("admin: only the owner's osu! id gets in; changelog drafts stay private; ac
   assert.equal((await api("DELETE", `admin/changelog/${d.body.entry.id}`, { as: OWNER, body: {} })).status, 200);
   const audit = (await api("GET", "admin/audit", { as: OWNER })).body.rows.map(r => r.action);
   for (const a of ["changelog.create", "changelog.publish", "changelog.delete"]) assert.ok(audit.includes(a), a);
+  // a Google-only account (id from 10^12, 13 digits) is managed like any other: the dashboard can read, limit and suspend it
+  const G = 1000000000007;
+  await emu.db.query("insert into obv.users (osu_id, username, avatar_url, country) values ($1, 'Google user', null, '') on conflict do nothing", [G]);
+  assert.equal((await api("GET", `admin/users/${G}`, { as: OWNER })).status, 200, "13-digit ids are found");
+  assert.equal((await api("POST", `admin/users/${G}/status`, { as: OWNER, body: { status: "suspended", reason: "test" } })).status, 200);
+  assert.equal((await api("POST", `admin/users/${G}/status`, { as: OWNER, body: { status: "active" } })).status, 200);
+  assert.equal((await api("GET", "admin/users/10000000000000", { as: OWNER })).status, 404, "14 digits is no id");
   // suspend a user: their project requests stop
   const q = await newProject(C);
   assert.equal((await api("POST", `admin/users/${C}/status`, { as: OWNER, body: { status: "suspended", reason: "test" } })).status, 200);
@@ -258,6 +265,40 @@ test("admins: the owner adds one by osu! name; they manage users and projects bu
   assert.equal((await api("GET", "admin/overview", { as: B })).status, 200);
   assert.equal((await api("GET", "admin/settings", { as: B })).status, 200, "admins can read settings");
   assert.equal((await api("POST", "admin/settings", { as: B, body: { values: { retention_days: 20 } } })).status, 403, "but not change them");
+  // feature switches (Admin → Features): any admin may change them, nothing else goes through that route
+  const featOff = async () => (await api("GET", "me")).body.features.off;
+  assert.deepEqual(await featOff(), [], "a logged-out visitor is told which are off (none)");
+  assert.equal((await api("POST", "admin/features", { as: A, body: { values: { feat_ed_test: false } } })).status, 403, "a member can't");
+  assert.equal((await api("POST", "admin/features", { as: B, body: { values: { retention_days: 20 } } })).status, 400, "only feat_ keys");
+  assert.equal((await api("POST", "admin/features", { as: B, body: { values: { feat_ed_test: false, saving_enabled: false } } })).status, 400, "not mixed with others");
+  assert.equal((await api("POST", "admin/features", { as: B, body: { values: { feat_nope: false } } })).status, 400, "an unknown switch");
+  assert.equal((await api("POST", "admin/features", { as: B, body: { values: { feat_ed_test: "no" } } })).status, 400, "a switch is true or false");
+  assert.equal((await api("POST", "admin/features", { as: B, body: { values: { feat_ed_test: false, feat_projects: false } } })).status, 200);
+  assert.deepEqual(await featOff(), ["ed_test", "projects"], "the change is visible to everyone at once (this instance)");
+  assert.equal((await api("GET", "projects", { as: A })).status, 503, "a server-backed feature that is off is refused");
+  assert.equal((await api("GET", "projects", { as: A })).body.error, "feature_disabled");
+  assert.equal((await api("GET", "projects", { as: OWNER })).status, 503, "for the owner too");
+  assert.equal((await api("GET", "admin/overview", { as: B })).status, 200, "the admin area stays reachable");
+  assert.equal((await api("GET", "me", { as: A })).status, 200);
+  assert.ok((await api("GET", "admin/audit", { as: OWNER })).body.rows.some(r => r.action === "settings.change" && JSON.stringify(r.detail).includes("feat_projects")), "audited");
+  assert.equal((await api("POST", "admin/features", { as: B, body: { values: { feat_ed_test: true, feat_projects: true } } })).status, 200);
+  assert.deepEqual(await featOff(), []);
+  assert.equal((await api("GET", "projects", { as: A })).status, 200);
+  // collab gets its identity tickets from live/ticket: switching Live sessions off alone must not stop collab joiners
+  assert.equal((await api("POST", "admin/features", { as: B, body: { values: { feat_live: false } } })).status, 200);
+  assert.equal((await api("POST", "live/ticket", { as: A, body: { aud: "collab:abc123" } })).status, 200, "ticket still issued while Collab is on");
+  assert.equal((await api("POST", "live/start", { as: A, body: { code: "abc123" } })).status, 503, "but live itself is off");
+  assert.equal((await api("POST", "admin/features", { as: B, body: { values: { feat_collab: false } } })).status, 200);
+  assert.equal((await api("POST", "live/ticket", { as: A, body: { aud: "collab:abc123" } })).status, 503, "both off: refused");
+  assert.equal((await api("POST", "admin/features", { as: B, body: { values: { feat_live: true, feat_collab: true } } })).status, 200);
+  // map lookups serve the list AND the player: refused only when both are off
+  assert.equal((await api("POST", "admin/features", { as: B, body: { values: { feat_songs: false } } })).status, 200);
+  assert.equal((await api("GET", "osu/search?q=a", { as: A })).status, 503, "the list's search is off with Beatmap list");
+  assert.notEqual((await api("GET", "osu/set?id=1", { as: A })).status, 503, "opening a map still works (the player is on)");
+  assert.equal((await api("POST", "admin/features", { as: B, body: { values: { feat_preview: false } } })).status, 200);
+  assert.equal((await api("GET", "osu/set?id=1", { as: A })).status, 503, "both off: refused");
+  assert.equal((await api("POST", "admin/features", { as: B, body: { values: { feat_songs: true, feat_preview: true } } })).status, 200);
+  assert.deepEqual(await featOff(), []);
   const lim = await api("POST", `admin/users/${A}`, { as: B, body: { max_project_bytes: 45000000, note: "ok" } });
   assert.equal(lim.status, 200); assert.equal(lim.body.user.limits.max_project_bytes, 45000000);
   assert.equal((await api("GET", "me", { as: A })).body.limits.max_project_bytes, 45000000, "the user sees their own limit");
@@ -366,9 +407,262 @@ test("osu! data: mapping activity, beatmap search with genre/language/tags, tags
   assert.deepEqual(s.body.set.map_tags[0].tags.map(x => x.name + ":" + x.count), ["tech/slider tech:10", "style/clean:9"]);
   assert.deepEqual(s.body.set.nominators.map(n => n.username + ":" + n.groups.join()), ["NomA:BN", "NomB:NAT"]);
   assert.equal(s.body.set.rating.avg, 9.6);
+  // what the detail panel shows per difficulty and per set (public fields only; the object counts come through, a missing one stays null)
+  const bm = s.body.set.beatmaps[1];
+  assert.deepEqual([bm.count_circles, bm.count_sliders, bm.count_spinners, bm.max_combo, bm.hit_length, bm.status, bm.playcount, bm.passcount], [400, 150, 2, 1050, 110, "ranked", 90, 10]);
+  assert.equal(s.body.set.beatmaps[0].count_spinners, 0, "0 spinners is a count, not a missing value");
+  assert.equal(bm.url, "https://osu.ppy.sh/beatmaps/" + bm.id); assert.equal(bm.last_updated, "2020-02-01T00:00:00Z");
+  assert.deepEqual([s.body.set.ranked_date, s.body.set.last_updated, s.body.set.submitted_date, s.body.set.artist_unicode], ["2020-03-01T00:00:00Z", "2020-02-01T00:00:00Z", "2020-01-01T00:00:00Z", "Artist 1"]);
+  assert.match(s.body.set.title_unicode, /^Song 1 /);
+  assert.ok(!("access_token" in s.body.set) && !("token" in s.body.set));
+  const lean = (await api("GET", `osu/beatmaps?id=${B}&type=guest&offset=0&limit=20`)).body.sets.find(x => x.id === 3002);
+  assert.deepEqual(lean.beatmaps.map(b => [b.count_circles, b.count_sliders, b.count_spinners, b.max_combo, b.url]), [[null, null, null, null, null], [null, null, null, null, null]], "absent stays null (never 0)");
   assert.equal((await api("GET", "osu/set?id=999999")).status, 404);
   assert.equal((await api("GET", "osu/beatmap?id=10012")).body.set_id, 1001);
   assert.equal((await api("GET", "osu/beatmap?id=5")).status, 404);
+});
+
+test("osu! lookup by checksum (finds the map of a replay): validated, found, unknown, cached", async () => {
+  const hits = () => osuCalls.filter(p => p === "/api/v2/beatmaps/lookup").length, h0 = hits(); // (bad checksums below must not reach osu!)
+  const ip = { "x-real-ip": "10.79.0.1" }; // (its own address: the other osu! tests use up the per-IP minute of 127.0.0.1)
+  const get = (route, o = {}) => api("GET", route, { headers: ip, ...o });
+  for (const bad of ["", "abc", "z".repeat(32), "a".repeat(31), "a".repeat(33), LOOKUP_MD5 + "&x=1", "../" + "a".repeat(29)])
+    assert.equal((await get("osu/lookup?checksum=" + encodeURIComponent(bad))).status, 400, "bad checksum: " + bad);
+  assert.equal((await get("osu/lookup")).status, 400);
+  const r = await get("osu/lookup?checksum=" + LOOKUP_MD5.toUpperCase()); // (upper case is accepted)
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body, { beatmap_id: 10012, beatmapset_id: 1001, version: "Insane", mode: 0, status: "ranked", title: "Song 1", artist: "Artist 1", creator: "TestMapper",
+    cs: 4, ar: 9, od: 8, hp: 6, stars: 5.3, length: 120, checksum: LOOKUP_MD5 });
+  assert.equal(hits(), h0 + 1);
+  assert.equal((await get("osu/lookup?checksum=" + LOOKUP_MD5)).status, 200);
+  assert.equal(hits(), h0 + 1, "the second answer came from the cache");
+  const unknown = "0".repeat(32);
+  assert.deepEqual((await get("osu/lookup?checksum=" + unknown)).body, { error: "not_found" });
+  assert.equal((await get("osu/lookup?checksum=" + unknown)).status, 404);
+  assert.equal(hits(), h0 + 2, "an unknown hash is cached too");
+});
+
+test("osu! lookup follows the Beatmap list / Preview switches", async () => {
+  const ip = { "x-real-ip": "10.79.0.2" }, url = "osu/lookup?checksum=" + LOOKUP_MD5;
+  const set = async v => assert.equal((await api("POST", "admin/features", { as: OWNER, body: { values: v } })).status, 200);
+  try {
+    await set({ feat_songs: false });
+    assert.equal((await api("GET", url, { as: A, headers: ip })).status, 200, "the player is on: a replay can still find its map");
+    await set({ feat_preview: false });
+    const off = await api("GET", url, { as: A, headers: ip });
+    assert.equal(off.status, 503); assert.equal(off.body.error, "feature_disabled");
+    await set({ feat_songs: true });
+    assert.equal((await api("GET", url, { as: A, headers: ip })).status, 200, "Beatmap list on again");
+    await set({ feat_songs: false, feat_preview: true });
+    assert.equal((await api("GET", url, { as: A, headers: ip })).status, 200);
+  } finally { await set({ feat_songs: true, feat_preview: true }); }
+  assert.deepEqual((await api("GET", "me")).body.features.off, []);
+});
+
+// ---- the top 50 scores of a replay's map: GET osu/scores?id= (every layer limits: per IP, osu! budget, cache, one request for the same map at once) ----
+const osuLib = () => require(join(root, "api/_lib/osu.js")); // (the server runs in this process: its buckets and memory can be set)
+const scoresHits = id => osuHits["/api/v2/beatmaps/" + id + "/scores"] || 0;
+const fillBuckets = () => { const o = osuLib(), b = o._buckets; b.scores.t = o.BUDGET.scoresBurst; b.scores.at = Date.now(); b.main.t = o.BUDGET.burst; b.main.at = Date.now(); };
+let ipN = 0; const freshIp = () => { ipN++; return { "x-real-ip": "10.78." + (ipN >> 8) + "." + (ipN & 255) }; }; // (each call its own address: the per-IP minute is tested on its own)
+const scoresGet = (id, o = {}) => api("GET", "osu/scores?id=" + id, { headers: freshIp(), ...o });
+const SC_KEYS = ["acc", "combo", "date", "grade", "miss", "mods", "n100", "n300", "n50", "pp", "rank", "score", "user"];
+
+test("osu! scores: trimmed list for the legacy and the lazer shape, 50 at most, cached", async () => {
+  fillBuckets();
+  const r = await scoresGet(SCORES_LEGACY);
+  assert.equal(r.status, 200); assert.equal(r.headers.get("cache-control"), "public, max-age=300, s-maxage=600");
+  assert.deepEqual(Object.keys(r.body).sort(), ["beatmap_id", "scores"]); assert.equal(r.body.beatmap_id, SCORES_LEGACY);
+  const [a, b, c] = r.body.scores;
+  assert.deepEqual(r.body.scores.map(x => x.rank), [1, 2, 3]);
+  assert.deepEqual(a, { rank: 1, user: { id: 101, name: "Player1", country: "TH", avatar: "https://a.ppy.sh/101" }, score: 12345677, acc: 0.9866, combo: 1233, mods: ["HD", "DT"], grade: "S", pp: 321.46,
+    date: "2026-09-01T10:00:00.000Z", n300: 900, n100: 10, n50: 2, miss: 1 });
+  assert.deepEqual(b.user, { id: 102, name: "A".repeat(32), country: "JP", avatar: "" }, "name capped, country upper case, http avatar dropped");
+  assert.deepEqual([b.mods, b.grade, b.pp], [[], "A", null]);
+  assert.deepEqual(c, { rank: 3, user: { id: 103, name: "Player3", country: "TH", avatar: "https://a.ppy.sh/103" }, score: 777, acc: 1, combo: 0, mods: ["NC"], grade: "", pp: 321.46,
+    date: "", n300: 0, n100: 0, n50: 0, miss: 0 }); // (total_score fallback, accuracy clamped, junk mods and grade and date dropped)
+  assert.ok(r.body.scores.every(x => Object.keys(x).sort().join() === SC_KEYS.join() && Object.keys(x.user).sort().join() === "avatar,country,id,name"), "nothing else is passed on");
+  assert.ok(JSON.stringify(r.body).length < 2000, "no raw osu! data");
+  const l = await scoresGet(SCORES_LAZER);
+  assert.deepEqual(l.body.scores, [
+    { rank: 1, user: { id: 201, name: "Lazer1", country: "KR", avatar: "https://a.ppy.sh/201" }, score: 987654, acc: 1, combo: 500, mods: ["HD", "DT"], grade: "XH", pp: null, date: "2026-09-02T11:00:00.000Z", n300: 500, n100: 0, n50: 0, miss: 0 },
+    { rank: 2, user: { id: 202, name: "Lazer2", country: "JP", avatar: "https://a.ppy.sh/202" }, score: 900000, acc: 0.97, combo: 450, mods: [], grade: "S", pp: 12.35, date: "2026-09-03T11:00:00.000Z", n300: 480, n100: 18, n50: 2, miss: 0 }]);
+  const many = await scoresGet(SCORES_MANY);
+  assert.equal(many.body.scores.length, 50, "sixty from osu!, fifty out"); assert.equal(many.body.scores[49].rank, 50);
+  assert.deepEqual([SCORES_LEGACY, SCORES_LAZER, SCORES_MANY].map(scoresHits), [1, 1, 1]);
+  const again = await scoresGet(SCORES_LEGACY);
+  assert.deepEqual(again.body, r.body); assert.equal(scoresHits(SCORES_LEGACY), 1, "the second answer came from the cache");
+});
+
+test("osu! scores: asked with x-api-version 20220705 (the lazer shape): a score set on lazer is no longer 0, nothing else changes", async () => {
+  fillBuckets();
+  const path = "/api/v2/beatmaps/" + SCORES_VERSIONED + "/scores";
+  const r = await scoresGet(SCORES_VERSIONED);
+  assert.equal(r.status, 200); assert.equal(r.headers.get("cache-control"), "public, max-age=300, s-maxage=600");
+  assert.equal(osuApiVersions[path], "20220705", "the scores call carries the header"); assert.equal(osuLib()._scores.apiVersion, "20220705");
+  assert.equal((await api("GET", "osu/lookup?checksum=" + "6".repeat(32), { headers: freshIp() })).status, 404);
+  assert.equal(osuApiVersions["/api/v2/beatmaps/lookup"], "", "other osu! calls don't send it");
+  assert.deepEqual(r.body, { beatmap_id: SCORES_VERSIONED, scores: [
+    { rank: 1, user: { id: 301, name: "StableOne", country: "DE", avatar: "https://a.ppy.sh/301" }, score: 12500000, acc: 0.9876, combo: 980, mods: ["HD"], grade: "S", pp: 250.5,
+      date: "2024-05-01T10:00:00.000Z", n300: 690, n100: 8, n50: 1, miss: 1 }, // (set on stable: its stable score, as before; the CL osu! adds to stable scores is not a mod the player chose)
+    { rank: 2, user: { id: 302, name: "LazerOne", country: "KR", avatar: "https://a.ppy.sh/302" }, score: 11650000, acc: 0.9952, combo: 1000, mods: ["HD", "DT"], grade: "SH", pp: 260.25,
+      date: "2025-02-03T04:05:06.000Z", n300: 695, n100: 5, n50: 0, miss: 0 }, // (set on lazer: classic_total_score, not the standardised total_score)
+    { rank: 3, user: { id: 303, name: "ClassicFan", country: "FR", avatar: "https://a.ppy.sh/303" }, score: 9000000, acc: 0.9, combo: 300, mods: ["CL", "NF"], grade: "B", pp: null,
+      date: "2025-03-01T00:00:00.000Z", n300: 600, n100: 80, n50: 10, miss: 10 }] }); // (a lazer player who chose Classic keeps it)
+  assert.ok(r.body.scores.every(x => Object.keys(x).sort().join() === SC_KEYS.join() && Object.keys(x.user).sort().join() === "avatar,country,id,name" && x.mods.every(m => typeof m === "string")));
+  // the same plays in the legacy shape (what osu! answered before, without the header): the same rows, except that the lazer scores were 0
+  const old = await fetch("http://127.0.0.1:54331" + path + "?mode=osu&type=global", { headers: { authorization: "Bearer mock-token" } }).then(x => x.json());
+  assert.equal(osuApiVersions[path], "");
+  const before = osuLib()._scores.trim(old);
+  assert.deepEqual(before.map(x => x.score), [12500000, 0, 0], "before: lazer scores came as 0");
+  assert.deepEqual(r.body.scores.map(x => ({ ...x, score: 0 })), before.map(x => ({ ...x, score: 0 })), "everything but the lazer scores is the same as before");
+  assert.equal(r.body.scores[0].score, before[0].score);
+  // a lazer-shape score without classic_total_score: the legacy score, else the standardised total (the last resort), never a mix within a row
+  const t = osuLib()._scores.trim({ scores: [{ legacy_total_score: 0, total_score: 654321, mods: [{ acronym: "HR", settings: {} }, { acronym: "CL" }], legacy_score_id: null, statistics: { great: 3 } },
+    { legacy_total_score: 5000, classic_total_score: 7000, total_score: 900000, mods: [{ acronym: "CL" }], legacy_score_id: 77 }] });
+  assert.deepEqual(t.map(x => [x.score, x.mods, x.n300]), [[654321, ["HR", "CL"], 3], [5000, [], 0]]);
+});
+
+test("osu! scores: bad id, unknown map and a map without scores", async () => {
+  fillBuckets();
+  const h0 = osuCalls.length;
+  for (const bad of ["", "abc", "12x", "-1", "12345678901", "1/2", "7001%2F..", "1.5"]) {
+    const r = await api("GET", "osu/scores?id=" + bad, { headers: freshIp() });
+    assert.equal(r.status, 400, "id: " + bad); assert.equal(r.body.error, "bad_request"); assert.equal(r.headers.get("cache-control"), "no-store");
+  }
+  assert.equal((await api("GET", "osu/scores", { headers: freshIp() })).status, 400);
+  assert.equal(osuCalls.length, h0, "bad ids never reach osu!");
+  const u = await scoresGet(6990); // (unknown to the mock: osu! answers 404)
+  assert.equal(u.status, 200); assert.deepEqual(u.body, { beatmap_id: 6990, scores: [] }); assert.equal(u.headers.get("cache-control"), "public, max-age=300, s-maxage=600");
+  assert.equal(scoresHits(6990), 1);
+  assert.deepEqual((await scoresGet(6990)).body, { beatmap_id: 6990, scores: [] }); assert.equal(scoresHits(6990), 1, "a 404 is cached too");
+  const e = await scoresGet(SCORES_EMPTY);
+  assert.deepEqual(e.body, { beatmap_id: SCORES_EMPTY, scores: [] }); await scoresGet(SCORES_EMPTY); assert.equal(scoresHits(SCORES_EMPTY), 1, "an empty list is cached too");
+});
+
+test("osu! scores: requests for the same map at once share one request to osu!", async () => {
+  fillBuckets();
+  const id = 7100, before = osuLib()._buckets.scores.t;
+  const rs = await Promise.all(Array.from({ length: 6 }, () => scoresGet(id)));
+  assert.ok(rs.every(r => r.status === 200 && r.body.scores.length === 1 && r.body.beatmap_id === id));
+  assert.equal(scoresHits(id), 1, "six at once, one request to osu!");
+  assert.ok(before - osuLib()._buckets.scores.t < 1.5, "and one token");
+  assert.equal(osuLib()._scores.pending.size, 0, "nothing left pending");
+  await scoresGet(id); assert.equal(scoresHits(id), 1);
+  // a failure is shared too and then forgotten: the pending entry doesn't stick
+  fillBuckets(); osuLib()._buckets.scores.t = 0;
+  const bad = await Promise.all([scoresGet(7101), scoresGet(7101)]);
+  assert.deepEqual(bad.map(r => r.status), [429, 429]); assert.equal(osuLib()._scores.pending.size, 0);
+  assert.equal(scoresHits(7101), 0);
+});
+
+test("osu! scores: 6 a minute per IP (its own limit, not the 40 of the other osu! routes)", async () => {
+  fillBuckets();
+  const ip = { "x-real-ip": "10.77.0.1" };
+  for (let i = 0; i < 6; i++) assert.equal((await api("GET", "osu/scores?id=" + SCORES_LEGACY, { headers: ip })).status, 200, "call " + (i + 1));
+  const seventh = await api("GET", "osu/scores?id=" + SCORES_LEGACY, { headers: ip });
+  assert.equal(seventh.status, 429); assert.equal(seventh.body.error, "too_many_requests"); assert.equal(seventh.headers.get("retry-after"), "60"); assert.equal(seventh.headers.get("cache-control"), "no-store");
+  assert.equal((await api("GET", "osu/scores?id=bad", { headers: ip })).status, 429, "bad ids count too");
+  // the scores calls do not use up the IP's 40 a minute for the rest of osu!, and the lookups do not count for the scores
+  const ip2 = { "x-real-ip": "10.77.0.2" }, unknown = "1".repeat(32);
+  for (let i = 0; i < 6; i++) assert.equal((await api("GET", "osu/scores?id=" + SCORES_LEGACY, { headers: ip2 })).status, 200);
+  for (let i = 0; i < 40; i++) assert.equal((await api("GET", "osu/lookup?checksum=" + unknown, { headers: ip2 })).status, 404, "lookup " + (i + 1));
+  assert.equal((await api("GET", "osu/lookup?checksum=" + unknown, { headers: ip2 })).status, 429, "the 41st lookup");
+  const ip3 = { "x-real-ip": "10.77.0.3" };
+  for (let i = 0; i < 40; i++) await api("GET", "osu/lookup?checksum=" + unknown, { headers: ip3 });
+  assert.equal((await api("GET", "osu/scores?id=" + SCORES_LEGACY, { headers: ip3 })).status, 200, "the scores have their own count");
+});
+
+test("osu! scores: osu! budget of their own (3 at once, 6 a minute); the pages keep working", async () => {
+  fillBuckets();
+  const o = osuLib(), b = o._buckets;
+  assert.deepEqual([o.BUDGET.scoresPerMin, o.BUDGET.scoresBurst, o.BUDGET.scoresReserve], [6, 3, 12]);
+  const mainBefore = b.main.t;
+  for (const id of [7102, 7103, 7104]) assert.equal((await scoresGet(id)).status, 200);
+  assert.ok(mainBefore - b.main.t >= 2 && mainBefore - b.main.t < 4, "each also takes one from the main bucket: " + (mainBefore - b.main.t));
+  const busy = await scoresGet(7105);
+  assert.equal(busy.status, 429); assert.equal(busy.body.error, "osu_busy"); assert.ok(+busy.headers.get("retry-after") >= 1 && +busy.headers.get("retry-after") <= 10, "Retry-After: " + busy.headers.get("retry-after"));
+  assert.equal(busy.headers.get("cache-control"), "no-store"); assert.equal(scoresHits(7105), 0, "osu! was not asked");
+  assert.equal((await scoresGet(7102)).status, 200, "what is cached is still served");
+  assert.equal((await api("GET", "osu/lookup?checksum=" + "2".repeat(32), { headers: freshIp() })).status, 404, "the site's pages draw from the main bucket and still work");
+  assert.equal((await api("GET", "osu/set?id=1001", { headers: freshIp() })).status, 200);
+  b.scores.t = 1; b.scores.at = Date.now(); assert.equal((await scoresGet(7105)).status, 200, "a token comes back with time");
+  assert.equal((await scoresGet(7106)).status, 429, "and is spent");
+});
+
+test("osu! scores: only while the main bucket keeps a reserve (12 left)", async () => {
+  fillBuckets();
+  const b = osuLib()._buckets;
+  b.main.t = 11; b.main.at = Date.now();
+  const busy = await scoresGet(7107);
+  assert.equal(busy.status, 429); assert.equal(busy.body.error, "osu_busy"); assert.ok(+busy.headers.get("retry-after") >= 1);
+  assert.equal(scoresHits(7107), 0); assert.ok(b.scores.t >= 2.9, "no scores token was spent");
+  assert.equal((await api("GET", "osu/lookup?checksum=" + "3".repeat(32), { headers: freshIp() })).status, 404, "the pages still work below the reserve");
+  b.main.t = 12.5; b.main.at = Date.now();
+  assert.equal((await scoresGet(7107)).status, 200, "with the reserve in place they are served");
+  b.main.t = 0; b.main.at = Date.now();
+  assert.equal((await scoresGet(7108)).status, 429); assert.equal(scoresHits(7108), 0);
+  fillBuckets();
+});
+
+test("osu! scores follow the Replays switch only", async () => {
+  fillBuckets();
+  const set = async v => assert.equal((await api("POST", "admin/features", { as: OWNER, body: { values: v } })).status, 200);
+  try {
+    await set({ feat_songs: false, feat_preview: false, feat_mappers: false });
+    assert.equal((await scoresGet(SCORES_LEGACY, { as: A })).status, 200, "the map lists being off does not matter");
+    await set({ feat_songs: true, feat_preview: true, feat_mappers: true, feat_replays: false });
+    const off = await scoresGet(SCORES_LEGACY, { as: A });
+    assert.equal(off.status, 503); assert.equal(off.body.error, "feature_disabled"); assert.equal(off.headers.get("cache-control"), "no-store");
+    assert.equal((await api("GET", "osu/lookup?checksum=" + "4".repeat(32), { headers: freshIp() })).status, 404, "the rest of osu! is not affected");
+    await set({ feat_replays: true });
+    assert.equal((await scoresGet(SCORES_LEGACY, { as: A })).status, 200);
+  } finally { await set({ feat_songs: true, feat_preview: true, feat_mappers: true, feat_replays: true }); }
+  assert.deepEqual((await api("GET", "me")).body.features.off, []);
+});
+
+test("osu! scores are a guest area like the map lookup on an invite-only site", async () => {
+  fillBuckets();
+  const P = 5511;
+  try {
+    await emu.db.query("update obv.settings set value = 'true' where key = 'access_required'");
+    await api("GET", "me", { as: P }); // (refreshes the server's cached switch)
+    const g = await scoresGet(SCORES_LEGACY);
+    assert.equal(g.status, 200); assert.equal(g.body.scores.length, 3);
+    assert.equal(g.headers.get("cache-control"), "private, max-age=300", "behind the gate the answer stays out of the shared cache");
+    assert.equal((await scoresGet(SCORES_LEGACY, { as: P })).status, 200);
+    assert.equal((await api("POST", "admin/settings", { as: OWNER, body: { values: { perm_guest_listing: false, perm_guest_player: false } } })).status, 200);
+    assert.equal((await scoresGet(SCORES_LEGACY)).status, 401, "guest areas off: a guest gets nothing");
+    assert.equal((await scoresGet(SCORES_LEGACY, { as: P })).status, 403, "a member without access neither");
+    assert.equal((await scoresGet(SCORES_LEGACY, { as: OWNER })).status, 200, "admins always");
+    assert.equal((await api("POST", "admin/settings", { as: OWNER, body: { values: { perm_guest_listing: false, perm_guest_player: true } } })).status, 200);
+    assert.equal((await scoresGet(SCORES_LEGACY)).status, 200, "the player area alone is enough (like the lookup)");
+  } finally {
+    await api("POST", "admin/settings", { as: OWNER, body: { values: { perm_guest_listing: true, perm_guest_player: true, perm_guest_mappers: true } } });
+    await emu.db.query("update obv.settings set value = 'false' where key = 'access_required'");
+    await api("GET", "me", { as: P });
+  }
+});
+
+test("osu! scores: osu! refusing the path (403) -> scores_unavailable, and osu! is left alone for an hour", async () => {
+  fillBuckets();
+  const lib = osuLib(), mem = lib._scores.off;
+  try {
+    const r = await scoresGet(SCORES_DENIED);
+    assert.equal(r.status, 503); assert.equal(r.body.error, "scores_unavailable"); assert.equal(r.headers.get("cache-control"), "no-store");
+    assert.equal(scoresHits(SCORES_DENIED), 1);
+    const left = mem.until - Date.now();
+    assert.ok(left > 3590000 && left <= 3600000, "remembered for an hour: " + left);
+    const h = osuCalls.length;
+    const other = await scoresGet(7109);
+    assert.equal(other.status, 503); assert.equal(other.body.error, "scores_unavailable"); assert.equal(scoresHits(7109), 0, "another map does not reach osu! either");
+    assert.equal((await scoresGet(SCORES_DENIED)).status, 503); assert.equal(scoresHits(SCORES_DENIED), 1);
+    assert.equal(osuCalls.length, h, "no call at all (not even for a token)");
+    assert.equal((await api("GET", "osu/lookup?checksum=" + "5".repeat(32), { headers: freshIp() })).status, 404, "the rest of osu! is not affected");
+    assert.ok(lib._buckets.scores.t > 1.5, "refused calls spend nothing more");
+    mem.until = Date.now() - 1; // (an hour later)
+    assert.equal((await scoresGet(7109)).status, 200, "asks again after the hour");
+    assert.equal(scoresHits(7109), 1);
+  } finally { mem.until = 0; }
 });
 
 test("invite-only: without an approved account only me, the request and the changelog answer; admins approve", async () => {
@@ -378,6 +672,7 @@ test("invite-only: without an approved account only me, the request and the chan
   assert.equal(me0.body.gate, true); assert.equal(me0.body.access, "none");
   // guests: the Beatmap page, the player and mapper pages by default, nothing online
   assert.equal((await api("GET", "osu/tags")).status, 200);
+  assert.equal((await api("GET", "osu/lookup?checksum=" + LOOKUP_MD5, { headers: { "x-real-ip": "10.79.0.3" } })).status, 200, "a replay's map lookup is a guest area (listing/player) too");
   assert.equal((await api("GET", "osu/user?u=1")).status !== 401, true);
   assert.equal((await api("GET", "projects")).status, 401);
   assert.equal((await api("GET", "projects", { as: P })).status, 403);
@@ -386,6 +681,7 @@ test("invite-only: without an approved account only me, the request and the chan
   const off = { perm_guest_listing: false, perm_guest_player: false, perm_guest_mappers: false };
   assert.equal((await api("POST", "admin/settings", { as: OWNER, body: { values: off } })).status, 200);
   assert.equal((await api("GET", "osu/tags")).status, 401);
+  assert.equal((await api("GET", "osu/lookup?checksum=" + LOOKUP_MD5, { headers: { "x-real-ip": "10.79.0.3" } })).status, 401, "guest areas off: no lookup either");
   assert.equal((await api("GET", "osu/tags", { as: P })).status, 403);
   assert.equal((await api("GET", "changelog")).status, 200);
   // ask (twice: the second only updates the message)
@@ -832,10 +1128,10 @@ test("previews fail closed: 503 preview_backend_disabled on /api/*, the static s
       assert.equal(r.headers.get("x-robots-tag"), "noindex");
     }
     // the static site: the plain page (not indexed) and the files
-    const home = await call(host, "/?s=1", { ...extraSecrets, ...extra });
+    const home = await call(host, "/?s=1");
     assert.equal(home.status, 200); assert.match(home.text, /<html/i); assert.match(home.headers.get("content-type"), /text\/html/);
     assert.equal(home.headers.get("x-robots-tag"), "noindex"); assert.ok(home.headers.get("content-security-policy"), "site headers");
-    const js = await call(host, "/js/core.js", { ...extraSecrets, ...extra }); assert.equal(js.status, 200); assert.match(js.text, /use strict/);
+    const js = await call(host, "/js/core.js"); assert.equal(js.status, 200); assert.match(js.text, /use strict/);
     assert.deepEqual({ ...process.env }, envBefore, "process.env unchanged"); assert.equal(process.env.SUPABASE_SECRET_KEY, snap.SUPABASE_SECRET_KEY);
     assert.deepEqual([db.D1.db, db.D1.target, db.R2.bucket], dbBefore, "db.js untouched"); assert.equal(emu.calls.length, callsBefore, "no database calls");
   };
@@ -850,15 +1146,15 @@ test("previews fail closed: 503 preview_backend_disabled on /api/*, the static s
     assert.equal((await call(host, "/js/core.js", extra)).status, 200);
   };
   try {
-    await locked("my-branch-kiki-beatmap-viewer.lacrymira.workers.dev");
+    await locked("feature-x-osu-beatmap-viewer.lacrymira.workers.dev");
     await locked("0a1b2c3d-osu-beatmap-viewer.lacrymira.workers.dev"); // (a version's preview URL)
     await locked("evil-osu-beatmap-viewer.attacker.workers.dev"); // look-alikes fail closed too
     await locked("something-else.lacrymira.workers.dev");
-    await locked("my-branch-kiki-beatmap-viewer.lacrymira.workers.dev", { PREVIEW_BACKEND: "true" }); // only exactly "1" opts in
+    await locked("feature-x-osu-beatmap-viewer.lacrymira.workers.dev", { PREVIEW_BACKEND: "true" }); // only exactly "1" opts in
     await locked("viewer.example.com", { OBV_PREVIEW: "1" }); // the variable wrangler.jsonc gives previews, on any host
     await normal("osu-beatmap-viewer.lacrymira.workers.dev"); // production (after a preview request in the same instance)
     await normal("viewer.example.com"); // a custom domain
-    await normal("my-branch-kiki-beatmap-viewer.lacrymira.workers.dev", { PREVIEW_BACKEND: "1" }); // opted in
+    await normal("feature-x-osu-beatmap-viewer.lacrymira.workers.dev", { PREVIEW_BACKEND: "1" }); // opted in
     await normal("viewer.example.com", { OBV_PREVIEW: "1", PREVIEW_BACKEND: "1" });
     // the same rules as a function (Vercel: VERCEL_ENV=preview)
     const pv = require(join(root, "api/_lib/preview.js"));
@@ -875,4 +1171,376 @@ test("previews fail closed: 503 preview_backend_disabled on /api/*, the static s
     Object.assign(process.env, snap);
     db.useR2(r2); db.useD1(d1); // (as tests/lib/server.mjs left them)
   }
+});
+
+// ---------- saved replays: POST/GET/DELETE /api/v1/replays (supabase/migrations/20261010090000_obv_replays.sql, d1/migrations/0005) ----------
+// (each test has its own address: the replay routes are limited to 30 a minute per IP)
+import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+const RPF = readFileSync(join(root, "tests/fixtures/stable-small.osr"));
+const rpSha = b => createHash("sha256").update(b).digest("hex");
+const rpFile = (tag, { n = 64, mode = 0 } = {}) => { const b = Buffer.alloc(n, 9); b[0] = mode; if (n > 4) b.writeUInt32LE(tag, 1); return b; };
+const rpBody = (b, meta = {}, over = {}) => ({ sha256: rpSha(b), size: b.length, data_b64: b.toString("base64"), meta, ...over });
+const rpIp = n => ({ "x-real-ip": "10.80.0." + n });
+const rpRows = async owner => (await emu.db.query("select * from obv.replays where owner_id = $1", [owner])).rows;
+const rpSetting = (key, value) => value === null ? emu.db.query("delete from obv.settings where key = $1", [key])
+  : emu.db.query("insert into obv.settings (key, value) values ($1, $2::jsonb) on conflict (key) do update set value = excluded.value", [key, String(value)]);
+
+test("replays: a login is needed for every route, and a POST / DELETE must come from this site", async () => {
+  const ip = rpIp(1), id = "11111111-1111-4111-8111-111111111111";
+  for (const [m, route, body] of [["GET", "replays"], ["POST", "replays", rpBody(RPF)], ["GET", "replays/" + id], ["DELETE", "replays/" + id, {}]]) {
+    const r = await api(m, route, { body, headers: ip }); assert.equal(r.status, 401, m + " " + route); assert.equal(r.body.error, "login_required");
+  }
+  assert.equal((await api("POST", "replays", { as: A, body: rpBody(RPF), headers: { ...ip, "sec-fetch-site": "cross-site" } })).status, 403);
+  assert.equal((await api("DELETE", "replays/" + id, { as: A, body: {}, headers: { ...ip, origin: "https://evil.example" } })).status, 403);
+  assert.equal((await api("DELETE", "replays/" + id, { as: A, headers: ip })).status, 403, "a DELETE without the JSON body is refused like every state-changing request");
+  assert.equal((await api("PUT", "replays", { as: A, body: {}, headers: ip })).status, 405);
+  assert.equal((await api("GET", "replays/not-an-id", { as: A, headers: ip })).status, 404);
+  assert.equal((await rpRows(A)).length, 0);
+});
+
+test("replays: save a real replay file, list it, open it (the bytes are identical), delete it", async () => {
+  const ip = rpIp(2), U = 7101;
+  const empty = await api("GET", "replays", { as: U, headers: ip });
+  assert.equal(empty.status, 200); assert.deepEqual(empty.body.replays, []); assert.equal(empty.body.saving, true);
+  assert.deepEqual([empty.body.limits.max_bytes, empty.body.limits.per_user, empty.body.limits.days, empty.body.limits.budget_bytes], [1048576, 20, 60, 100000000]);
+  const meta = { mode: 3, player: "Tester", mapMd5: "ABCDEF0123456789abcdef0123456789", title: "Song", artist: "Artist", version: "Insane", creator: "mapper", setId: 123, beatmapId: 456,
+    score: 1234567, combo: 321, acc: 0.9876, rank: "SH", mods: 24, modNames: ["HD", "HR"], counts: { n300: 300, n100: 2, n50: 1, geki: 40, katu: 5, miss: 0 }, date: 1700000000000, lazer: false,
+    extra: "dropped", __proto__x: 1 };
+  const s = await api("POST", "replays", { as: U, body: rpBody(RPF, meta), headers: ip });
+  assert.equal(s.status, 200, JSON.stringify(s.body)); assert.equal(s.body.existed, false);
+  const rep = s.body.replay;
+  assert.equal(rep.sha256, rpSha(RPF)); assert.equal(rep.size, RPF.length); assert.ok(/^[0-9a-f-]{36}$/.test(rep.id));
+  assert.deepEqual(rep.meta, { mode: RPF[0], player: "Tester", mapMd5: "abcdef0123456789abcdef0123456789", title: "Song", artist: "Artist", version: "Insane", creator: "mapper", setId: 123, beatmapId: 456,
+    score: 1234567, combo: 321, acc: 0.9876, rank: "SH", mods: 24, modNames: ["HD", "HR"], counts: { n300: 300, n100: 2, n50: 1, geki: 40, katu: 5, miss: 0 }, date: 1700000000000, lazer: false }, "known keys only, and the mode is the file's own first byte");
+  assert.ok(Math.abs(Date.parse(rep.expires_at) - Date.parse(rep.created_at) - 60 * 864e5) < 1000, "kept 60 days");
+  const l = await api("GET", "replays", { as: U, headers: ip });
+  assert.deepEqual(l.body.replays.map(r => r.id), [rep.id]); assert.equal(l.body.saving, true); assert.equal(l.body.limits.used_bytes >= RPF.length, true);
+  assert.ok(!JSON.stringify(l.body).includes("data_b64") && !JSON.stringify(l.body).includes(RPF.toString("base64").slice(0, 30)), "the list has no file");
+  assert.match(l.headers.get("cache-control") || "", /no-store/);
+  const g = await api("GET", "replays/" + rep.id, { as: U, headers: ip });
+  assert.equal(g.status, 200); assert.deepEqual(Buffer.from(g.body.data_b64, "base64"), RPF, "the same bytes"); assert.deepEqual(g.body.replay, rep);
+  assert.match(g.headers.get("cache-control") || "", /no-store/); assert.match(g.headers.get("cache-control") || "", /private/);
+  assert.equal((await api("GET", "replays/" + rep.id.toUpperCase(), { as: U, headers: ip })).status, 404, "ids are lower case");
+  assert.equal((await api("DELETE", "replays/" + rep.id, { as: U, body: {}, headers: ip })).body.ok, true);
+  assert.equal((await api("GET", "replays/" + rep.id, { as: U, headers: ip })).status, 404);
+  assert.equal((await api("DELETE", "replays/" + rep.id, { as: U, body: {}, headers: ip })).status, 404);
+  assert.deepEqual((await api("GET", "replays", { as: U, headers: ip })).body.replays, []);
+});
+
+test("replays: the same file again answers existed and keeps the first deletion date; a different person can save it too", async () => {
+  const ip = rpIp(3), U = 7102, V = 7103, b = rpFile(1);
+  const a = await api("POST", "replays", { as: U, body: rpBody(b, { player: "a" }), headers: ip });
+  const sooner = new Date(Date.parse(a.body.replay.expires_at) - 20 * 864e5).toISOString();
+  await emu.db.query("update obv.replays set expires_at = $2 where id = $1", [a.body.replay.id, sooner]);
+  const again = await api("POST", "replays", { as: U, body: rpBody(b, { player: "b" }), headers: ip });
+  assert.equal(again.status, 200); assert.equal(again.body.existed, true); assert.equal(again.body.replay.id, a.body.replay.id);
+  assert.equal(Date.parse(again.body.replay.expires_at), Date.parse(sooner), "not extended"); assert.equal(again.body.replay.meta.player, "a");
+  assert.equal((await rpRows(U)).length, 1);
+  const other = await api("POST", "replays", { as: V, body: rpBody(b), headers: ip });
+  assert.equal(other.body.existed, false); assert.notEqual(other.body.replay.id, a.body.replay.id);
+});
+
+test("replays: what is refused (size, encoding, hash, game mode, score info, body size)", async () => {
+  const ip = rpIp(4), U = 7104, b = rpFile(2), ok = rpBody(b);
+  const post = (body, o = {}) => api("POST", "replays", { as: U, body, headers: ip, ...o });
+  const expect = async (body, status, error, why) => { const r = await post(body); assert.equal(r.status, status, why + " " + JSON.stringify(r.body)); assert.equal(r.body.error, error, why); };
+  await expect({ ...ok, sha256: "XYZ" }, 400, "bad_request", "sha256 format"); await expect({ ...ok, sha256: rpSha(b).toUpperCase() }, 400, "bad_request", "upper case sha256");
+  await expect({ ...ok, sha256: rpSha("nope") }, 400, "bad_request", "sha256 isn't the file's");
+  for (const size of [0, -1, 1.5, "64", null, undefined]) await expect({ ...ok, size }, 400, "bad_request", "size " + size);
+  await expect({ ...ok, size: 1048577 }, 413, "too_large", "size over 1 MiB");
+  await expect({ ...ok, size: b.length - 1 }, 400, "bad_request", "size doesn't match the data"); await expect({ ...ok, size: b.length + 1 }, 400, "bad_request", "size doesn't match the data (longer)");
+  await expect({ ...ok, data_b64: undefined }, 400, "bad_request", "no data"); await expect({ ...ok, data_b64: 5 }, 400, "bad_request", "data not text"); await expect({ ...ok, data_b64: "" }, 400, "bad_request", "empty data");
+  await expect({ ...ok, data_b64: "!" + ok.data_b64.slice(1) }, 400, "bad_request", "not base64"); await expect({ ...ok, data_b64: ok.data_b64.replace(/\+/g, "-").replace(/\//g, "_") + "*" }, 400, "bad_request", "url-safe alphabet");
+  await expect({ ...ok, data_b64: ok.data_b64.slice(0, -4) }, 400, "bad_request", "cut short"); await expect({ ...ok, data_b64: ok.data_b64.slice(0, 4) + "\n" + ok.data_b64.slice(5) }, 400, "bad_request", "line break");
+  const odd = rpFile(3, { n: 65 }), oddB = rpBody(odd); // (65 bytes end in "=": the last character must be the canonical one)
+  assert.ok(oddB.data_b64.endsWith("=")); await expect({ ...oddB, data_b64: oddB.data_b64.slice(0, -2) + "B=" }, 400, "bad_request", "non-canonical padding bits");
+  await expect({ ...oddB, data_b64: oddB.data_b64.slice(0, -1) }, 400, "bad_request", "padding missing");
+  await expect(rpBody(rpFile(4, { mode: 4 })), 400, "bad_request", "first byte is not a game mode"); await expect(rpBody(rpFile(5, { mode: 255 })), 400, "bad_request", "first byte 255");
+  await expect({ ...ok, meta: [] }, 400, "bad_request", "meta is a list"); await expect({ ...ok, meta: "x" }, 400, "bad_request", "meta is text");
+  await expect({ ...ok, meta: { title: "あ".repeat(300), artist: "あ".repeat(300), version: "あ".repeat(300), creator: "あ".repeat(300), modNames: Array(20).fill("あ".repeat(8)), player: "あ".repeat(64) } }, 400, "bad_request", "meta over 4096 bytes");
+  assert.equal((await rpRows(U)).length, 0, "nothing was kept");
+  // wrong values in the score info are dropped, not an error; text is cut to size
+  const tidy = await post(rpBody(b, { player: "p".repeat(100), mapMd5: "nothex", setId: -1, beatmapId: "5", score: -5, combo: 1.5, acc: 2, rank: "SSSS", mods: "HD", modNames: ["a".repeat(20), 5, ...Array(30).fill("DT")], counts: { n300: 1, miss: -1, evil: 2 }, date: "x", lazer: "yes", title: 5 }));
+  assert.equal(tidy.status, 200); assert.deepEqual(tidy.body.replay.meta, { mode: 0, player: "p".repeat(64), rank: "SSS", modNames: ["a".repeat(8), ...Array(19).fill("DT")], counts: { n300: 1 } });
+  const nul = await post(rpBody(rpFile(6), { setId: null, beatmapId: null, date: null })); assert.deepEqual(nul.body.replay.meta, { mode: 0, setId: null, beatmapId: null, date: null });
+  const nometa = await post({ ...rpBody(rpFile(7)), meta: undefined }); assert.equal(nometa.status, 200); assert.deepEqual(nometa.body.replay.meta, { mode: 0 });
+  // exactly 1 MiB goes through (the body is about 1.4 MB of text); the body limit is checked before anything is decoded
+  const big = rpFile(8, { n: 1048576 }), ip2 = rpIp(12), bigR = await api("POST", "replays", { as: U, body: rpBody(big), headers: ip2 }); assert.equal(bigR.status, 200, JSON.stringify(bigR.body).slice(0, 200));
+  assert.deepEqual(Buffer.from((await api("GET", "replays/" + bigR.body.replay.id, { as: U, headers: ip2 })).body.data_b64, "base64"), big);
+});
+
+test("replays: too much text is refused with 413 before it is read", async () => {
+  const ip = rpIp(5), U = 7105, b = rpFile(9, { n: 1048576 });
+  const r = await post413(U, ip, { ...rpBody(b), data_b64: rpBody(b).data_b64 + "A".repeat(4) }); assert.equal(r.status, 413); assert.equal(r.body.error, "too_large");
+  const huge = await post413(U, ip, { ...rpBody(b), data_b64: "A".repeat(1700000) }); assert.equal(huge.status, 413, "over the body limit");
+  const over = rpFile(10, { n: 1048577 }), o = await post413(U, ip, rpBody(over)); assert.equal(o.status, 413); assert.equal(o.body.error, "too_large");
+  assert.equal((await rpRows(U)).length, 0);
+});
+async function post413(as, ip, body) { return api("POST", "replays", { as, body, headers: { ...ip, connection: "close" } }); } // (the server answers before it has read it all: the connection is not reused)
+
+test("replays: limit per person (403 replay_limit), the site budget (503 storage_full), saving paused (503)", async () => {
+  const ip = rpIp(6), U = 7106, V = 7107;
+  await rpSetting("replays_per_user", 2);
+  try {
+    assert.equal((await api("POST", "replays", { as: U, body: rpBody(rpFile(20)), headers: ip })).status, 200);
+    assert.equal((await api("POST", "replays", { as: U, body: rpBody(rpFile(21)), headers: ip })).status, 200);
+    const e = await api("POST", "replays", { as: U, body: rpBody(rpFile(22)), headers: ip });
+    assert.equal(e.status, 403); assert.equal(e.body.error, "replay_limit"); assert.equal(e.body.detail.limit, 2);
+    assert.equal((await api("POST", "replays", { as: U, body: rpBody(rpFile(20)), headers: ip })).body.existed, true, "the same file at the limit is answered");
+    assert.equal((await api("GET", "replays", { as: U, headers: ip })).body.limits.per_user, 2);
+    assert.equal((await api("POST", "replays", { as: V, body: rpBody(rpFile(22)), headers: ip })).status, 200, "per person");
+  } finally { await rpSetting("replays_per_user", null); }
+  const used = (await api("GET", "replays", { as: U, headers: ip })).body.limits.used_bytes;
+  await rpSetting("replay_budget_bytes", used + 10);
+  try {
+    const f = await api("POST", "replays", { as: U, body: rpBody(rpFile(23, { n: 11 })), headers: ip });
+    assert.equal(f.status, 503, JSON.stringify(f.body)); assert.equal(f.body.error, "storage_full");
+    assert.equal((await api("POST", "replays", { as: U, body: rpBody(rpFile(23, { n: 10 })), headers: ip })).status, 200, "up to the budget");
+  } finally { await rpSetting("replay_budget_bytes", null); }
+  assert.equal((await api("POST", "admin/settings", { as: OWNER, body: { values: { saving_enabled: false } } })).status, 200);
+  try {
+    const p = await api("POST", "replays", { as: U, body: rpBody(rpFile(24)), headers: ip }); assert.equal(p.status, 503); assert.equal(p.body.error, "saving_disabled");
+    assert.equal((await api("GET", "replays", { as: U, headers: ip })).status, 200, "reading still works");
+  } finally { await api("POST", "admin/settings", { as: OWNER, body: { values: { saving_enabled: true } } }); }
+});
+
+test("replays: nobody else can read or delete someone's replay (404, same as one that doesn't exist)", async () => {
+  const ip = rpIp(7), U = 7108, V = 7109;
+  const s = (await api("POST", "replays", { as: U, body: rpBody(rpFile(30)), headers: ip })).body.replay;
+  const none = "22222222-2222-4222-8222-222222222222";
+  for (const [m, body] of [["GET"], ["DELETE", {}]]) {
+    const other = await api(m, "replays/" + s.id, { as: V, body, headers: ip }), missing = await api(m, "replays/" + none, { as: V, body, headers: ip });
+    assert.equal(other.status, 404, m); assert.deepEqual(other.body, missing.body);
+  }
+  assert.deepEqual((await api("GET", "replays", { as: V, headers: ip })).body.replays, []);
+  assert.equal((await api("GET", "replays/" + s.id, { as: U, headers: ip })).status, 200, "still there for the owner");
+});
+
+test("replays: the Replays switch refuses every route (503 feature_disabled) and comes back", async () => {
+  const ip = rpIp(8), U = 7110, id = "33333333-3333-4333-8333-333333333333";
+  const s = (await api("POST", "replays", { as: U, body: rpBody(rpFile(40)), headers: ip })).body.replay;
+  assert.equal((await api("POST", "admin/features", { as: OWNER, body: { values: { feat_replays: false } } })).status, 200);
+  try {
+    assert.deepEqual((await api("GET", "me")).body.features.off, ["replays"]);
+    for (const [m, route, body] of [["GET", "replays"], ["POST", "replays", rpBody(rpFile(41))], ["GET", "replays/" + s.id], ["DELETE", "replays/" + s.id, {}], ["GET", "replays/" + id]]) {
+      const r = await api(m, route, { as: U, body, headers: ip }); assert.equal(r.status, 503, m + " " + route); assert.equal(r.body.error, "feature_disabled"); assert.equal(r.body.detail.feature, "replays");
+    }
+    assert.equal((await api("GET", "projects", { as: U })).status, 200, "nothing else is switched off");
+  } finally { await api("POST", "admin/features", { as: OWNER, body: { values: { feat_replays: true } } }); }
+  assert.equal((await api("GET", "replays/" + s.id, { as: U, headers: ip })).status, 200);
+  assert.deepEqual((await api("GET", "me")).body.features.off, []);
+});
+
+test("replays: the daily cleanup deletes them after 60 days (and keeps the rest); before the migration it is not an error", async () => {
+  const ip = rpIp(9), U = 7111, cron = () => fetch(base + "/api/cron", { headers: { authorization: "Bearer cron-secret-for-tests" } }).then(async r => ({ status: r.status, body: await r.json() }));
+  const old = (await api("POST", "replays", { as: U, body: rpBody(rpFile(50)), headers: ip })).body.replay, keep = (await api("POST", "replays", { as: U, body: rpBody(rpFile(51)), headers: ip })).body.replay;
+  await emu.db.query("update obv.replays set expires_at = now() - interval '1 second' where id = $1", [old.id]);
+  assert.deepEqual((await api("GET", "replays", { as: U, headers: ip })).body.replays.map(r => r.id), [keep.id], "expired: gone from the list at once");
+  assert.equal((await api("GET", "replays/" + old.id, { as: U, headers: ip })).status, 404);
+  assert.equal((await rpRows(U)).length, 2, "the row is still there until the cleanup");
+  const c = await cron(); assert.equal(c.status, 200); assert.equal(c.body.ok, true); assert.ok(c.body.replays_deleted >= 1);
+  assert.deepEqual((await rpRows(U)).map(r => r.id), [keep.id]);
+  assert.deepEqual(c.body.errors, []);
+  await hideReplayFunctions(true);
+  try { const c2 = await cron(); assert.equal(c2.status, 200); assert.deepEqual(c2.body.errors, []); assert.equal(c2.body.replays_deleted, undefined); }
+  finally { await hideReplayFunctions(false); }
+});
+
+// "the migration hasn't been run yet": the database function isn't there. Postgres: renamed (PostgREST then answers PGRST202, as Supabase does);
+// D1: the JavaScript function is taken out.
+const RP_FUNCS = { obv_replay_list: "bigint", obv_replay_save: "bigint, text, integer, jsonb, text", obv_replay_get: "bigint, uuid", obv_replay_delete: "bigint, uuid", obv_replays_gc: "integer",
+  obv_replay_share: "bigint, uuid, text", obv_replay_shared: "bigint, uuid, text", obv_replay_card: "uuid, text" };
+async function hideReplayFunctions(hide) {
+  if (d1) {
+    const { F } = require(join(root, "api/_lib/d1.js"));
+    for (const n of Object.keys(RP_FUNCS)) { if (hide) { F[n + "_hidden"] = F[n]; delete F[n]; } else { F[n] = F[n + "_hidden"]; delete F[n + "_hidden"]; } }
+    return;
+  }
+  for (const [n, args] of Object.entries(RP_FUNCS)) await emu.db.exec(hide ? `alter function public.${n}(${args}) rename to ${n}_hidden` : `alter function public.${n}_hidden(${args}) rename to ${n}`);
+  emu.forgetFunctions();
+}
+test("replays: before the migration is run: the list says saving is off (200), saving and opening say 503 not_configured; other database errors stay errors", async () => {
+  const ip = rpIp(10), U = 7112;
+  const s = (await api("POST", "replays", { as: U, body: rpBody(rpFile(60)), headers: ip })).body.replay;
+  await hideReplayFunctions(true);
+  try {
+    const l = await api("GET", "replays", { as: U, headers: ip }); assert.equal(l.status, 200); assert.deepEqual(l.body, { replays: [], saving: false, limits: null });
+    for (const [m, route, body] of [["POST", "replays", rpBody(rpFile(61))], ["GET", "replays/" + s.id], ["DELETE", "replays/" + s.id, {}],
+      ["POST", "replays/" + s.id + "/share", { mode: "on" }], ["GET", "replays/shared/" + s.id + "?key=" + "A".repeat(32)]]) {
+      const r = await api(m, route, { as: U, body, headers: ip }); assert.equal(r.status, 503, m + " " + route); assert.equal(r.body.error, "not_configured");
+    }
+    assert.equal((await api("GET", "projects", { as: U })).status, 200, "everything else keeps working");
+    assert.equal((await api("POST", "replays", { as: U, body: { sha256: "x" }, headers: ip })).status, 400, "input is checked first");
+    // the layer below: a missing function is told apart from any other database error
+    const db = require(join(root, "api/_lib/db.js"));
+    const e = await db.rpc("obv_replay_list", { p_actor: U }).catch(x => x); assert.equal(e.code, "db_error"); assert.equal(e.missing, true);
+  } finally { await hideReplayFunctions(false); }
+  assert.equal((await api("GET", "replays/" + s.id, { as: U, headers: ip })).status, 200, "and back");
+  assert.equal((await api("GET", "replays", { as: U, headers: ip })).body.saving, true);
+});
+
+test("replays: a database error that isn't 'function missing' is not turned into 'not set up'", async () => {
+  const ip = rpIp(11), U = 7113, db = require(join(root, "api/_lib/db.js")), real = db.rpc;
+  await api("GET", "replays", { as: U, headers: ip }); // (the session is known before the database is "broken")
+  db.rpc = async (name, args) => { if (name === "obv_replay_save" || name === "obv_replay_get") throw new db.ApiError("db_error", 502); return real(name, args); };
+  try {
+    assert.equal((await api("POST", "replays", { as: U, body: rpBody(rpFile(70)), headers: ip })).status, 502);
+    assert.equal((await api("GET", "replays/44444444-4444-4444-8444-444444444444", { as: U, headers: ip })).body.error, "db_error");
+  } finally { db.rpc = real; }
+});
+
+test("replays: 30 requests a minute from one address, then 429 (before anything else is looked at)", async () => {
+  const ip = rpIp(13); let last;
+  for (let i = 0; i < 31; i++) last = await api("GET", "replays", { as: 7114, headers: ip });
+  assert.equal(last.status, 429); assert.equal(last.body.error, "too_many_requests");
+  assert.equal((await api("GET", "replays", { as: 7114, headers: rpIp(14) })).status, 200, "another address is fine");
+});
+
+// ---------- sharing a saved replay by link, members only: POST replays/:id/share, GET replays/shared/:id?key= (20261011150000_obv_replay_share.sql, d1/migrations/0006) ----------
+const RK = /^[A-Za-z0-9_-]{32}$/;
+const rpShare = (as, id, mode, ip) => api("POST", "replays/" + id + "/share", { as, body: { mode }, headers: ip });
+const rpOpen = (as, id, key, ip) => api("GET", "replays/shared/" + id + (key === undefined ? "" : "?key=" + encodeURIComponent(key)), { as, headers: ip });
+
+test("replay links: the owner shares, resets and stops; a member opens it (the same bytes, nothing about the owner); every bad link is the same 404", async () => {
+  let k = 0; const nip = () => ({ "x-real-ip": "10.82.0." + (++k) }), U = 7120, V = 7121; // (a new address per call: this test makes more than 30)
+  const meta = { player: "Tester", title: "Song", artist: "Artist", version: "Insane", score: 4242 };
+  const rep = (await api("POST", "replays", { as: U, body: rpBody(RPF, meta), headers: nip() })).body.replay;
+  assert.equal(rep.share_key, null, "a new save isn't shared");
+  const on = await rpShare(U, rep.id, "on", nip());
+  assert.equal(on.status, 200); assert.deepEqual(Object.keys(on.body).sort(), ["expires_at", "share_key"]); assert.match(on.body.share_key, RK);
+  assert.equal(on.headers.get("cache-control"), "private, no-store"); assert.equal(Date.parse(on.body.expires_at), Date.parse(rep.expires_at));
+  const key = on.body.share_key;
+  assert.equal((await rpShare(U, rep.id, "on", nip())).body.share_key, key, "on again: the same link");
+  assert.equal((await api("GET", "replays", { as: U, headers: nip() })).body.replays.find(r => r.id === rep.id).share_key, key, "the owner's list shows it is shared, with its key");
+  assert.equal((await api("GET", "replays/" + rep.id, { as: U, headers: nip() })).body.replay.share_key, key);
+  // a member opens it
+  const g = await rpOpen(V, rep.id, key, nip());
+  assert.equal(g.status, 200); assert.equal(g.headers.get("cache-control"), "private, no-store");
+  assert.deepEqual(Object.keys(g.body).sort(), ["data_b64", "replay"]); assert.deepEqual(Object.keys(g.body.replay).sort(), ["created_at", "expires_at", "id", "meta", "size"]);
+  assert.deepEqual(Buffer.from(g.body.data_b64, "base64"), RPF, "the same bytes as saved");
+  assert.equal(g.body.replay.id, rep.id); assert.equal(g.body.replay.size, RPF.length); assert.deepEqual(g.body.replay.meta, rep.meta);
+  const txt = JSON.stringify(g.body);
+  assert.ok(!/owner|sha256|share_key/.test(txt) && !txt.includes(key) && !txt.includes("user" + U), "no owner, account data or key in the answer");
+  assert.equal((await api("GET", "replays/" + rep.id, { as: V, headers: nip() })).status, 404, "the owner-only route stays owner-only");
+  // every bad link: 404 with the same body
+  const nf = []; const bad = async (why, r) => { assert.equal(r.status, 404, why); assert.equal(r.headers.get("cache-control"), "no-store", why); nf.push([why, r.body]); };
+  await bad("a wrong key", await rpOpen(V, rep.id, "B".repeat(32), nip()));
+  await bad("a malformed key", await rpOpen(V, rep.id, "short", nip()));
+  await bad("a key with a bad character", await rpOpen(V, rep.id, key.slice(0, 31) + ".", nip()));
+  await bad("a key too long", await rpOpen(V, rep.id, key + "A", nip()));
+  await bad("no key", await rpOpen(V, rep.id, undefined, nip()));
+  await bad("an unknown id", await rpOpen(V, "55555555-5555-4555-8555-555555555555", key, nip()));
+  const other = (await api("POST", "replays", { as: U, body: rpBody(rpFile(80)), headers: nip() })).body.replay, otherKey = (await rpShare(U, other.id, "on", nip())).body.share_key;
+  await bad("another replay's key", await rpOpen(V, rep.id, otherKey, nip()));
+  const reset = await rpShare(U, rep.id, "reset", nip()); assert.match(reset.body.share_key, RK); assert.notEqual(reset.body.share_key, key);
+  await bad("the old key after a reset", await rpOpen(V, rep.id, key, nip()));
+  assert.equal((await rpOpen(V, rep.id, reset.body.share_key, nip())).status, 200, "the new one works");
+  const off = await rpShare(U, rep.id, "off", nip()); assert.equal(off.status, 200); assert.equal(off.body.share_key, null);
+  await bad("a revoked key", await rpOpen(V, rep.id, reset.body.share_key, nip()));
+  assert.equal((await api("GET", "replays", { as: U, headers: nip() })).body.replays.find(r => r.id === rep.id).share_key, null);
+  await emu.db.query("update obv.replays set expires_at = now() - interval '1 second' where id = $1", [other.id]);
+  await bad("an expired replay", await rpOpen(V, other.id, otherKey, nip()));
+  const del = (await api("POST", "replays", { as: U, body: rpBody(rpFile(81)), headers: nip() })).body.replay, delKey = (await rpShare(U, del.id, "on", nip())).body.share_key;
+  assert.equal((await rpOpen(V, del.id, delKey, nip())).status, 200);
+  assert.equal((await api("DELETE", "replays/" + del.id, { as: U, body: {}, headers: nip() })).status, 200);
+  await bad("a deleted replay", await rpOpen(V, del.id, delKey, nip()));
+  for (const [why, b] of nf) assert.deepEqual(b, { error: "not_found" }, why);
+  // only the owner can share or stop sharing (someone else: 404, the same as an unknown id); a bad mode is 400
+  const mine = (await api("POST", "replays", { as: U, body: rpBody(rpFile(82)), headers: nip() })).body.replay, mineKey = (await rpShare(U, mine.id, "on", nip())).body.share_key;
+  for (const mode of ["on", "reset", "off"]) {
+    const r = await rpShare(V, mine.id, mode, nip()), u = await rpShare(V, "66666666-6666-4666-8666-666666666666", mode, nip());
+    assert.equal(r.status, 404, mode); assert.deepEqual(r.body, u.body);
+  }
+  assert.equal((await rpOpen(V, mine.id, mineKey, nip())).status, 200, "still shared with the same key");
+  for (const b of [{}, { mode: "ON" }, { mode: 1 }, { mode: "delete" }]) { const r = await api("POST", "replays/" + mine.id + "/share", { as: U, body: b, headers: nip() }); assert.equal(r.status, 400, JSON.stringify(b)); assert.equal(r.body.error, "bad_request"); }
+  assert.equal((await api("POST", "replays/" + mine.id + "/share", { as: U, body: { mode: "on" }, headers: { ...nip(), "sec-fetch-site": "cross-site" } })).status, 403, "from this site only");
+  assert.equal((await api("GET", "replays/" + mine.id + "/share", { as: U, headers: nip() })).status, 405);
+  assert.equal((await api("GET", "replays/shared/not-an-id?key=" + mineKey, { as: V, headers: nip() })).status, 404);
+});
+
+test("replay links: guests get 401, a logged-in account without access 403, members and admins open it", async () => {
+  const ip = rpIp(21), U = 7122, M = 7123, N = 7124;
+  const rep = (await api("POST", "replays", { as: U, body: rpBody(rpFile(90)), headers: ip })).body.replay, key = (await rpShare(U, rep.id, "on", ip)).body.share_key;
+  for (const r of [await rpOpen(undefined, rep.id, key, ip), await api("POST", "replays/" + rep.id + "/share", { body: { mode: "off" }, headers: ip })]) { assert.equal(r.status, 401); assert.equal(r.body.error, "login_required"); }
+  try {
+    await emu.db.query("update obv.settings set value = 'true' where key = 'access_required'");
+    await api("GET", "me", { as: M }); await api("GET", "me", { as: N }); // (refreshes the server's cached switch; makes the accounts)
+    assert.equal((await api("POST", `admin/access/${M}`, { as: OWNER, body: { access: "approved" } })).status, 200);
+    assert.equal((await api("POST", `admin/access/${U}`, { as: OWNER, body: { access: "approved" } })).status, 200);
+    const guest = await rpOpen(undefined, rep.id, key, ip); assert.equal(guest.status, 401); assert.equal(guest.body.error, "login_required");
+    const no = await rpOpen(N, rep.id, key, ip); assert.equal(no.status, 403); assert.equal(no.body.error, "no_access", "logged in, not let in yet");
+    assert.equal((await rpOpen(N, rep.id, "Z".repeat(32), ip)).status, 403, "the same with a wrong key: nothing to learn");
+    assert.equal((await rpShare(N, rep.id, "off", ip)).status, 403);
+    const ok = await rpOpen(M, rep.id, key, ip); assert.equal(ok.status, 200); assert.equal(ok.headers.get("cache-control"), "private, no-store");
+    assert.deepEqual(Buffer.from(ok.body.data_b64, "base64"), rpFile(90));
+    assert.equal((await rpOpen(OWNER, rep.id, key, ip)).status, 200, "admins");
+    assert.equal((await rpShare(U, rep.id, "on", ip)).body.share_key, key, "the approved owner still manages it");
+    // the guests' areas never include it (perm "online" is off for guests whatever the settings)
+    assert.equal((await api("POST", "admin/settings", { as: OWNER, body: { values: { perm_guest_listing: true, perm_guest_player: true, perm_guest_mappers: true } } })).status, 200);
+    assert.equal((await rpOpen(undefined, rep.id, key, ip)).status, 401); assert.equal((await rpOpen(N, rep.id, key, ip)).status, 403);
+  } finally {
+    await emu.db.query("update obv.settings set value = 'false' where key = 'access_required'");
+    await api("GET", "me", { as: M });
+  }
+});
+
+test("replay links: the Replays switch refuses them (503), and 30 a minute per address like the other replay routes", async () => {
+  const ip = rpIp(22), U = 7125, V = 7126;
+  const rep = (await api("POST", "replays", { as: U, body: rpBody(rpFile(95)), headers: ip })).body.replay, key = (await rpShare(U, rep.id, "on", ip)).body.share_key;
+  assert.equal((await api("POST", "admin/features", { as: OWNER, body: { values: { feat_replays: false } } })).status, 200);
+  try {
+    for (const r of [await rpOpen(V, rep.id, key, ip), await rpOpen(V, rep.id, "bad", ip), await rpShare(U, rep.id, "off", ip)]) { assert.equal(r.status, 503); assert.equal(r.body.error, "feature_disabled"); assert.equal(r.body.detail.feature, "replays"); }
+  } finally { await api("POST", "admin/features", { as: OWNER, body: { values: { feat_replays: true } } }); }
+  assert.equal((await rpOpen(V, rep.id, key, ip)).status, 200, "back on: the link still works");
+  const ip2 = rpIp(23); let last;
+  for (let i = 0; i < 31; i++) last = await rpOpen(V, rep.id, i % 2 ? key : "C".repeat(32), ip2);
+  assert.equal(last.status, 429); assert.equal(last.body.error, "too_many_requests");
+  assert.equal((await rpShare(U, rep.id, "on", ip2)).status, 429, "one count for every replay route");
+  assert.equal((await rpOpen(V, rep.id, key, rpIp(24))).status, 200, "another address is fine");
+});
+
+test("replay links: the link preview card shows the map only (never the player or the score); a wrong or revoked key gets no card", async () => {
+  const og = require(join(root, "api/og.js")); og.useTemplate(readFileSync(join(root, "index.html"), "utf8"));
+  const page = async (path, n) => {
+    const out = { headers: {} };
+    await og({ url: path, headers: { host: "preview.example", "x-real-ip": "10.81.0." + n } }, { statusCode: 0, setHeader: (k, v) => { out.headers[k.toLowerCase()] = v; }, end: b => { out.body = b; } });
+    out.head = out.body.slice(0, out.body.indexOf("</head>")); out.title = (out.body.match(/<title>([^<]*)<\/title>/) || [])[1]; return out;
+  };
+  const ip = rpIp(25), U = 7127;
+  const rep = (await api("POST", "replays", { as: U, body: rpBody(rpFile(97), { player: "SecretPlayer", title: "Song", artist: "Artist", version: "Insane", score: 98765432 }), headers: ip })).body.replay;
+  const key = (await rpShare(U, rep.id, "on", ip)).body.share_key;
+  const ok = await page(`/?replay=${rep.id}&key=${key}`, 1);
+  assert.equal(ok.title, "Artist - Song [Insane] · KIKI Beatmap Viewer");
+  assert.match(ok.head, /<meta property="og:description" content="A replay shared on beatmap viewer\. Log in with your osu! account to watch it \(members only\)\.">/);
+  assert.ok(!/SecretPlayer|98765432|user7127/.test(ok.body), "no player name, score or owner anywhere in the page");
+  assert.match(ok.head, /<meta name="robots" content="noindex">/); assert.equal(ok.headers["x-robots-tag"], "noindex"); assert.equal(ok.headers["cache-control"], "no-store", "no shared copy of the card");
+  const HOME = "KIKI Beatmap Viewer: preview and edit osu! beatmaps online";
+  for (const [why, path, n] of [["a wrong key", `/?replay=${rep.id}&key=${"D".repeat(32)}`, 2], ["a malformed key", `/?replay=${rep.id}&key=short`, 3], ["no key", `/?replay=${rep.id}`, 4],
+    ["a bad id", `/?replay=${rep.id.toUpperCase()}&key=${key}`, 5], ["an unknown id", `/?replay=77777777-7777-4777-8777-777777777777&key=${key}`, 6]]) {
+    const p = await page(path, n);
+    assert.equal(p.title, HOME, why); assert.ok(!/Song|Artist/.test(p.head), why); assert.match(p.head, /<meta name="robots" content="noindex">/, why); assert.equal(p.headers["cache-control"], "no-store", why);
+  }
+  await rpShare(U, rep.id, "off", ip);
+  const revoked = await page(`/?replay=${rep.id}&key=${key}`, 7);
+  assert.equal(revoked.title, HOME, "a revoked key: no card"); assert.ok(!/Song/.test(revoked.head));
+  assert.deepEqual(og.PRIVATE.keys.slice(0, 9), ["s", "b", "u", "live", "collab", "project", "invite", "replay", "key"], "replay links are never indexed");
+});
+
+test("osu! replay (a pasted score link): the file passes through, an unknown score is 404, a refusal is replay_needs_login and is not asked again for an hour, bad ids never reach osu!", async () => {
+  fillBuckets(); osuLib()._replay.off.until = 0;
+  const get = id => { fillBuckets(); return fetch(base + "/api/v1/osu/replay?score=" + id, { headers: freshIp() }); };
+  const calls0 = osuCalls.length;
+  for (const bad of ["", "abc", "12x", "-1", "1234567890123", "1/2", "8001%2F..", "1.5"]) { const r = await get(bad); assert.equal(r.status, 400, "score: " + bad); assert.equal((await r.json()).error, "bad_request"); }
+  assert.equal((await fetch(base + "/api/v1/osu/replay", { headers: freshIp() })).status, 400);
+  assert.equal(osuCalls.length, calls0, "bad ids never reach osu!");
+  const ok = await get(8001);
+  assert.equal(ok.status, 200); assert.equal(ok.headers.get("content-type"), "application/octet-stream"); assert.equal(ok.headers.get("cache-control"), "no-store"); assert.match(ok.headers.get("content-disposition"), /score-8001\.osr/);
+  const b = new Uint8Array(await ok.arrayBuffer()); assert.equal(b.length, 300); assert.equal(b[1], 7); assert.equal(ok.headers.get("content-length"), "300");
+  const nf = await get(8002); assert.equal(nf.status, 404); assert.equal((await nf.json()).error, "not_found");
+  const big = await get(8004); assert.equal(big.status, 413); assert.equal((await big.json()).error, "replay_too_big");
+  const denied = await get(8003); assert.equal(denied.status, 403); assert.equal((await denied.json()).error, "replay_needs_login");
+  const n = osuHits["/api/v2/scores/8003/download"] || 0; assert.equal(n, 1);
+  const again = await get(8001); assert.equal(again.status, 403, "after a refusal osu! is not asked for an hour"); assert.equal((await again.json()).error, "replay_needs_login"); assert.equal(osuHits["/api/v2/scores/8001/download"], 1);
+  osuLib()._replay.off.until = 0;
 });

@@ -1,24 +1,64 @@
-Third-party notices for KIKI BEATMAP VIEWER
-===========================================
+Third-party notices for beatmap viewer
+======================================
 
+This file lists everything in (or loaded by) this project that was made by
+someone else: what it is, who made it, under which licence, and whether it is
+stored in this repository, loaded at run time, or only referenced.
+
+HOW THE PROJECT IS LICENSED
+---------------------------
 This project's code is released under the GNU General Public License, version 3
-(see LICENSE). Parts of it are translated from the projects below, and some
-files it serves come from other people. Those files are not under GPL-3.0 and
-keep their own terms: the osu! skins and sounds (3, CC BY-NC 4.0), the demo map
-(6) and what users upload (7).
-Their notices:
+(see LICENSE, the unmodified standard text): js/, api/, worker.js, scripts/,
+tests/, d1/, assets/app.css and the other files written for this project.
+GPL-3.0 applies to that code only. Parts of it are translated from the
+projects below, and some files it serves come from other people. Those files
+are not under GPL-3.0 and keep their own terms: the osu! skins (4,
+CC BY-NC 4.0), the demo map (5) and
+what users upload (9). Being in this repository does not relicense them.
 
+The reason for GPL-3.0: js/verify.js follows MapsetVerifier (GPL-3.0), so the
+project that contains it has to be GPL-3.0 as well (section 3 below).
+
+Not affiliated: this is a fan-made, free, non-commercial project. It is not
+affiliated with or endorsed by ppy Pty Ltd. "osu!", "osu!lazer" and the osu!
+logo are trademarks of ppy Pty Ltd; they are used here only to say what the
+site works with.
+
+CONTENTS
+--------
+ A. Code translated from or following other projects (in this repository)
+    1. ppy/osu                      MIT
+    2. ppy/osu-framework            MIT
+    3. MapsetVerifier               GPL-3.0
+ B. Files made by others that are stored in this repository
+    4. osu! default and retro skins CC BY-NC 4.0
+    5. demo map                     by the site's owner
+ C. Libraries and fonts loaded at run time (not stored here)
+    6. JSZip, PeerJS, Inter, IBM Plex Sans Thai, Twemoji
+ D. Services and content used at run time (not stored here)
+    7. osu!, mirrors, ppy's default hitsounds, Google, Cloudflare
+ E. Development only (not deployed, not served)
+    8. @electric-sql/pglite
+ F. Content that users upload
+    9. Online projects and share links
+ G. Referenced for ideas only (no code or text taken)
+
+
+A. CODE TRANSLATED FROM OR FOLLOWING OTHER PROJECTS
 
 1. ppy/osu (osu!lazer) - https://github.com/ppy/osu
-   Translated into JavaScript (behaviour kept the same, code rewritten):
+   Licence: MIT.  Stored here: no. The logic was rewritten in JavaScript and
+   behaves the same (a translation, so this notice has to stay with it):
    - js/parse.js: object stacking (OsuBeatmapProcessor), slider paths
      (SliderPath, Legacy/ConvertHitObjectParser)
    - js/auto.js: Auto's replay (OsuAutoGenerator)
-   Also follow osu!lazer's behaviour and values, under the same notice:
-   - js/editor.js: placing and snapping objects (placement
-     blueprints, TrySnapToNearbyObjects)
-   - js/player.js, js/play.js: slider drawing and hit timing
-   - js/skins.js: the legacy slider body (LegacySliderBody)
+   - js/replay.js: the .osr reading rules (LegacyScoreDecoder: frame parsing,
+     the version that tells a lazer replay from a stable one)
+   - js/replayana.js: the replay analysis follows lazer's judgement and tracking rules
+     (SliderInputManager, HitResult and the combo rules it cites)
+   - js/verify.js: ScoreV1 as lazer's OsuLegacyScoreSimulator computes it
+   - js/skins.js: the slider body's border drawing (osu-framework SmoothPath)
+   Short pointers to this file are in the header of each of those files.
 
 Copyright (c) 2025 ppy Pty Ltd <contact@ppy.sh>.
 
@@ -42,8 +82,8 @@ THE SOFTWARE.
 
 
 2. ppy/osu-framework - https://github.com/ppy/osu-framework
-   Translated into JavaScript: js/parse.js, slider curve approximation
-   (PathApproximator: bezier, perfect circle, catmull).
+   Licence: MIT.  Translated into JavaScript: js/parse.js, slider curve
+   approximation (PathApproximator: bezier, perfect circle, catmull).
 
 Copyright (c) 2024 ppy Pty Ltd <contact@ppy.sh>.
 
@@ -66,42 +106,117 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 
-3. ppy/osu-resources - https://github.com/ppy/osu-resources
-   skins/default, skins/retro and the default hit sounds: by ppy Pty Ltd,
-   licensed under Creative Commons Attribution-NonCommercial 4.0
-   International (CC BY-NC 4.0): https://creativecommons.org/licenses/by-nc/4.0/
-   Changes: large images converted to WebP, spinner-glow downscaled
-   (see skins/NOTICE.txt). This site is free and non-commercial.
-
-
-4. Loaded from their own CDN, each with its licence in the file:
-   JSZip (MIT or GPL-3.0, used under MIT), PeerJS (MIT).
-   Fonts from Google Fonts: Inter and IBM Plex Sans Thai (SIL Open Font
-   Licence 1.1).
-
-
-5. Twemoji - https://github.com/jdecked/twemoji
-   Flag pictures, a fallback loaded from jsDelivr (not stored here):
-   Copyright Twitter, Inc. and other contributors, graphics licensed under
-   CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
-
-
-6. assets/home/demo.osu - the map used by the home page demo and the tour is
-   by this site's owner: https://osu.ppy.sh/beatmapsets/2578807#osu/5746002
-   (metadata replaced with "demo", no audio or images included).
-
-
-7. Online projects and share links hold what their users uploaded; it belongs
-   to its mappers, artists and owners. To have something taken down, use
-   "Report a problem" at the bottom of any page.
-
-
-8. MapsetVerifier by Naxess - https://github.com/Naxesss/MapsetVerifier (GPL-3.0)
+3. MapsetVerifier by Naxess - https://github.com/Naxesss/MapsetVerifier
+   Licence: GPL-3.0 (same text as this project's LICENSE).
    js/verify.js follows its check rules, thresholds and ways of measuring, and
    tests/verify.test.mjs rebuilds the cases from its own check tests. Earlier
-   versions of js/verify.js also used much of its wording. To respect its
-   licence, this project is released under GPL-3.0 (see LICENSE).
+   versions of js/verify.js also used much of its wording. The file is a
+   JavaScript rewrite, not a copy, and has been changed a lot from the
+   original; its header says so. To respect the licence, this project is
+   released under GPL-3.0 (see LICENSE). If you copy js/verify.js, you have to
+   keep it under GPL-3.0 and keep this notice.
 
 
-Referenced for ideas only (no code taken): osucad (MIT), the osu! wiki
-(CC BY-NC 4.0).
+B. FILES MADE BY OTHERS THAT ARE STORED IN THIS REPOSITORY
+
+4. ppy/osu-resources - https://github.com/ppy/osu-resources
+   Files: skins/default and skins/retro (osu!'s Legacy and Retro skins:
+   images only, no sounds are stored).
+   Author: ppy Pty Ltd.  Licence: Creative Commons Attribution-NonCommercial
+   4.0 International (CC BY-NC 4.0): https://creativecommons.org/licenses/by-nc/4.0/
+   (the full text is in the osu-resources repository, LICENCE.md).
+   Changes made here: large images were converted to WebP and spinner-glow
+   was downscaled, to load faster (also written in skins/NOTICE.txt). Nothing
+   else was changed. Credit: "osu! default / retro skin by ppy Pty Ltd".
+   Conditions that follow from the licence:
+   - Non-commercial only. This site is free: no fees, no ads. If you fork this
+     repository and want to use it commercially, remove these two folders.
+   - They are NOT under GPL-3.0, even though they sit in a GPL-3.0 repository.
+
+5. assets/home/demo.osu - the map used by the home page demo and the tour is
+   by this site's owner: https://osu.ppy.sh/beatmapsets/2578807#osu/5746002
+   (metadata replaced with "demo"; no audio and no images are included, the
+   song it is mapped to is by its artist and is not part of this repository).
+
+   Other files in assets/ (icons, icon.svg, og images, app.css) were made for
+   this project. Test fixtures in tests/fixtures (.osr files) are made up
+   (synthetic replays with invented names), not taken from real players.
+
+
+C. LIBRARIES AND FONTS LOADED AT RUN TIME (not stored in this repository)
+
+6. Each is loaded from a public CDN, with a Subresource Integrity hash for the
+   exact version (js/core.js, js/live.js), and carries its licence in the file.
+   - JSZip 3.10.1 - https://github.com/Stuk/jszip - dual licence: MIT or
+     GPL-3.0, used here under the MIT option. Copyright (c) 2009-2016 Stuart
+     Knightley, David Duponchel, Franz Buchinger, António Afonso. Loaded from
+     cdnjs. Used to open and build .osz / .osk files.
+   - PeerJS 1.5.5 - https://github.com/peers/peerjs - MIT. Copyright (c) 2015
+     Michelle Bu and Eric Zhang. Loaded from cdnjs. Peer-to-peer live and
+     collab sessions (its free public server, 0.peerjs.com, only helps
+     browsers find each other).
+   - Inter (Rasmus Andersson / The Inter Project Authors) and IBM Plex Sans
+     Thai (IBM Corp.) - SIL Open Font License 1.1,
+     https://openfontlicense.org. Served by Google Fonts (fonts.googleapis.com
+     and fonts.gstatic.com); the font files are not stored here.
+   - Twemoji (jdecked/twemoji) - https://github.com/jdecked/twemoji
+     Flag pictures, a fallback loaded from jsDelivr when osu!'s own flag image
+     cannot load. Copyright Twitter, Inc. and other contributors, graphics
+     licensed under CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
+
+   The MIT licence of JSZip and PeerJS requires their copyright notice and the
+   licence text to be kept with any copy of the library. This project does
+   not copy them: the CDN's file contains both. If you host them yourself,
+   keep the file's own header.
+
+   (cdnjs, jsDelivr and Google Fonts are the delivery services: they are not
+   licensors of these libraries.)
+
+
+D. SERVICES AND CONTENT USED AT RUN TIME (not stored in this repository)
+
+7. - osu! (ppy Pty Ltd) - https://osu.ppy.sh: beatmap data and search, covers,
+      previews, avatars and flag images (osu.ppy.sh, assets.ppy.sh, a.ppy.sh,
+      b.ppy.sh), and "Log in with osu!" (OAuth; only the public profile is
+      read). Used under the osu! Terms of Service
+      (https://osu.ppy.sh/legal/en/Terms) and the API terms. Beatmaps belong to
+      their mappers, music to its artists, avatars to their users.
+    - Beatmap mirrors, used only through their public download and search
+      links or APIs: Nerinyan (nerinyan.moe), catboy.best, osu.direct,
+      Sayobot (sayobot.cn). They hold copies of what osu! hosts; they are not
+      part of this project and each has its own terms. This project stores no
+      beatmap files of its own.
+    - The default hitsounds are NOT stored here. They are loaded at run time
+      from ppy/osu-resources on raw.githubusercontent.com (Samples/Gameplay),
+      CC BY-NC 4.0, by ppy Pty Ltd (same terms as part 4).
+    - Google (sign-in, Drive, file picker): optional, loaded only if used.
+      Cloudflare (hosting, TURN relay for live sessions). Both under their own
+      terms; nothing of theirs is stored here.
+    - Links only (nothing is fetched until the user opens them): osu! skins
+      compendium, osuskins.net, and the original YUGEN [Legacy Edition] topic.
+
+
+E. DEVELOPMENT ONLY (not deployed, not served: tests/ is in .assetsignore)
+
+8. @electric-sql/pglite - https://github.com/electric-sql/pglite
+    Apache-2.0 (the only package in tests/package-lock.json). Used by the
+    local tests as an in-memory Postgres. Installed with npm install, so
+    it is not copied into this repository (node_modules is git-ignored) and
+    never reaches the site.
+
+
+F. CONTENT THAT USERS UPLOAD
+
+9. Online projects and share links hold what their users uploaded; it belongs
+   to its mappers, artists and owners, not to this project. The site only
+   keeps it for the owner and for the people the owner shares it with. To have
+   something taken down, use "Report a problem" at the bottom of any page.
+
+
+G. REFERENCED FOR IDEAS ONLY (no code or text taken)
+
+   osucad (MIT) and the osu! wiki / Ranking Criteria (CC BY-NC 4.0): the
+   Verify checks link to the wiki; its text is not copied.
+
+
+Last reviewed: 2026-10-16.
