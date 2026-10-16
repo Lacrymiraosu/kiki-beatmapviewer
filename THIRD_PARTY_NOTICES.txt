@@ -12,9 +12,15 @@ This project's code is released under the GNU General Public License, version 3
 tests/, d1/, assets/app.css and the other files written for this project.
 GPL-3.0 applies to that code only. Parts of it are translated from the
 projects below, and some files it serves come from other people. Those files
-are not under GPL-3.0 and keep their own terms: the osu! skins (4,
-CC BY-NC 4.0), the demo map (5) and
-what users upload (9). Being in this repository does not relicense them.
+are not under GPL-3.0 and keep their own terms: the osu! skins (4, CC BY-NC 4.0),
+the demo map (5) and what users upload (9).
+Being in this repository does not relicense them.
+
+These files are separate works that are shipped next to the code (a collection,
+not one combined program). Their licences do not apply to the GPL-3.0 code, and
+the GPL-3.0 does not apply to them: the code can be used without them, and each
+file keeps the licence written for it below. If a licence below does not suit
+your use (for example CC BY-NC 4.0 for a commercial site), remove those files.
 
 The reason for GPL-3.0: js/verify.js follows MapsetVerifier (GPL-3.0), so the
 project that contains it has to be GPL-3.0 as well (section 3 below).
@@ -192,17 +198,19 @@ D. SERVICES AND CONTENT USED AT RUN TIME (not stored in this repository)
     - Google (sign-in, Drive, file picker): optional, loaded only if used.
       Cloudflare (hosting, TURN relay for live sessions). Both under their own
       terms; nothing of theirs is stored here.
-    - Links only (nothing is fetched until the user opens them): osu! skins
-      compendium, osuskins.net, and the original YUGEN [Legacy Edition] topic.
+    - Links only (nothing is fetched or stored by this project; they open in the
+      user's browser when clicked): the osu! skins compendium, osuskins.net, and
+      the osu! forum topic of the original YUGEN [Legacy Edition] skin, which the
+      site recommends but does not host or copy.
 
 
 E. DEVELOPMENT ONLY (not deployed, not served: tests/ is in .assetsignore)
 
 8. @electric-sql/pglite - https://github.com/electric-sql/pglite
-    Apache-2.0 (the only package in tests/package-lock.json). Used by the
-    local tests as an in-memory Postgres. Installed with npm install, so
-    it is not copied into this repository (node_modules is git-ignored) and
-    never reaches the site.
+   Apache-2.0 (the only package in tests/package-lock.json). Used by the
+   local tests as an in-memory Postgres. Installed with npm install, so
+   it is not copied into this repository (node_modules is git-ignored) and
+   never reaches the site.
 
 
 F. CONTENT THAT USERS UPLOAD
@@ -211,6 +219,11 @@ F. CONTENT THAT USERS UPLOAD
    to its mappers, artists and owners, not to this project. The site only
    keeps it for the owner and for the people the owner shares it with. To have
    something taken down, use "Report a problem" at the bottom of any page.
+
+   Files a user opens or imports on their own device (.osz and .osu maps,
+   .osr replays, and .osk skins, which are kept only in that browser) stay in
+   their browser and belong to their authors; this project does not receive
+   them unless the user chooses "Save online" or a live session.
 
 
 G. REFERENCED FOR IDEAS ONLY (no code or text taken)
