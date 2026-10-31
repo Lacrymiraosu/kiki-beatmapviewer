@@ -2,7 +2,7 @@
 
 A web app for previewing, modding and mapping osu!standard beatmaps in the browser: play maps with storyboard and hitsounds, an osu!-style editor, MapsetVerifier-style checks, mod notes, a new-beatmap creator, and live sessions for modding/mapping together.
 
-- Live site: https://osu-beatmap-viewer.lacrymira.workers.dev
+- Live site: https://kiki-bm.app
 - Vanilla JS + Canvas 2D, **no build step**: edit a file and reload
 - Server code: small functions in `api/` for the osu! login (OAuth) and the online features (saved projects, sharing, annotations, admin, changelog), backed by Supabase (Postgres + a private Storage bucket). Without Supabase the site still works; only the online features are off.
 
